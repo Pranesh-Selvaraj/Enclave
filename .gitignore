@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# SvelteKit build output
+build/
+.svelte-kit/
+
+# Vite
+vite.config.ts.timestamp-*
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/**/*.rs.bk
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Debug
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Package manager
+pnpm-lock.yaml
+yarn.lock

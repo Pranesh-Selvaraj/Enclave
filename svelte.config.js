@@ -1,0 +1,21 @@
+import adapter from '@sveltejs/adapter-static';
+
+/** @type {import('@sveltejs/kit').Config} */
+const config = {
+  kit: {
+    adapter: adapter({
+      pages: 'build',
+      assets: 'build',
+      fallback: 'index.html',
+      precompress: false,
+      strict: true
+    }),
+    // Required for Tauri: the app runs as a file:// or localhost SPA
+    prerender: {
+      handleHttpError: 'warn',
+      handleMissingId: 'warn'
+    }
+  }
+};
+
+export default config;

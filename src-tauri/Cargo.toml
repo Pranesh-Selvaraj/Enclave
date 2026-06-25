@@ -1,0 +1,51 @@
+[package]
+name = "athernote"
+version = "0.1.0"
+description = "Secure, local-first, zero-internet note-taking application"
+authors = []
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = ""
+
+[lib]
+name = "athernote_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# ── Tauri v2 Core ──
+tauri = { version = "2", features = [] }
+
+# ── Async Runtime ──
+tokio = { version = "1", features = ["full"] }
+
+# ── Local HTTP Server (for serving the web app over localhost) ──
+axum = { version = "0.8", features = ["ws"] }
+
+# ── mDNS / Network Discovery ──
+mdns-sd = "0.13"
+
+# ── Encrypted Local Database ──
+# sqlcipher feature bundles the SQLCipher encryption extension
+rusqlite = { version = "0.34", features = ["bundled", "sqlcipher"] }
+
+# ── Password Hashing / Key Derivation ──
+argon2 = "0.5"
+
+# ── Serialization ──
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# ── AES-256-GCM Encryption ──
+aes-gcm = "0.10"
+
+# ── WebSocket support (for P2P transport layer) ──
+tokio-tungstenite = "0.26"
+
+# ── Utilities ──
+uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
+thiserror = "2"
