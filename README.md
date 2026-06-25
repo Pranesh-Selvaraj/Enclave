@@ -1,4 +1,4 @@
-# Athernote
+# Enclave
 
 > 🔒 **Secure, local-first, zero-knowledge note-taking with P2P sync over local Wi-Fi.**
 >
@@ -6,7 +6,7 @@
 
 ## Architecture
 
-Athernote is built on three core principles:
+Enclave is built on three core principles:
 
 ### 1. Local-First
 All data lives on your device first. The application functions fully offline — create, edit, and organize notes without ever connecting to a network. Sync is an enhancement, not a requirement.
@@ -33,7 +33,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 ## Monorepo Structure
 
 ```
-athernote/
+enclave/
 ├── src/                    # SvelteKit frontend
 │   ├── app.html            # Root HTML shell
 │   ├── app.css             # Global styles + Tailwind
@@ -76,8 +76,8 @@ athernote/
 ### 1. Clone & Install
 
 ```bash
-git clone <repo-url> athernote
-cd athernote
+git clone <repo-url> enclave
+cd enclave
 
 # Install frontend dependencies
 npm install

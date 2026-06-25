@@ -1,4 +1,4 @@
-//! Athernote — Secure, local-first, zero-knowledge note-taking application.
+//! Enclave — Secure, local-first, zero-knowledge note-taking application.
 //!
 //! This crate contains the Tauri v2 backend including:
 //! - Encrypted SQLite storage (via rusqlite + sqlcipher)
@@ -11,7 +11,7 @@ use tauri::Manager;
 /// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! Welcome to Athernote.", name)
+    format!("Hello, {}! Welcome to Enclave.", name)
 }
 
 #[tauri::command]
@@ -46,7 +46,7 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir)
                 .expect("Failed to create app data directory");
 
-            let db_path = app_dir.join("athernote.db");
+            let db_path = app_dir.join("enclave.db");
 
             app.manage(AppState {
                 db_path,
@@ -57,5 +57,5 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![greet, get_app_status])
         .run(tauri::generate_context!())
-        .expect("Error while launching Athernote");
+        .expect("Error while launching Enclave");
 }

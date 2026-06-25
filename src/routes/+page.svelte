@@ -43,7 +43,7 @@
       <div class="notes-list">
         <div class="note-card">
           <div class="note-card-header">
-            <span class="note-title">Welcome to Athernote</span>
+            <span class="note-title">Welcome to Enclave</span>
             <span class="note-status encrypted">🔒 Encrypted</span>
           </div>
           <pre class="note-content">{notePreview}</pre>

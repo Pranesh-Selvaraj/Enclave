@@ -1,5 +1,5 @@
 [package]
-name = "athernote"
+name = "enclave"
 version = "0.1.0"
 description = "Secure, local-first, zero-internet note-taking application"
 authors = []
@@ -9,7 +9,7 @@ license = "MIT"
 repository = ""
 
 [lib]
-name = "athernote_lib"
+name = "enclave_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

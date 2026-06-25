@@ -27,7 +27,7 @@
       <div class="logo">
         <span class="logo-icon">🔒</span>
         {#if sidebarOpen}
-          <h1 class="logo-text">Athernote</h1>
+          <h1 class="logo-text">Enclave</h1>
         {/if}
       </div>
       <button
