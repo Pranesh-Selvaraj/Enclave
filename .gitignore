@@ -2,18 +2,17 @@
 node_modules/
 
 # SvelteKit build output
+apps/*/build/
+apps/*/.svelte-kit/
 build/
 .svelte-kit/
 
-# Vite
-vite.config.ts.timestamp-*
-
 # Tauri / Rust
 src-tauri/target/
-src-tauri/**/*.rs.bk
-Cargo.lock
+src-tauri/gen/
 
-# IDE
+# IDE & Tools
+.opencode/
 .vscode/
 .idea/
 *.swp
@@ -29,17 +28,22 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Debug
+# Logs & Debug
 *.log
-npm-debug.log*
 
 # Testing
 coverage/
-.nyc_output/
 
 # TypeScript
 *.tsbuildinfo
 
-# Package manager
-pnpm-lock.yaml
-yarn.lock
+# Claude Code (dev-env config, not app code)
+AGENTS.md
+hooks/
+skills/
+
+# Misc common artifacts
+*.bak
+*.orig
+__pycache__/
+dist/
