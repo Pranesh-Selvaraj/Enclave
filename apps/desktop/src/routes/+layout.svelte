@@ -1,223 +1,343 @@
 <script lang="ts">
-  import '../app.css';
+	import '../app.css';
+	import { Sidebar } from '@enclave/ui';
+	import { invoke } from '@tauri-apps/api/core';
+	import type { Document } from '@enclave/ui';
 
-  let { children } = $props();
+	let { children } = $props();
 
-  interface NavItem {
-    label: string;
-    icon: string;
-    href: string;
-  }
+	let documents = $state<Document[]>([]);
+	let sidebarOpen = $state(true);
+	let commandPaletteOpen = $state(false);
+	let searchQuery = $state('');
 
-  const navItems: NavItem[] = [
-    { label: 'All Notes', icon: '📄', href: '/' },
-    { label: 'Favorites', icon: '⭐', href: '/favorites' },
-    { label: 'Tags', icon: '🏷️', href: '/tags' },
-    { label: 'Archive', icon: '📦', href: '/archive' },
-  ];
+	async function loadDocuments() {
+		try {
+			documents = await invoke<Document[]>('get_document_list');
+		} catch (e) {
+			console.error('Failed to load documents:', e);
+		}
+	}
 
-  let sidebarOpen = $state(true);
-  let syncStatus = $state<'offline' | 'scanning' | 'synced'>('offline');
+	async function createDocument() {
+		try {
+			await invoke('create_document', { title: 'Untitled' });
+			await loadDocuments();
+		} catch (e) {
+			console.error('Failed to create document:', e);
+		}
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+			e.preventDefault();
+			commandPaletteOpen = !commandPaletteOpen;
+		}
+		if (e.key === 'Escape') {
+			commandPaletteOpen = false;
+		}
+	}
+
+	$effect(() => {
+		loadDocuments();
+	});
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <div class="app-shell">
-  <!-- Sidebar -->
-  <aside class="sidebar" class:collapsed={!sidebarOpen}>
-    <div class="sidebar-header">
-      <div class="logo">
-        <span class="logo-icon">🔒</span>
-        {#if sidebarOpen}
-          <h1 class="logo-text">Enclave</h1>
-        {/if}
-      </div>
-      <button
-        class="sidebar-toggle"
-        onclick={() => sidebarOpen = !sidebarOpen}
-        aria-label="Toggle sidebar"
-      >
-        {sidebarOpen ? '◀' : '▶'}
-      </button>
-    </div>
+	<!-- Left Sidebar -->
+	<aside class="sidebar" class:collapsed={!sidebarOpen}>
+		<div class="sidebar-header">
+			<div class="sidebar-brand">
+				<span class="brand-icon">🔒</span>
+				{#if sidebarOpen}
+					<span class="brand-name">Enclave</span>
+				{/if}
+			</div>
+			<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)}>
+				{sidebarOpen ? '◀' : '▶'}
+			</button>
+		</div>
 
-    {#if sidebarOpen}
-      <nav class="sidebar-nav">
-        {#each navItems as item}
-          <a href={item.href} class="nav-item">
-            <span class="nav-icon">{item.icon}</span>
-            <span class="nav-label">{item.label}</span>
-          </a>
-        {/each}
-      </nav>
+		{#if sidebarOpen}
+			<div class="sidebar-section">
+				<button class="new-page-btn" onclick={createDocument}>
+					<span class="new-page-icon">+</span>
+					New page
+				</button>
+			</div>
 
-      <div class="sidebar-footer">
-        <div class="sync-status" class:synced={syncStatus === 'synced'} class:scanning={syncStatus === 'scanning'}>
-          <span class="sync-dot"></span>
-          <span class="sync-label">
-            {#if syncStatus === 'offline'}
-              Offline
-            {:else if syncStatus === 'scanning'}
-              Scanning network...
-            {:else}
-              Synced
-            {/if}
-          </span>
-        </div>
-        <p class="sidebar-version">v0.1.0 — local-first</p>
-      </div>
-    {/if}
-  </aside>
+			<nav class="page-tree">
+				<div class="tree-section-title">Pages</div>
+				{#each documents as doc (doc.id)}
+					<a href="/{doc.id}" class="tree-item">
+						<span class="tree-item-icon">📄</span>
+						<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+					</a>
+				{/each}
+				{#if documents.length === 0}
+					<div class="tree-empty">No pages yet</div>
+				{/if}
+			</nav>
 
-  <!-- Main Content -->
-  <main class="main-content">
-    {@render children()}
-  </main>
+			<div class="sidebar-footer">
+				<div class="sync-status offline">
+					<span class="sync-dot"></span>
+					<span>Offline</span>
+				</div>
+			</div>
+		{/if}
+	</aside>
+
+	<!-- Main Content Area -->
+	<div class="main-pane">
+		{@render children?.()}
+	</div>
+
+	<!-- Command Palette Overlay -->
+	{#if commandPaletteOpen}
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div class="overlay" onclick={() => (commandPaletteOpen = false)}>
+			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+			<div class="command-palette" onclick={(e) => e.stopPropagation()}>
+				<input
+					type="text"
+					class="palette-input"
+					placeholder="Search pages or type a command…"
+					bind:value={searchQuery}
+					autofocus
+				/>
+				<div class="palette-results">
+					{#each documents.filter((d) => !searchQuery || d.title.toLowerCase().includes(searchQuery.toLowerCase())) as doc (doc.id)}
+						<a href="/{doc.id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
+							<span class="palette-icon">📄</span>
+							<span>{doc.title || 'Untitled'}</span>
+						</a>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
-  .app-shell {
-    display: flex;
-    height: 100vh;
-    overflow: hidden;
-  }
+	.app-shell {
+		display: flex;
+		height: 100vh;
+		overflow: hidden;
+	}
 
-  .sidebar {
-    display: flex;
-    flex-direction: column;
-    width: 240px;
-    min-width: 240px;
-    background-color: var(--color-surface);
-    border-right: 1px solid var(--color-border);
-    transition: width 0.2s ease, min-width 0.2s ease;
-  }
+	/* ── Sidebar ── */
+	.sidebar {
+		display: flex;
+		flex-direction: column;
+		width: 260px;
+		min-width: 260px;
+		background-color: var(--color-surface);
+		border-right: 1px solid var(--color-border);
+		transition: width 0.2s, min-width 0.2s;
+	}
 
-  .sidebar.collapsed {
-    width: 56px;
-    min-width: 56px;
-  }
+	.sidebar.collapsed {
+		width: 52px;
+		min-width: 52px;
+	}
 
-  .sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 12px;
-    border-bottom: 1px solid var(--color-border);
-  }
+	.sidebar-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 12px;
+		min-height: 48px;
+	}
 
-  .sidebar.collapsed .sidebar-header {
-    justify-content: center;
-  }
+	.sidebar-brand {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
 
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+	.brand-icon { font-size: 18px; }
 
-  .logo-icon {
-    font-size: 22px;
-  }
+	.brand-name {
+		font-size: 15px;
+		font-weight: 700;
+		white-space: nowrap;
+	}
 
-  .logo-text {
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin: 0;
-    white-space: nowrap;
-  }
+	.sidebar-toggle {
+		background: none;
+		border: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 11px;
+		padding: 4px 6px;
+		border-radius: var(--radius-sm);
+	}
 
-  .sidebar-toggle {
-    background: none;
-    border: none;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    font-size: 12px;
-    padding: 4px 6px;
-    border-radius: 4px;
-    transition: color 0.15s, background-color 0.15s;
-  }
+	.sidebar-toggle:hover {
+		color: var(--color-text);
+		background: var(--color-surface-hover);
+	}
 
-  .sidebar-toggle:hover {
-    color: var(--color-text);
-    background-color: rgba(255, 255, 255, 0.06);
-  }
+	.sidebar-section {
+		padding: 4px 8px;
+	}
 
-  .sidebar-nav {
-    flex: 1;
-    padding: 12px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
+	.new-page-btn {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 6px 10px;
+		border: none;
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 14px;
+		font-family: inherit;
+		transition: background 0.15s, color 0.15s;
+	}
 
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    color: var(--color-text-muted);
-    text-decoration: none;
-    font-size: 14px;
-    transition: color 0.15s, background-color 0.15s;
-  }
+	.new-page-btn:hover {
+		background: var(--color-surface-hover);
+		color: var(--color-text);
+	}
 
-  .nav-item:hover {
-    color: var(--color-text);
-    background-color: rgba(255, 255, 255, 0.05);
-  }
+	.new-page-icon {
+		font-size: 18px;
+		font-weight: 300;
+		width: 24px;
+		text-align: center;
+	}
 
-  .nav-icon {
-    font-size: 16px;
-    width: 24px;
-    text-align: center;
-  }
+	/* ── Page Tree ── */
+	.page-tree {
+		flex: 1;
+		padding: 8px;
+		overflow-y: auto;
+	}
 
-  .sidebar-footer {
-    padding: 12px 16px;
-    border-top: 1px solid var(--color-border);
-  }
+	.tree-section-title {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		padding: 8px 8px 4px;
+	}
 
-  .sync-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: var(--color-text-muted);
-  }
+	.tree-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 8px;
+		border-radius: var(--radius-md);
+		color: var(--color-text-muted);
+		text-decoration: none;
+		font-size: 14px;
+		min-height: 30px;
+		transition: background 0.1s, color 0.1s;
+	}
 
-  .sync-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: #666;
-    transition: background-color 0.3s;
-  }
+	.tree-item:hover {
+		background: var(--color-surface-hover);
+		color: var(--color-text);
+	}
 
-  .sync-status.scanning .sync-dot {
-    background-color: #f0c040;
-    animation: pulse 1.5s infinite;
-  }
+	.tree-item-icon { font-size: 16px; flex-shrink: 0; }
+	.tree-item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.tree-empty { font-size: 12px; color: var(--color-text-muted); padding: 8px; }
 
-  .sync-status.synced .sync-dot {
-    background-color: var(--color-success);
-  }
+	.sidebar-footer {
+		padding: 10px 16px;
+		border-top: 1px solid var(--color-border);
+	}
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
+	.sync-status {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
 
-  .sidebar-version {
-    margin: 8px 0 0;
-    font-size: 10px;
-    color: var(--color-text-muted);
-    opacity: 0.5;
-  }
+	.sync-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: #666;
+	}
 
-  .main-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0;
-    background-color: var(--color-bg);
-  }
+	/* ── Main Pane ── */
+	.main-pane {
+		flex: 1;
+		overflow-y: auto;
+		background: var(--color-bg);
+	}
+
+	/* ── Command Palette ── */
+	.overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 200;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		justify-content: center;
+		padding-top: 15vh;
+	}
+
+	.command-palette {
+		width: 560px;
+		max-height: 400px;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.palette-input {
+		width: 100%;
+		padding: 14px 18px;
+		border: none;
+		border-bottom: 1px solid var(--color-border);
+		background: none;
+		color: var(--color-text);
+		font-size: 16px;
+		font-family: inherit;
+		outline: none;
+	}
+
+	.palette-input::placeholder {
+		color: var(--color-text-muted);
+	}
+
+	.palette-results {
+		flex: 1;
+		overflow-y: auto;
+		padding: 6px;
+	}
+
+	.palette-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 12px;
+		border-radius: var(--radius-md);
+		color: var(--color-text);
+		text-decoration: none;
+		font-size: 14px;
+		transition: background 0.1s;
+	}
+
+	.palette-item:hover {
+		background: var(--color-surface-hover);
+	}
+
+	.palette-icon { font-size: 18px; }
 </style>

@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/core-db"]
+resolver = "2"
+
 [package]
 name = "enclave"
 version = "0.1.0"
@@ -16,36 +20,19 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# ── Internal Crates ──
+core-db = { path = "crates/core-db" }
+
 # ── Tauri v2 Core ──
 tauri = { version = "2", features = [] }
 
-# ── Async Runtime ──
-tokio = { version = "1", features = ["full"] }
-
-# ── Local HTTP Server (for serving the web app over localhost) ──
-axum = { version = "0.8", features = ["ws"] }
-
-# ── mDNS / Network Discovery ──
-mdns-sd = "0.13"
-
 # ── Encrypted Local Database ──
-# sqlcipher feature bundles the SQLCipher encryption extension
-rusqlite = { version = "0.34", features = ["bundled", "sqlcipher"] }
-
-# ── Password Hashing / Key Derivation ──
-argon2 = "0.5"
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher"] }
 
 # ── Serialization ──
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# ── AES-256-GCM Encryption ──
-aes-gcm = "0.10"
-
-# ── WebSocket support (for P2P transport layer) ──
-tokio-tungstenite = "0.26"
-
 # ── Utilities ──
+chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-rand = "0.8"
-thiserror = "2"

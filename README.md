@@ -19,42 +19,76 @@ When devices are on the same local network, they discover each other via **mDNS*
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Desktop Shell** | Tauri v2 (Rust) |
-| **Frontend** | SvelteKit (static adapter / SSG) + Tailwind CSS |
-| **Backend** | Rust — Tokio, Axum (local serving) |
-| **Storage** | SQLite + sqlcipher (native), IndexedDB / sqlocal (web fallback) |
-| **Sync Engine** | Yjs (CRDT for conflict-free text merging) |
-| **Network Discovery** | mDNS (multicast DNS) |
-| **Transport** | WebSockets / WebRTC data channels |
-| **Encryption** | AES-256-GCM + Argon2id |
+| Layer | Technology | Status |
+|-------|-----------|--------|
+| **Desktop Shell** | Tauri v2 (Rust) | ✅ |
+| **Frontend** | SvelteKit (static adapter) + Tailwind CSS | ✅ |
+| **Editor** | TipTap (ProseMirror) + custom Svelte 5 wrapper | ✅ |
+| **Storage** | SQLite + sqlcipher (encrypted at rest) | ✅ |
+| **Data Model** | Document + Block model with fractional indexing | ✅ |
+| **Network Discovery** | mDNS (multicast DNS) | Planned |
+| **Transport** | WebSockets / WebRTC data channels | Planned |
+| **Sync Engine** | Yjs (CRDT for conflict-free text merging) | Planned |
+| **Key Derivation** | Argon2id | Planned |
 
 ## Monorepo Structure
 
 ```
 enclave/
-├── src/                    # SvelteKit frontend
-│   ├── app.html            # Root HTML shell
-│   ├── app.css             # Global styles + Tailwind
-│   ├── lib/                # Shared components & utilities
-│   └── routes/             # SvelteKit pages
-│       ├── +layout.svelte  # App shell (sidebar + main area)
-│       ├── +layout.ts      # Prerender config
-│       └── +page.svelte    # Main notes view
-├── src-tauri/              # Rust backend (Tauri v2)
-│   ├── Cargo.toml          # Rust dependencies
-│   ├── build.rs            # Tauri build script
-│   ├── tauri.conf.json     # Tauri configuration
-│   ├── icons/              # App icons
-│   └── src/
-│       ├── main.rs         # Binary entry point
-│       └── lib.rs          # App builder + commands
-├── build/                  # Static SvelteKit output (gitignored)
-├── package.json            # Node dependencies
-├── svelte.config.js        # SvelteKit config (static adapter)
-├── vite.config.ts          # Vite + Tailwind config
-└── tsconfig.json           # TypeScript config
+├── apps/
+│   └── desktop/                  # Tauri desktop app (SvelteKit + static adapter)
+│       ├── src/
+│       │   ├── app.html          # Root HTML shell
+│       │   ├── app.css           # Global styles + Tailwind
+│       │   ├── lib/              # App-specific utilities
+│       │   └── routes/           # SvelteKit pages
+│       │       ├── +layout.svelte  # App shell + command palette
+│       │       ├── +layout.ts
+│       │       ├── +page.svelte    # Home / recent pages
+│       │       └── [id]/           # Document page (dynamic route)
+│       │           └── +page.svelte  # Editor + slash menu + bubble menu
+│       ├── package.json
+│       ├── svelte.config.js
+│       ├── vite.config.ts
+│       └── tsconfig.json
+├── packages/
+│   ├── editor/                   # TipTap Svelte 5 wrapper + block chrome
+│   │   ├── src/
+│   │   │   ├── TipTapEditor.svelte  # Core editor component
+│   │   │   ├── reactivity.ts        # Svelte 5 ↔ TipTap reactivity
+│   │   │   ├── extensions/          # SlashCommand, WikiLink (future)
+│   │   │   ├── blocks/              # SlashMenu, BubbleMenu
+│   │   │   └── index.ts
+│   │   └── package.json
+│   └── ui/                       # Shared Svelte component library
+│       ├── src/
+│       │   ├── components/       # Button, NoteCard, Sidebar, EmptyState
+│       │   ├── types.ts          # Document, Block interfaces
+│       │   └── index.ts
+│       └── package.json
+├── src-tauri/                    # Rust backend (Tauri v2)
+│   ├── crates/
+│   │   └── core-db/              # Encrypted storage engine
+│   │       ├── Cargo.toml        # rusqlite + sqlcipher
+│   │       └── src/lib.rs        # Note struct, query helpers, init_db()
+│   ├── src/
+│   │   ├── main.rs               # Binary entry point
+│   │   └── lib.rs                # Tauri commands + app builder
+│   ├── Cargo.toml                # Rust workspace root
+│   ├── tauri.conf.json
+│   └── icons/
+├── package.json                  # npm workspace root
+└── README.md
+```
+
+### Planned (not yet scaffolded)
+
+```
+apps/web/          # PWA deployment target
+apps/mobile/       # Capacitor / Tauri mobile
+packages/crypto/   # Client-side AES-256-GCM + Argon2id (TS)
+packages/sync-engine/  # Yjs CRDT + P2P mesh (TS)
+src-tauri/crates/core-network/  # mDNS + WebSocket transport (Rust)
 ```
 
 ## Prerequisites
@@ -79,11 +113,8 @@ enclave/
 git clone <repo-url> enclave
 cd enclave
 
-# Install frontend dependencies
+# Install all workspace dependencies
 npm install
-
-# Verify Rust toolchain
-rustc --version  # should be >= 1.77
 ```
 
 ### 2. Development
@@ -134,8 +165,14 @@ npx tauri build
 
 ## Status
 
-**Phase 1** — Monorepo scaffolding and Tauri + SvelteKit integration.  
-**Next**: CRDT sync engine (Yjs), encrypted storage layer, mDNS peer discovery.
+| Phase | Feature | Status |
+|---|---|---|
+| **1** | Monorepo scaffolding, Tauri + SvelteKit integration | ✅ |
+| **2** | Encrypted SQLite storage (sqlcipher), document + block CRUD | ✅ |
+| **3** | Notion-inspired block editor (TipTap), slash commands, bubble menu, command palette | ✅ |
+| **4** | Argon2id key derivation, mDNS peer discovery, P2P sync | Planned |
+| **5** | Obsidian-style graph view, backlinks, `[[wikilinks]]` | Planned |
+| **6** | Notion-style databases (table, board, calendar views) | Planned |
 
 ## License
 

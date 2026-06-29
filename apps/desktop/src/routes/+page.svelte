@@ -1,239 +1,196 @@
 <script lang="ts">
-  let noteCount = $state(0);
-  let notePreview = $state('');
+	import { Button } from '@enclave/ui';
+	import { invoke } from '@tauri-apps/api/core';
+	import type { Document } from '@enclave/ui';
+	import { goto } from '$app/navigation';
 
-  function createNote() {
-    noteCount++;
-    notePreview = `Note #${noteCount} created.\n\nThis is a local-first, encrypted note.\nAll data stays on your device.`;
-  }
+	let documents = $state<Document[]>([]);
 
-  function clearNotes() {
-    noteCount = 0;
-    notePreview = '';
-  }
+	async function loadDocuments() {
+		try {
+			documents = await invoke<Document[]>('get_document_list');
+		} catch (e) {
+			console.error('Failed to load documents:', e);
+		}
+	}
+
+	async function createAndOpen() {
+		try {
+			const doc = await invoke<Document>('create_document', { title: 'Untitled' });
+			goto(`/${doc.id}`);
+		} catch (e) {
+			console.error('Failed to create document:', e);
+		}
+	}
+
+	$effect(() => {
+		loadDocuments();
+	});
 </script>
 
-<div class="page-home">
-  <div class="page-header">
-    <div>
-      <h2 class="page-title">All Notes</h2>
-      <p class="page-subtitle">Encrypted, local-first, zero-knowledge</p>
-    </div>
-    <div class="header-actions">
-      <button class="btn btn-primary" onclick={createNote}>
-        + New Note
-      </button>
-    </div>
-  </div>
+<div class="home-page">
+	<div class="home-header">
+		<h1 class="home-title">Enclave</h1>
+		<p class="home-subtitle">Encrypted, local-first, private notes</p>
+	</div>
 
-  <div class="page-body">
-    {#if noteCount === 0}
-      <div class="empty-state">
-        <div class="empty-icon">📝</div>
-        <h3>No notes yet</h3>
-        <p>
-          Your notes are encrypted with AES-256-GCM and stored locally.
-          Sync happens P2P over your local network — no cloud, no servers.
-        </p>
-        <button class="btn btn-primary" onclick={createNote}>
-          Create your first note
-        </button>
-      </div>
-    {:else}
-      <div class="notes-list">
-        <div class="note-card">
-          <div class="note-card-header">
-            <span class="note-title">Welcome to Enclave</span>
-            <span class="note-status encrypted">🔒 Encrypted</span>
-          </div>
-          <pre class="note-content">{notePreview}</pre>
-          <div class="note-card-footer">
-            <span class="note-meta">Just now</span>
-            <span class="note-meta">0 words</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="page-footer-actions">
-        <button class="btn btn-secondary" onclick={createNote}>
-          + Add another note
-        </button>
-        <button class="btn btn-ghost" onclick={clearNotes}>
-          Clear all
-        </button>
-      </div>
-    {/if}
-  </div>
+	<div class="home-content">
+		{#if documents.length === 0}
+			<div class="home-empty">
+				<div class="home-empty-icon">🔒</div>
+				<h2>Welcome to Enclave</h2>
+				<p>
+					Create richly formatted documents with block-based editing.
+					All data is encrypted and stored locally on your device.
+				</p>
+				<div class="home-actions">
+					<Button onclick={createAndOpen}>Create your first page</Button>
+				</div>
+				<div class="home-shortcuts">
+					<div class="shortcut-item">
+						<kbd>Ctrl</kbd> + <kbd>K</kbd>
+						<span>Command palette</span>
+					</div>
+					<div class="shortcut-item">
+						<kbd>/</kbd>
+						<span>Slash commands</span>
+					</div>
+					<div class="shortcut-item">
+						<kbd>Ctrl</kbd> + <kbd>N</kbd>
+						<span>New page</span>
+					</div>
+				</div>
+			</div>
+		{:else}
+			<div class="home-recent">
+				<h2>Recent pages</h2>
+				<div class="recent-list">
+					{#each documents as doc (doc.id)}
+						<a href="/{doc.id}" class="recent-item">
+							<span class="recent-icon">📄</span>
+							<div class="recent-info">
+								<span class="recent-title">{doc.title || 'Untitled'}</span>
+								<span class="recent-date">{new Date(doc.updated_at).toLocaleDateString()}</span>
+							</div>
+						</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>
-  .page-home {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 32px;
-  }
+	.home-page {
+		max-width: 720px;
+		margin: 0 auto;
+		padding: 60px 32px;
+	}
 
-  .page-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 32px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--color-border);
-  }
+	.home-header {
+		margin-bottom: 40px;
+	}
 
-  .page-title {
-    font-size: 22px;
-    font-weight: 700;
-    margin: 0 0 4px;
-    letter-spacing: -0.02em;
-  }
+	.home-title {
+		font-size: 28px;
+		font-weight: 700;
+		margin: 0 0 4px;
+	}
 
-  .page-subtitle {
-    font-size: 13px;
-    color: var(--color-text-muted);
-    margin: 0;
-  }
+	.home-subtitle {
+		color: var(--color-text-muted);
+		font-size: 15px;
+		margin: 0;
+	}
 
-  .header-actions {
-    display: flex;
-    gap: 8px;
-  }
+	.home-empty {
+		text-align: center;
+		padding: 60px 20px;
+	}
 
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 80px 40px;
-    border: 2px dashed var(--color-border);
-    border-radius: 12px;
-  }
+	.home-empty-icon {
+		font-size: 48px;
+		margin-bottom: 16px;
+	}
 
-  .empty-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-  }
+	.home-empty h2 {
+		font-size: 22px;
+		font-weight: 600;
+		margin: 0 0 8px;
+	}
 
-  .empty-state h3 {
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0 0 8px;
-  }
+	.home-empty p {
+		color: var(--color-text-muted);
+		max-width: 420px;
+		margin: 0 auto 24px;
+		line-height: 1.6;
+	}
 
-  .empty-state p {
-    max-width: 420px;
-    color: var(--color-text-muted);
-    font-size: 14px;
-    line-height: 1.6;
-    margin: 0 0 24px;
-  }
+	.home-actions {
+		margin-bottom: 32px;
+	}
 
-  .notes-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 24px;
-  }
+	.home-shortcuts {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		align-items: center;
+	}
 
-  .note-card {
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    padding: 20px;
-  }
+	.shortcut-item {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 13px;
+		color: var(--color-text-muted);
+	}
 
-  .note-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
+	kbd {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 1px 6px;
+		font-size: 12px;
+		font-family: var(--font-mono);
+	}
 
-  .note-title {
-    font-size: 16px;
-    font-weight: 600;
-  }
+	.home-recent h2 {
+		font-size: 14px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		margin: 0 0 12px;
+	}
 
-  .note-status {
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    background-color: rgba(124, 111, 240, 0.12);
-    color: var(--color-accent);
-  }
+	.recent-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
 
-  .note-content {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 13px;
-    line-height: 1.7;
-    color: var(--color-text);
-    margin: 0 0 16px;
-    white-space: pre-wrap;
-    background: none;
-    border: none;
-    padding: 0;
-  }
+	.recent-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 10px 12px;
+		border-radius: var(--radius-md);
+		color: var(--color-text);
+		text-decoration: none;
+		transition: background 0.1s;
+	}
 
-  .note-card-footer {
-    display: flex;
-    gap: 16px;
-  }
+	.recent-item:hover {
+		background: var(--color-surface-hover);
+	}
 
-  .note-meta {
-    font-size: 12px;
-    color: var(--color-text-muted);
-  }
+	.recent-icon { font-size: 20px; }
 
-  .page-footer-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: center;
-  }
+	.recent-info {
+		display: flex;
+		flex-direction: column;
+	}
 
-  /* Button system */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
-  }
-
-  .btn-primary {
-    background-color: var(--color-accent);
-    color: #fff;
-    border-color: var(--color-accent);
-  }
-
-  .btn-primary:hover {
-    background-color: var(--color-accent-hover);
-    border-color: var(--color-accent-hover);
-  }
-
-  .btn-secondary {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: var(--color-text);
-    border-color: var(--color-border);
-  }
-
-  .btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-
-  .btn-ghost {
-    background: none;
-    color: var(--color-text-muted);
-  }
-
-  .btn-ghost:hover {
-    color: var(--color-text);
-    background-color: rgba(255, 255, 255, 0.05);
-  }
+	.recent-title { font-size: 15px; }
+	.recent-date { font-size: 12px; color: var(--color-text-muted); }
 </style>
