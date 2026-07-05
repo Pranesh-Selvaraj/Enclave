@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
-export interface SlashCommandEvent {
+interface SlashCommandEvent {
 	query: string;
 	range: { from: number; to: number };
 }

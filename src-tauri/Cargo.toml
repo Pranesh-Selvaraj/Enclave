@@ -6,11 +6,9 @@ resolver = "2"
 name = "enclave"
 version = "0.1.0"
 description = "Secure, local-first, zero-internet note-taking application"
-authors = []
 edition = "2021"
 rust-version = "1.77"
 license = "MIT"
-repository = ""
 
 [lib]
 name = "enclave_lib"

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Policy
+    url: https://github.com/Pranesh-Selvaraj/Enclave/blob/main/SECURITY.md
+    about: Report security vulnerabilities privately — do not open a public issue.
+  - name: Contributing Guide
+    url: https://github.com/Pranesh-Selvaraj/Enclave/blob/main/CONTRIBUTING.md
+    about: Read before submitting your first PR.

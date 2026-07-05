@@ -3,7 +3,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 
-export interface CalloutOptions {
+interface CalloutOptions {
 	HTMLAttributes: Record<string, any>;
 }
 
@@ -12,7 +12,6 @@ declare module '@tiptap/core' {
 		callout: {
 			setCallout: (attrs?: { type?: string }) => ReturnType;
 			toggleCallout: (attrs?: { type?: string }) => ReturnType;
-			unsetCallout: () => ReturnType;
 		};
 	}
 }
@@ -48,10 +47,6 @@ export const Callout = Node.create<CalloutOptions>({
 				(attrs) =>
 				({ commands }) =>
 					commands.toggleWrap(this.type, attrs),
-			unsetCallout:
-				() =>
-				({ commands }) =>
-					commands.lift(this.type),
 		};
 	},
 });

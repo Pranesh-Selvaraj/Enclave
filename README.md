@@ -19,20 +19,20 @@ When devices are on the same local network, they discover each other via **mDNS*
 
 ## Tech Stack
 
-| Layer | Technology | Status |
-|-------|-----------|--------|
-| **Desktop Shell** | Tauri v2 (Rust) | Done |
-| **Frontend** | SvelteKit (static adapter) + Svelte 5 | Done |
-| **Editor** | TipTap (ProseMirror) + custom Svelte 5 wrapper | Done |
-| **Storage** | SQLite + sqlcipher (encrypted at rest) | Done |
-| **Data Model** | Document + Block with fractional indexing | Done |
-| **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) | Done |
-| **Key Derivation** | Argon2id (`hash-wasm`) | Done |
-| **Markdown I/O** | `turndown` + `markdown-it` bidirectional bridge | Done |
-| **Network Discovery** | mDNS (`mdns-sd`) | Done |
-| **Transport** | WebSocket (`tokio-tungstenite`) | Done |
-| **Sync Engine** | Yjs CRDT with encrypted transport | Done |
-| **Theming** | Light / dark with CSS custom properties | Done |
+| Layer | Technology |
+|-------|-----------|
+| **Desktop Shell** | Tauri v2 (Rust) |
+| **Frontend** | SvelteKit (static adapter) + Svelte 5 |
+| **Editor** | TipTap (ProseMirror) + custom Svelte 5 wrapper |
+| **Storage** | SQLite + sqlcipher (encrypted at rest) |
+| **Data Model** | Document + Block with fractional indexing |
+| **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
+| **Key Derivation** | Argon2id (`hash-wasm`) |
+| **Markdown I/O** | `turndown` + `markdown-it` bidirectional bridge |
+| **Network Discovery** | mDNS (`mdns-sd`) |
+| **Transport** | WebSocket (`tokio-tungstenite`) |
+| **Sync Engine** | Yjs CRDT with encrypted transport |
+| **Theming** | Light / dark with CSS custom properties |
 
 ## Monorepo Structure
 
@@ -194,8 +194,6 @@ npm run check -w @enclave/desktop
        │
        ▼
   256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB)
-       │
-       └───► Transport key (future: HKDF-derived, encrypts P2P sync messages)
 ```
 
 ## Security Model
@@ -231,29 +229,29 @@ npm run check -w @enclave/desktop
 
 ## Editor Features
 
-| Feature | Key | Status |
-|---------|-----|--------|
-| Headings 1–3 | `/h1`, `/h2`, `/h3` | Done |
-| Bullet / Numbered lists | `/bullet`, `/numbered` | Done |
-| **Task lists** (checkboxes) | `/task` | Done |
-| Block quotes | `/quote` | Done |
-| Code blocks | `/code` | Done |
-| **Callouts** (info/warning boxes) | `/callout` | Done |
-| **Toggle blocks** (collapsible) | `/toggle` | Done |
-| Horizontal divider | `/divider` | Done |
-| Text formatting | Select + bubble menu | Done |
-| Command palette | `Ctrl+K` | Done |
-| Markdown export | Button in editor toolbar | Done |
+| Feature | Key |
+|---------|-----|
+| Headings 1–3 | `/h1`, `/h2`, `/h3` |
+| Bullet / Numbered lists | `/bullet`, `/numbered` |
+| **Task lists** (checkboxes) | `/task` |
+| Block quotes | `/quote` |
+| Code blocks | `/code` |
+| **Callouts** (info/warning boxes) | `/callout` |
+| **Toggle blocks** (collapsible) | `/toggle` |
+| Horizontal divider | `/divider` |
+| Text formatting | Select + bubble menu |
+| Command palette | `Ctrl+K` |
+| Markdown export | Button in editor toolbar |
 
-## Status
+## Documentation
 
-| Phase | Feature | Status |
-|-------|---------|--------|
-| **1** | Monorepo scaffolding, Tauri + SvelteKit integration | Done |
-| **2** | BIP39 seed phrase, Argon2id key derivation, vault lock/unlock | Done |
-| **3** | Markdown import/export bridge, block-based data layer | Done |
-| **4** | mDNS peer discovery, WebSocket transport, Yjs CRDT sync engine | Done |
-| **5** | Theme system, task lists, callouts, toggle blocks, settings panel | Done |
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
+- [SECURITY.md](SECURITY.md) — vulnerability reporting and security model
+
+## Roadmap
+
+Future work is tracked on the [GitHub Issues](https://github.com/Pranesh-Selvaraj/Enclave/issues) page.  
+Feature requests and bug reports welcome.
 
 ## License
 

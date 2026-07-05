@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
-	import { onMount } from 'svelte';
 
 	let {
 		editor,

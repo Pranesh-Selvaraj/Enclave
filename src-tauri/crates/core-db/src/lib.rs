@@ -194,19 +194,6 @@ pub fn insert_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn update_block(
-    db: &Connection,
-    id: &str,
-    content: &serde_json::Value,
-    updated_at: &str,
-) -> rusqlite::Result<()> {
-    db.execute(
-        "UPDATE blocks SET content = ?1, updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![content.to_string(), updated_at, id],
-    )?;
-    Ok(())
-}
-
 pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
     Ok(())

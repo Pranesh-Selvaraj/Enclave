@@ -7,7 +7,6 @@ const config = {
       pages: 'build',
       assets: 'build',
       fallback: 'index.html',
-      precompress: false,
       strict: true
     }),
     // Required for Tauri: the app runs as a file:// or localhost SPA

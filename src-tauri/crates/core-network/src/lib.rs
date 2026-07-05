@@ -125,13 +125,4 @@ impl NetworkState {
         inner.port = 0;
         Ok(())
     }
-
-    /// Send an encrypted sync message to a connected peer.
-    pub async fn send_to_peer(&self, peer_id: &str, payload: &str) -> Result<(), String> {
-        // For now, this is handled by the WS layer keeping connections.
-        // Future: maintain a connection map per peer.
-        let _ = peer_id;
-        let _ = payload;
-        Ok(())
-    }
 }
