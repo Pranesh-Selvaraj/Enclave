@@ -60,11 +60,32 @@
 			action: (ed) => ed.chain().focus().toggleOrderedList().run(),
 		},
 		{
+			id: 'taskList',
+			label: 'Task List',
+			icon: '☑',
+			description: 'Track tasks with checkboxes',
+			action: (ed) => ed.chain().focus().toggleTaskList().run(),
+		},
+		{
 			id: 'blockquote',
 			label: 'Quote',
 			icon: '"',
 			description: 'Capture a blockquote',
 			action: (ed) => ed.chain().focus().toggleBlockquote().run(),
+		},
+		{
+			id: 'callout',
+			label: 'Callout',
+			icon: '💡',
+			description: 'Highlighted info box',
+			action: (ed) => ed.chain().focus().toggleCallout().run(),
+		},
+		{
+			id: 'toggleBlock',
+			label: 'Toggle',
+			icon: '▶',
+			description: 'Collapsible section',
+			action: (ed) => ed.chain().focus().setToggleBlock().run(),
 		},
 		{
 			id: 'codeBlock',

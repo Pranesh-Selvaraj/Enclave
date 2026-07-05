@@ -1,61 +1,118 @@
 //! Enclave — Secure, local-first, zero-knowledge note-taking application.
 //!
-//! Tauri v2 backend: IPC commands delegating to `core_db` (storage)
-//! and `core_network` (P2P — future).
+//! Tauri v2 backend: IPC commands for vault lifecycle (init / unlock / lock),
+//! document CRUD, and block CRUD.
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 
+const DB_FILENAME: &str = "enclave.db";
+
+// ── App State ───────────────────────────────────────────────────────────────
+
 pub struct AppState {
-    pub db: Mutex<rusqlite::Connection>,
+    pub app_dir: PathBuf,
+    /// None when locked; Some when unlocked.
+    pub db: Mutex<Option<rusqlite::Connection>>,
+    pub network: core_network::NetworkState,
+}
+
+fn db_path(app_dir: &std::path::Path) -> PathBuf {
+    app_dir.join(DB_FILENAME)
+}
+
+// wrap a fn that needs Connection, returning a "vault locked" error if None
+fn with_db<T>(
+    state: &AppState,
+    f: impl FnOnce(&rusqlite::Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    let guard = state.db.lock().map_err(|e| e.to_string())?;
+    match guard.as_ref() {
+        Some(conn) => f(conn),
+        None => Err("Vault is locked".to_string()),
+    }
+}
+
+// ── Vault Lifecycle Commands ────────────────────────────────────────────────
+
+#[tauri::command]
+fn is_vault_initialized(state: tauri::State<AppState>) -> bool {
+    core_db::vault_exists(&db_path(&state.app_dir))
+}
+
+#[tauri::command]
+fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
+    let path = db_path(&state.app_dir);
+    if core_db::vault_exists(&path) {
+        return Err("Vault already exists".to_string());
+    }
+    let conn = core_db::init_vault(&path, &key)?;
+    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
+    *guard = Some(conn);
+    Ok(())
+}
+
+#[tauri::command]
+fn unlock_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
+    let path = db_path(&state.app_dir);
+    let conn = core_db::open_vault(&path, &key)?;
+    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
+    *guard = Some(conn);
+    Ok(())
+}
+
+#[tauri::command]
+fn lock_vault(state: tauri::State<AppState>) -> Result<(), String> {
+    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
+    *guard = None;
+    Ok(())
 }
 
 // ── Document Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
 fn get_document_list(state: tauri::State<AppState>) -> Result<Vec<core_db::Document>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    core_db::query_documents(&db).map_err(|e| e.to_string())
+    with_db(&state, |db| core_db::query_documents(db).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
 fn get_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    core_db::query_document(&db, &id).map_err(|e| e.to_string())
+    with_db(&state, |db| core_db::query_document(db, &id).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
 fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_db::Document, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let doc = core_db::Document {
-        id: uuid::Uuid::new_v4().to_string(),
-        title,
-        created_at: now.clone(),
-        updated_at: now.clone(),
-        is_favorite: false,
-        is_archived: false,
-    };
-    core_db::insert_document(&db, &doc).map_err(|e| e.to_string())?;
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        let doc = core_db::Document {
+            id: uuid::Uuid::new_v4().to_string(),
+            title,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            is_favorite: false,
+            is_archived: false,
+        };
+        core_db::insert_document(db, &doc).map_err(|e| e.to_string())?;
 
-    let block = core_db::Block {
-        id: uuid::Uuid::new_v4().to_string(),
-        document_id: doc.id.clone(),
-        block_type: "paragraph".into(),
-        content: serde_json::json!({}),
-        sort_order: 1.0,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-    core_db::insert_block(&db, &block).map_err(|e| e.to_string())?;
+        let block = core_db::Block {
+            id: uuid::Uuid::new_v4().to_string(),
+            document_id: doc.id.clone(),
+            block_type: "paragraph".into(),
+            content: serde_json::json!({}),
+            sort_order: 1.0,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        core_db::insert_block(db, &block).map_err(|e| e.to_string())?;
 
-    Ok(doc)
+        Ok(doc)
+    })
 }
 
 #[tauri::command]
 fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    core_db::delete_document(&db, &id).map_err(|e| e.to_string())
+    with_db(&state, |db| core_db::delete_document(db, &id).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -64,10 +121,11 @@ fn update_document_title(
     id: String,
     title: String,
 ) -> Result<core_db::Document, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    core_db::update_document_title(&db, &id, &title, &now).map_err(|e| e.to_string())?;
-    core_db::query_document(&db, &id).map_err(|e| e.to_string())
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::update_document_title(db, &id, &title, &now).map_err(|e| e.to_string())?;
+        core_db::query_document(db, &id).map_err(|e| e.to_string())
+    })
 }
 
 // ── Block Commands ──────────────────────────────────────────────────────────
@@ -77,8 +135,7 @@ fn get_blocks(
     state: tauri::State<AppState>,
     document_id: String,
 ) -> Result<Vec<core_db::Block>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    core_db::query_blocks(&db, &document_id).map_err(|e| e.to_string())
+    with_db(&state, |db| core_db::query_blocks(db, &document_id).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -90,35 +147,77 @@ fn upsert_block(
     content: serde_json::Value,
     sort_order: f64,
 ) -> Result<core_db::Block, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
 
-    db.execute(
-        "INSERT OR REPLACE INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-                 COALESCE((SELECT created_at FROM blocks WHERE id = ?1), ?6))
-         ON CONFLICT(id) DO UPDATE SET
-             document_id = excluded.document_id,
-             type = excluded.type,
-             content = excluded.content,
-             sort_order = excluded.sort_order,
-             updated_at = excluded.updated_at",
-        rusqlite::params![id, document_id, block_type, content.to_string(), sort_order, now],
-    )
-    .map_err(|e| e.to_string())?;
+        db.execute(
+            "INSERT OR REPLACE INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+                     COALESCE((SELECT created_at FROM blocks WHERE id = ?1), ?6))
+             ON CONFLICT(id) DO UPDATE SET
+                 document_id = excluded.document_id,
+                 type = excluded.type,
+                 content = excluded.content,
+                 sort_order = excluded.sort_order,
+                 updated_at = excluded.updated_at",
+            rusqlite::params![id, document_id, block_type, content.to_string(), sort_order, now],
+        )
+        .map_err(|e| e.to_string())?;
 
-    db.query_row(
-        &format!("{} WHERE b.id = ?1", core_db::BLOCK_COLS),
-        rusqlite::params![id],
-        core_db::row_to_block,
-    )
-    .map_err(|e| e.to_string())
+        db.query_row(
+            &format!("{} WHERE b.id = ?1", core_db::BLOCK_COLS),
+            rusqlite::params![id],
+            core_db::row_to_block,
+        )
+        .map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
 fn delete_block(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    core_db::delete_block(&db, &id).map_err(|e| e.to_string())
+    with_db(&state, |db| core_db::delete_block(db, &id).map_err(|e| e.to_string()))
+}
+
+// ── Markdown Import / Export ────────────────────────────────────────────────
+
+#[tauri::command]
+fn export_markdown(state: tauri::State<AppState>, filename: String, contents: String) -> Result<String, String> {
+    let exports_dir = state.app_dir.join("exports");
+    std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
+    let path = exports_dir.join(sanitize_filename(&filename));
+    std::fs::write(&path, &contents).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn import_markdown(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == ' ' { c } else { '_' })
+        .collect();
+    let trimmed = safe.trim();
+    if trimmed.is_empty() { "untitled.md".into() } else { format!("{trimmed}.md") }
+}
+
+// ── Network Commands ────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn start_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.network.start().await
+}
+
+#[tauri::command]
+async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.network.stop().await
+}
+
+#[tauri::command]
+async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_network::NetworkStatus, String> {
+    Ok(state.network.status().await)
 }
 
 // ── App Entry Point ─────────────────────────────────────────────────────────
@@ -135,24 +234,38 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir)
                 .expect("Failed to create app data directory");
 
-            let db_path = app_dir.join("enclave.db");
-            let conn = core_db::init_db(&db_path);
-
+            // DB starts locked — user must call init_vault or unlock_vault
             app.manage(AppState {
-                db: Mutex::new(conn),
+                app_dir: app_dir.clone(),
+                db: Mutex::new(None),
+                network: core_network::NetworkState::new(),
             });
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // vault lifecycle
+            is_vault_initialized,
+            init_vault,
+            unlock_vault,
+            lock_vault,
+            // documents
             get_document_list,
             get_document,
             create_document,
             delete_document,
             update_document_title,
+            // blocks
             get_blocks,
             upsert_block,
             delete_block,
+            // markdown import/export
+            export_markdown,
+            import_markdown,
+            // network
+            start_network,
+            stop_network,
+            network_status,
         ])
         .run(tauri::generate_context!())
         .expect("Error while launching Enclave");

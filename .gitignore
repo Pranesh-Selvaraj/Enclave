@@ -37,10 +37,22 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 
-# Claude Code (dev-env config, not app code)
+# ── AI / LLM tooling (never committed) ─────────────────────────────────────
 AGENTS.md
 hooks/
 skills/
+.claude/
+.cursor/
+.github/copilot-instructions.md
+.windsurf/
+.trae/
+.aider*
+.roo/
+.cline/
+.codex/
+.clinerules/
+.rules/
+.gpt-*
 
 # Misc common artifacts
 *.bak

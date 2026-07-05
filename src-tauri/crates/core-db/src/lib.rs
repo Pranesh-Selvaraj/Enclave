@@ -1,7 +1,8 @@
 //! Encrypted SQLite storage engine for Enclave.
 //!
 //! Provides Document and Block types, query helpers, and database
-//! initialization with SQLCipher encryption. Used by the Tauri command layer.
+//! initialization with SQLCipher encryption. The encryption key is
+//! passed in at vault creation / unlock time (never hardcoded).
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -30,21 +31,23 @@ pub struct Block {
     pub updated_at: String,
 }
 
-// ── Database Initialization ─────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-pub fn init_db(db_path: &std::path::Path) -> Connection {
-    let conn = Connection::open(db_path).expect("Failed to open SQLite database");
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
 
-    conn.execute_batch(
-        "PRAGMA key = 'enclave-dev-key';
+fn set_cipher_pragmas(conn: &Connection, key: &[u8]) -> rusqlite::Result<()> {
+    let hex_key = bytes_to_hex(key);
+    conn.execute_batch(&format!(
+        "PRAGMA key = \"x'{hex_key}'\";
          PRAGMA cipher_page_size = 4096;
-         PRAGMA kdf_iter = 256000;
-         PRAGMA cipher_hmac_algorithm = HMAC_SHA512;
-         PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;",
-    )
-    .expect("Failed to configure sqlcipher encryption");
+         PRAGMA cipher_hmac_algorithm = HMAC_SHA512;",
+    ))
+}
 
-    conn.execute(
+fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS documents (
             id           TEXT PRIMARY KEY,
             title        TEXT NOT NULL DEFAULT '',
@@ -52,13 +55,8 @@ pub fn init_db(db_path: &std::path::Path) -> Connection {
             updated_at   TEXT NOT NULL,
             is_favorite  INTEGER NOT NULL DEFAULT 0,
             is_archived  INTEGER NOT NULL DEFAULT 0
-        )",
-        [],
-    )
-    .expect("Failed to create documents table");
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS blocks (
+        );
+        CREATE TABLE IF NOT EXISTS blocks (
             id           TEXT PRIMARY KEY,
             document_id  TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
             type         TEXT NOT NULL DEFAULT 'paragraph',
@@ -66,19 +64,39 @@ pub fn init_db(db_path: &std::path::Path) -> Connection {
             sort_order   REAL NOT NULL,
             created_at   TEXT NOT NULL,
             updated_at   TEXT NOT NULL
-        )",
-        [],
+        );
+        CREATE INDEX IF NOT EXISTS idx_blocks_document
+         ON blocks(document_id, sort_order);",
     )
-    .expect("Failed to create blocks table");
+}
 
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_blocks_document
-         ON blocks(document_id, sort_order)",
-        [],
-    )
-    .expect("Failed to create blocks index");
+// ── Vault Lifecycle ─────────────────────────────────────────────────────────
 
-    conn
+/// Check whether a vault database file already exists on disk.
+pub fn vault_exists(db_path: &std::path::Path) -> bool {
+    db_path.exists()
+}
+
+/// Create a new vault: open the database, set the key, create tables.
+/// Returns the open connection.
+pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Failed to create database: {e}"))?;
+    set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
+    create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    Ok(conn)
+}
+
+/// Open an existing vault: open the database, set the key, verify it works.
+/// Returns the open connection or an error if the key is wrong.
+pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
+    set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
+
+    // Verify the key by reading the schema — wrong key produces a corrupted view
+    conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |_| Ok(()))
+        .map_err(|_| "Invalid vault key".to_string())?;
+
+    Ok(conn)
 }
 
 // ── Document Queries ────────────────────────────────────────────────────────

@@ -1,5 +1,4 @@
 export { default as TipTapEditor } from './TipTapEditor.svelte';
 export { default as SlashMenu } from './blocks/SlashMenu.svelte';
 export { default as BubbleMenu } from './blocks/BubbleMenu.svelte';
-export { SlashCommand } from './extensions/slash-command.js';
-export { makeReactive } from './reactivity.js';
+export { htmlToMarkdown, markdownToHtml } from './markdown.js';

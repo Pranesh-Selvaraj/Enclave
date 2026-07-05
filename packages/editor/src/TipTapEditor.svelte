@@ -2,7 +2,11 @@
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
+	import TaskList from '@tiptap/extension-task-list';
+	import TaskItem from '@tiptap/extension-task-item';
 	import { SlashCommand } from './extensions/slash-command.js';
+	import { Callout } from './extensions/callout.js';
+	import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
 	import { makeReactive } from './reactivity.js';
 
 	let {
@@ -34,6 +38,11 @@
 					heading: { levels: [1, 2, 3] },
 				}),
 				Placeholder.configure({ placeholder }),
+				TaskList,
+				TaskItem.configure({ nested: true }),
+				Callout,
+				ToggleBlock,
+				ToggleSummary,
 				SlashCommand,
 			],
 			content: content as string | undefined,
@@ -49,8 +58,8 @@
 
 		return () => {
 			instance.destroy();
-			_editor = undefined;
-			boundEditor = undefined;
+			_editor = undefined as unknown as typeof _editor;
+			boundEditor = undefined as unknown as typeof boundEditor;
 		};
 	});
 </script>
@@ -149,5 +158,51 @@
 		border: none;
 		border-top: 1px solid var(--color-border);
 		margin: 1em 0;
+	}
+
+	/* ── Task Lists ── */
+	:global(.tiptap-editor ul[data-type="taskList"]) {
+		list-style: none;
+		padding-left: 0;
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li) {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li label) {
+		margin-top: 2px;
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div > p) {
+		text-decoration: line-through;
+		color: var(--color-text-muted);
+	}
+
+	/* ── Callouts ── */
+	:global(.tiptap-editor [data-callout]) {
+		border-left: 4px solid var(--color-accent);
+		background: var(--color-accent-subtle);
+		border-radius: var(--radius-md);
+		padding: 12px 16px;
+		margin: 0.75em 0;
+	}
+
+	/* ── Toggle Blocks ── */
+	:global(.tiptap-editor details[data-toggle]) {
+		margin: 0.5em 0;
+	}
+
+	:global(.tiptap-editor details[data-toggle] > summary) {
+		cursor: pointer;
+		font-weight: 600;
+		padding: 4px 0;
+		outline: none;
+	}
+
+	:global(.tiptap-editor details[data-toggle] > summary::marker) {
+		color: var(--color-text-muted);
 	}
 </style>

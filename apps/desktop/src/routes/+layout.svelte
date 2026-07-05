@@ -1,15 +1,23 @@
 <script lang="ts">
 	import '../app.css';
-	import { Sidebar } from '@enclave/ui';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { Document } from '@enclave/ui';
+	import { theme } from '@enclave/ui';
+	import VaultGuard from '$lib/VaultGuard.svelte';
+	import SettingsPanel from '$lib/SettingsPanel.svelte';
 
 	let { children } = $props();
 
+	let settingsOpen = $state(false);
+	theme.init();
+
+	let vaultUnlocked = $state(false);
 	let documents = $state<Document[]>([]);
 	let sidebarOpen = $state(true);
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
+	let networkRunning = $state(false);
+	let networkStatus = $state<{ local_peer_id: string; running: boolean; port: number; peers: any[] } | null>(null);
 
 	async function loadDocuments() {
 		try {
@@ -28,6 +36,23 @@
 		}
 	}
 
+	async function toggleNetwork() {
+		try {
+			if (networkRunning) {
+				await invoke('stop_network');
+				networkRunning = false;
+				networkStatus = null;
+			} else {
+				await invoke('start_network');
+				networkRunning = true;
+				networkStatus = await invoke<typeof networkStatus>('network_status');
+			}
+		} catch (e) {
+			console.error('Network toggle failed:', e);
+			networkRunning = false;
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
 			e.preventDefault();
@@ -39,12 +64,15 @@
 	}
 
 	$effect(() => {
-		loadDocuments();
+		if (vaultUnlocked) loadDocuments();
 	});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#if !vaultUnlocked}
+	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
+{:else}
 <div class="app-shell">
 	<!-- Left Sidebar -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen}>
@@ -82,10 +110,31 @@
 			</nav>
 
 			<div class="sidebar-footer">
-				<div class="sync-status offline">
+				<div class="sync-status" class:online={networkRunning} class:offline={!networkRunning}>
 					<span class="sync-dot"></span>
-					<span>Offline</span>
+					<span>{networkRunning ? `Network: ${networkStatus?.port ?? '?'}` : 'Offline'}</span>
 				</div>
+				<div class="footer-actions">
+					<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
+						{networkRunning ? '⏸' : '▶'}
+					</button>
+					<button class="icon-btn" onclick={() => theme.toggle()} title="Toggle theme">
+						{theme.value === 'dark' ? '☀' : '🌙'}
+					</button>
+					<button class="icon-btn" onclick={() => (settingsOpen = true)} title="Settings">
+						⚙
+					</button>
+				</div>
+				{#if networkStatus?.peers?.length}
+					<div class="peer-list">
+						{#each networkStatus.peers as peer}
+							<div class="peer-item">
+								<span class="peer-dot connected"></span>
+								<span class="peer-label">{peer.id.slice(0, 8)}…</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</aside>
@@ -120,6 +169,9 @@
 		</div>
 	{/if}
 </div>
+{/if}
+
+<SettingsPanel bind:open={settingsOpen} />
 
 <style>
 	.app-shell {
@@ -269,6 +321,32 @@
 		height: 7px;
 		border-radius: 50%;
 		background: #666;
+	}
+
+	.sync-status.online .sync-dot { background: var(--color-success); }
+	.sync-status.online { color: var(--color-success); }
+
+	.footer-actions {
+		display: flex;
+		gap: 4px;
+		margin-top: 8px;
+	}
+
+	.icon-btn {
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 14px;
+		padding: 3px 8px;
+		line-height: 1;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.icon-btn:hover {
+		background: var(--color-surface-hover);
+		color: var(--color-text);
 	}
 
 	/* ── Main Pane ── */

@@ -8,8 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @enclave/desktop",
-    "build": "npm run build -w @enclave/desktop",
+    "dev": "npm run tauri dev",
+    "build": "npm run tauri build",
     "preview": "npm run preview -w @enclave/desktop",
     "check": "npm run check -w @enclave/desktop",
     "tauri": "npm run tauri -w @enclave/desktop"

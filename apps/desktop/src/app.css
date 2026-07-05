@@ -1,6 +1,4 @@
-@import "tailwindcss";
-
-/* Enclave — Notion + Obsidian inspired dark design system */
+/* Enclave — dark theme (default) */
 :root {
 	--color-bg: #191919;
 	--color-surface: #202020;
@@ -22,6 +20,23 @@
 	--radius-lg: 8px;
 }
 
+/* Light theme */
+[data-theme="light"] {
+	--color-bg: #ffffff;
+	--color-surface: #f7f7f5;
+	--color-surface-hover: #efefec;
+	--color-border: #e0e0dc;
+	--color-text: #1a1a1a;
+	--color-text-muted: #8c8c8c;
+	--color-accent: #6b5ce7;
+	--color-accent-hover: #5a4bd6;
+	--color-accent-subtle: rgba(107, 92, 231, 0.08);
+	--color-danger: #d32f2f;
+	--color-warning: #b8860b;
+	--color-success: #2e7d32;
+	--color-shadow: rgba(0, 0, 0, 0.06);
+}
+
 html, body {
 	height: 100%;
 	margin: 0;
@@ -33,6 +48,7 @@ html, body {
 	line-height: 1.6;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	transition: background-color 0.2s, color 0.2s;
 }
 
 /* Custom scrollbar */

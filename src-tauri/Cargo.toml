@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core-db"]
+members = ["crates/core-db", "crates/core-network"]
 resolver = "2"
 
 [package]
@@ -22,6 +22,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # ── Internal Crates ──
 core-db = { path = "crates/core-db" }
+core-network = { path = "crates/core-network" }
 
 # ── Tauri v2 Core ──
 tauri = { version = "2", features = [] }
@@ -36,3 +37,4 @@ serde_json = "1"
 # ── Utilities ──
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1", features = ["rt", "sync"] }
