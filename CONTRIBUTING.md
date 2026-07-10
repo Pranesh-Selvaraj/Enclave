@@ -32,8 +32,8 @@ npm install
 # Full Tauri desktop app
 npx tauri dev
 
-# Frontend-only (browser, some features require Tauri)
-npm run dev
+# Frontend-only (browser, some features require Tauri runtime)
+npm run dev -w @enclave/desktop
 ```
 
 ### Running Tests
@@ -59,18 +59,19 @@ npm run check -w @enclave/desktop
 
 ```
 enclave/
-├── apps/desktop/         # Tauri + SvelteKit frontend
+├── .github/workflows/   # CI: Windows + Linux builds
+├── apps/desktop/        # Tauri + SvelteKit frontend
 ├── packages/
-│   ├── crypto/           # BIP39, Argon2id, AES-256-GCM (TypeScript)
-│   ├── editor/           # TipTap Svelte 5 wrapper + extensions
-│   ├── sync-engine/      # Yjs CRDT + encrypted transport
-│   └── ui/               # Shared Svelte components
+│   ├── crypto/          # BIP39, Argon2id, AES-256-GCM (TypeScript)
+│   ├── editor/          # TipTap Svelte 5 wrapper + extensions
+│   ├── sync-engine/     # Yjs CRDT + encrypted transport
+│   └── ui/              # Shared Svelte components
 ├── src-tauri/
 │   ├── crates/
-│   │   ├── core-db/      # SQLite + sqlcipher storage (Rust)
+│   │   ├── core-db/     # SQLite + sqlcipher storage (Rust)
 │   │   └── core-network/ # mDNS + WebSocket P2P (Rust)
-│   └── src/              # Tauri command bridge
-└── package.json          # npm workspace root
+│   └── src/             # Tauri command bridge
+└── package.json         # npm workspace root
 ```
 
 ## Making Changes
@@ -96,7 +97,7 @@ Changes to these files need extra scrutiny — tag them clearly in the PR descri
 - `packages/crypto/src/index.ts` — key derivation, encryption/decryption
 - `src-tauri/crates/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling
 - `src-tauri/crates/core-network/` — peer discovery, message transport
-- `apps/desktop/src/routes/[id]/+page.svelte` — key material handling in the UI
+- `apps/desktop/src/routes/[id]/+page.svelte` — editor UI that handles exported content
 
 Rules for crypto/non-trivial changes: leave one runnable check behind. For security code, show the test passing in the PR description.
 
