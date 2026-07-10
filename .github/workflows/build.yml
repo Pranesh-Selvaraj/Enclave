@@ -56,4 +56,6 @@ jobs:
           name: enclave-${{ matrix.target }}
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*
+            src-tauri/target/${{ matrix.target }}/release/enclave
+            src-tauri/target/${{ matrix.target }}/release/enclave.exe
           if-no-files-found: error
