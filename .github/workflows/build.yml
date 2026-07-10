@@ -16,16 +16,8 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
-            binary: enclave
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            binary: enclave.exe
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            binary: enclave
-          - target: x86_64-apple-darwin
-            os: macos-13
-            binary: enclave
 
     runs-on: ${{ matrix.os }}
 
@@ -51,8 +43,8 @@ jobs:
       - name: npm install
         run: npm ci
 
-      - name: Build
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri
+        uses: tauri-apps/tauri-action@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
