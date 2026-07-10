@@ -1,8 +1,8 @@
 <script lang="ts">
 	import '../app.css';
-	import { invoke } from '@tauri-apps/api/core';
 	import type { Document } from '@enclave/ui';
 	import { theme } from '@enclave/ui';
+	import { getStorage, type NetworkStatus } from '$lib/storage';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 
@@ -12,16 +12,18 @@
 	theme.init();
 
 	let vaultUnlocked = $state(false);
+	let storage = getStorage();
 	let documents = $state<Document[]>([]);
 	let sidebarOpen = $state(true);
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
 	let networkRunning = $state(false);
-	let networkStatus = $state<{ local_peer_id: string; running: boolean; port: number; peers: any[] } | null>(null);
+	let networkStatus = $state<NetworkStatus | null>(null);
 
 	async function loadDocuments() {
 		try {
-			documents = await invoke<Document[]>('get_document_list');
+			const s = await storage;
+			documents = await s.getDocumentList();
 		} catch (e) {
 			console.error('Failed to load documents:', e);
 		}
@@ -29,7 +31,8 @@
 
 	async function createDocument() {
 		try {
-			await invoke('create_document', { title: 'Untitled' });
+			const s = await storage;
+			await s.createDocument('Untitled');
 			await loadDocuments();
 		} catch (e) {
 			console.error('Failed to create document:', e);
@@ -38,14 +41,15 @@
 
 	async function toggleNetwork() {
 		try {
+			const s = await storage;
 			if (networkRunning) {
-				await invoke('stop_network');
+				await s.stopNetwork?.();
 				networkRunning = false;
 				networkStatus = null;
 			} else {
-				await invoke('start_network');
+				await s.startNetwork?.();
 				networkRunning = true;
-				networkStatus = await invoke<typeof networkStatus>('network_status');
+				networkStatus = (await s.networkStatus?.()) ?? null;
 			}
 		} catch (e) {
 			console.error('Network toggle failed:', e);

@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { Button } from '@enclave/ui';
-	import { invoke } from '@tauri-apps/api/core';
+	import { getStorage } from '$lib/storage';
 	import type { Document } from '@enclave/ui';
 	import { goto } from '$app/navigation';
 
 	let documents = $state<Document[]>([]);
+	let storage = getStorage();
 
 	async function loadDocuments() {
 		try {
-			documents = await invoke<Document[]>('get_document_list');
+			const s = await storage;
+			documents = await s.getDocumentList();
 		} catch (e) {
 			console.error('Failed to load documents:', e);
 		}
@@ -16,7 +18,8 @@
 
 	async function createAndOpen() {
 		try {
-			const doc = await invoke<Document>('create_document', { title: 'Untitled' });
+			const s = await storage;
+			const doc = await s.createDocument('Untitled');
 			goto(`/${doc.id}`);
 		} catch (e) {
 			console.error('Failed to create document:', e);

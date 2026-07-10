@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
+	import { getStorage } from '$lib/storage';
 	import { generateMnemonic, validateMnemonic, deriveMasterKey, selfCheck } from '@enclave/crypto';
 	import { Button } from '@enclave/ui';
 
@@ -26,7 +26,8 @@
 				cryptoReady = true;
 				step = 'checking';
 
-				const exists = await invoke<boolean>('is_vault_initialized');
+				const s = await getStorage();
+				const exists = await s.isVaultInitialized();
 				step = exists ? 'unlock' : 'welcome';
 			} catch (e: any) {
 				errorMsg = `Startup failed: ${e?.message || e}`;
@@ -55,7 +56,8 @@
 		try {
 			unlocking = true;
 			const key = await deriveMasterKey(mnemonic);
-			await invoke('init_vault', { key: Array.from(key) });
+			const s = await getStorage();
+			await s.initVault(key);
 			onunlock();
 		} catch (e: any) {
 			errorMsg = `Failed to create vault: ${e?.message || e}`;
@@ -75,7 +77,8 @@
 		try {
 			unlocking = true;
 			const key = await deriveMasterKey(words);
-			await invoke('unlock_vault', { key: Array.from(key) });
+			const s = await getStorage();
+			await s.unlockVault(key);
 			onunlock();
 		} catch (e: any) {
 			errorMsg = e?.message?.includes('Invalid vault key')

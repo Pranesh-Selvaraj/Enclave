@@ -9,7 +9,11 @@
   ],
   "scripts": {
     "dev": "npm run tauri dev",
+    "dev:web": "npm run dev -w @enclave/web",
+    "dev:mobile": "npm run dev -w @enclave/mobile",
     "build": "npm run tauri build",
+    "build:web": "npm run build -w @enclave/web",
+    "build:mobile": "npm run build -w @enclave/mobile",
     "preview": "npm run preview -w @enclave/desktop",
     "check": "npm run check -w @enclave/desktop",
     "tauri": "npm run tauri -w @enclave/desktop"

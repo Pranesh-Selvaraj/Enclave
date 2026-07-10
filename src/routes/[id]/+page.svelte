@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { invoke } from '@tauri-apps/api/core';
+	import { getStorage } from '$lib/storage';
 	import { TipTapEditor, SlashMenu, BubbleMenu } from '@enclave/editor';
 	import type { Document } from '@enclave/ui';
 	import { htmlToMarkdown } from '@enclave/editor';
@@ -9,12 +9,15 @@
 	let documentTitle = $state('');
 	let editor = $state(undefined as any);
 	let loading = $state(true);
+	let storage = getStorage();
 
 	const docId = $derived($page.params.id);
 
 	async function loadDocument() {
+		if (!docId) return;
 		try {
-			document = await invoke<Document>('get_document', { id: docId });
+			const s = await storage;
+			document = await s.getDocument(docId);
 			documentTitle = document.title || '';
 		} catch (e) {
 			console.error('Failed to load document:', e);
@@ -24,12 +27,10 @@
 	}
 
 	async function saveTitle() {
-		if (!document) return;
+		if (!document || !docId) return;
 		try {
-			document = await invoke<Document>('update_document_title', {
-				id: docId,
-				title: documentTitle,
-			});
+			const s = await storage;
+			document = await s.updateDocumentTitle(docId, documentTitle);
 		} catch (e) {
 			console.error('Failed to save title:', e);
 		}
@@ -41,7 +42,8 @@
 			const html = editor.getHTML();
 			const md = htmlToMarkdown(html);
 			const filename = documentTitle || 'untitled';
-			const path = await invoke<string>('export_markdown', { filename, contents: md });
+			const s = await storage;
+			const path = await s.exportMarkdown(filename, md);
 			console.log('Exported to', path);
 		} catch (e) {
 			console.error('Export failed:', e);
