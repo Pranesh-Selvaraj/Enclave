@@ -12,13 +12,23 @@ pub struct MdnsHandle {
     daemon: ServiceDaemon,
 }
 
+// ponytail: UDP connect trick to discover local IP; works on Linux/macOS/Windows
+// but may return 0.0.0.0 if no route exists. If real mDNS breaks, switch to
+// the `local-ip-address` crate.
 fn local_ip() -> Result<String, String> {
-    // Find a non-loopback IPv4 address on the LAN
     use std::net::UdpSocket;
     let sock = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
     sock.connect("10.255.255.255:1").map_err(|e| e.to_string())?;
     let addr = sock.local_addr().map_err(|e| e.to_string())?;
-    Ok(addr.ip().to_string())
+    let ip = addr.ip().to_string();
+    if ip == "0.0.0.0" {
+        // ponytail: fallback for machines with no default route (VPN, VM-only)
+        let sock2 = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+        sock2.connect("1.1.1.1:1").map_err(|e| e.to_string())?;
+        let addr2 = sock2.local_addr().map_err(|e| e.to_string())?;
+        return Ok(addr2.ip().to_string());
+    }
+    Ok(ip)
 }
 
 pub async fn start(peer_id: String, port: u16) -> Result<MdnsHandle, String> {

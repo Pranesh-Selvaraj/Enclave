@@ -41,6 +41,12 @@
     "copyright": "",
     "category": "Utility",
     "shortDescription": "Secure, local-first note-taking",
-    "longDescription": "Enclave is a secure, local-first, zero-knowledge note-taking application with P2P sync over local Wi-Fi. No cloud infrastructure required."
+    "longDescription": "Enclave is a secure, local-first, zero-knowledge note-taking application with P2P sync over local Wi-Fi. No cloud infrastructure required.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }
