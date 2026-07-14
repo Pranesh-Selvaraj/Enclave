@@ -33,7 +33,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Transport** | WebSocket (`tokio-tungstenite`) |
 | **Sync Engine** | Yjs CRDT with encrypted transport |
 | **Theming** | Light / dark with CSS custom properties |
-| **CI/CD** | GitHub Actions — Windows (.msi/.exe) + Linux (.deb/.AppImage) |
+| **CI/CD** | GitHub Actions — Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) |
 
 ## Supported Platforms
 
@@ -41,7 +41,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 |----------|--------|--------|
 | **Linux** (x86_64) | Supported | `.deb`, `.AppImage` |
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
-| **macOS** | Planned | — |
+| **macOS** (ARM + Intel) | Supported | `.dmg` |
 | **Android** | Planned | — |
 | **Web** | Planned | Static SPA (IndexedDB) |
 
@@ -123,7 +123,7 @@ enclave/
 ## Prerequisites
 
 - **Rust** (1.77+) — [rustup.rs](https://rustup.rs)
-- **Node.js** (22+) — [nvm](https://github.com/nvm-sh/nvm) recommended
+- **Node.js** (24+, 26 recommended) — [nvm](https://github.com/nvm-sh/nvm) recommended
 - **System dependencies** (Linux):
 
   ```bash
@@ -166,7 +166,7 @@ npx tauri build
 # Produces platform-specific binaries in src-tauri/target/release/bundle/
 ```
 
-Or let CI handle it — pushes to `main` and `v*` tags trigger the GitHub Actions workflow that builds `.msi`/`.exe` (Windows) and `.deb`/`.AppImage` (Linux).
+Or let CI handle it — pushes to `v*` tags trigger GitHub Actions to build all platforms and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), and `.dmg` (macOS).
 
 ## Running Tests
 

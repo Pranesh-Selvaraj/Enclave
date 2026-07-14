@@ -13,7 +13,7 @@ Thanks for contributing. Enclave is a security-sensitive local-first app — eve
 ### Prerequisites
 
 - **Rust** 1.77+ — [rustup.rs](https://rustup.rs)
-- **Node.js** 22+ — [nvm](https://github.com/nvm-sh/nvm) recommended
+- **Node.js** 24+ (26 recommended) — [nvm](https://github.com/nvm-sh/nvm) recommended
 - **Linux**: `sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`
 - **macOS**: Xcode Command Line Tools
 - **Windows**: Microsoft Visual Studio C++ Build Tools + WebView2
@@ -85,7 +85,7 @@ enclave/
 
 ### Code Style
 
-- **TypeScript**: existing patterns in `packages/*/src/` and `apps/*/src/`. Use Svelte 5 runes (`$state`, `$effect`, `$derived`), not Svelte 4 stores.
+- **TypeScript**: existing patterns in `packages/*/src/` and `apps/*/src/`. Use Svelte 5 runes (`$state`, `$effect`, `$derived`), not Svelte 4 stores. Runes must be in `.svelte.ts`/`.svelte.js` files — plain `.ts` files cannot use them.
 - **Rust**: `cargo fmt` + `cargo clippy`. No `unsafe` without justification.
 - **No new dependencies** unless there's a strong reason. Prefer stdlib, existing deps, or a few lines of code.
 - **No abstractions without at least two callers.** An interface for one implementation, a factory for one product, or a config value that never changes — these get deleted in review.
