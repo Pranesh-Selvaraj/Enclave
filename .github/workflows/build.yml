@@ -48,6 +48,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 
+      - name: Install OpenSSL (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install openssl-windows:x64-windows
+          echo "OPENSSL_DIR=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: npm install
         run: npm ci
 
