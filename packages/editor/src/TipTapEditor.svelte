@@ -5,6 +5,7 @@
 	import TaskList from '@tiptap/extension-task-list';
 	import TaskItem from '@tiptap/extension-task-item';
 	import { SlashCommand } from './extensions/slash-command.js';
+	import { PageLink } from './extensions/page-link.js';
 	import { Callout } from './extensions/callout.js';
 	import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
 	import { makeReactive } from './reactivity.js';
@@ -27,6 +28,8 @@
 
 	let element: HTMLElement | undefined = $state();
 	let _editor: Editor | undefined = $state();
+	// Track whether we've applied async content to avoid infinite loop
+	let contentApplied = false;
 
 	$effect(() => {
 		if (!element || _editor) return;
@@ -44,6 +47,7 @@
 				ToggleBlock,
 				ToggleSummary,
 				SlashCommand,
+				PageLink,
 			],
 			content: content as string | undefined,
 			editable,
@@ -56,10 +60,20 @@
 		_editor = makeReactive(instance);
 		boundEditor = _editor;
 
+		// If content wasn't available at init time, apply it now
+		if (content && !contentApplied) {
+			const contentStr = JSON.stringify(content);
+			if (contentStr !== '{"type":"doc","content":[]}') {
+				instance.commands.setContent(content as any);
+			}
+			contentApplied = true;
+		}
+
 		return () => {
 			instance.destroy();
 			_editor = undefined as unknown as typeof _editor;
 			boundEditor = undefined as unknown as typeof boundEditor;
+			contentApplied = false;
 		};
 	});
 </script>

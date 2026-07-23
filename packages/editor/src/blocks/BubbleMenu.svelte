@@ -9,6 +9,7 @@
 
 	let visible = $state(false);
 	let position = $state({ x: 0, y: 0 });
+	let isMouseOverMenu = $state(false);
 
 	function updateMenu() {
 		if (!editor) return;
@@ -47,15 +48,21 @@
 	}
 
 	$effect(() => {
-		if (!editor) return;
-		editor.on('selectionUpdate', updateMenu);
-		editor.on('blur', () => {
-			// Delay hide to allow button clicks
-			setTimeout(() => { visible = false; }, 200);
-		});
+		const ed = editor;
+		if (!ed) return;
+
+		function onBlur() {
+			if (!isMouseOverMenu) {
+				visible = false;
+			}
+		}
+
+		ed.on('selectionUpdate', updateMenu);
+		ed.on('blur', onBlur);
 
 		return () => {
-			editor.off('selectionUpdate', updateMenu);
+			ed.off('selectionUpdate', updateMenu);
+			ed.off('blur', onBlur);
 		};
 	});
 </script>
@@ -65,6 +72,10 @@
 	<div
 		class="bubble-menu"
 		style="left: {position.x}px; top: {position.y}px;"
+		onmouseenter={() => isMouseOverMenu = true}
+		onmouseleave={() => { isMouseOverMenu = false; visible = false; }}
+		role="toolbar"
+		aria-label="Text formatting"
 	>
 		<button
 			class="bubble-btn"

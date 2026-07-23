@@ -1,4 +1,4 @@
-//! Enclave — Secure, local-first, zero-knowledge note-taking application.
+//! Enclave — Secure, local-first, zero-knowledge knowledge base.
 //!
 //! Tauri v2 backend: IPC commands for vault lifecycle (init / unlock / lock),
 //! document CRUD, and block CRUD.
@@ -165,7 +165,7 @@ fn upsert_block(
         .map_err(|e| e.to_string())?;
 
         db.query_row(
-            &format!("{} WHERE b.id = ?1", core_db::BLOCK_COLS),
+            "SELECT b.id, b.document_id, b.content, b.type, b.sort_order, b.created_at, b.updated_at FROM blocks b WHERE b.id = ?1",
             rusqlite::params![id],
             core_db::row_to_block,
         )
@@ -201,6 +201,64 @@ fn sanitize_filename(name: &str) -> String {
         .collect();
     let trimmed = safe.trim();
     if trimmed.is_empty() { "untitled.md".into() } else { format!("{trimmed}.md") }
+}
+
+// ── Backlinks ────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_backlinks(state: tauri::State<AppState>, title: String) -> Result<Vec<core_db::Backlink>, String> {
+    with_db(&state, |db| core_db::query_backlinks(db, &title).map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<(String, String)>, String> {
+    with_db(&state, |db| core_db::query_all_page_titles(db).map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+fn search_all(state: tauri::State<AppState>, query: String) -> Result<Vec<core_db::SearchResult>, String> {
+    with_db(&state, |db| core_db::search_all(db, &query).map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
+fn find_or_create_document(state: tauri::State<AppState>, title: String) -> Result<core_db::Document, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::find_or_create_document(db, &title, &now).map_err(|e| e.to_string())
+    })
+}
+
+// ── Vault Key File (encrypted seed phrase for password-based login) ──────────
+
+#[tauri::command]
+fn store_vault_key(state: tauri::State<AppState>, key_data: Vec<u8>) -> Result<(), String> {
+    let path = state.app_dir.join("vault.key");
+    std::fs::write(&path, &key_data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_vault_key(state: tauri::State<AppState>) -> Result<Vec<u8>, String> {
+    let path = state.app_dir.join("vault.key");
+    std::fs::read(&path).map_err(|_| "No password set".to_string())
+}
+
+// ── Favorites ────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn toggle_favorite(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::toggle_document_favorite(db, &id, &now).map_err(|e| e.to_string())?;
+        core_db::query_document(db, &id).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn duplicate_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::duplicate_document(db, &id, &now).map_err(|e| e.to_string())
+    })
 }
 
 // ── Network Commands ────────────────────────────────────────────────────────
@@ -262,6 +320,17 @@ pub fn run() {
             // markdown import/export
             export_markdown,
             import_markdown,
+            // vault key
+            store_vault_key,
+            load_vault_key,
+            // backlinks
+            get_backlinks,
+            get_page_list,
+            search_all,
+            find_or_create_document,
+            // favorites & duplicates
+            toggle_favorite,
+            duplicate_document,
             // network
             start_network,
             stop_network,

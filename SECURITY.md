@@ -10,11 +10,11 @@ Once a fix is released, we'll publish a security advisory crediting the reporter
 
 ## Security Model
 
-Enclave is a zero-knowledge, local-first note-taking application. The security model rests on these guarantees:
+Enclave is a zero-knowledge, local-first knowledge base. The security model rests on these guarantees:
 
 ### What We Protect
 
-- Note contents are encrypted at rest (AES-256-GCM via SQLCipher).
+- Page contents are encrypted at rest (AES-256-GCM via SQLCipher).
 - Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism).
 - Key material exists only in memory during a session. Never written to disk.
 - P2P sync messages are encrypted before leaving the device.

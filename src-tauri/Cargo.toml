@@ -5,7 +5,7 @@ resolver = "2"
 [package]
 name = "enclave"
 version = "0.1.0"
-description = "Secure, local-first, zero-internet note-taking application"
+description = "Secure, local-first, zero-internet knowledge base"
 edition = "2021"
 rust-version = "1.77"
 license = "MIT"

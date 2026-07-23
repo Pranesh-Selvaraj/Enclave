@@ -148,11 +148,15 @@
 		};
 	}
 
-	// Listen for slash command state changes
+	// ── Scroll tracking ──
+	let scrollContainer: Element | null = null;
+
 	$effect(() => {
-		if (!editor) return;
+		const ed = editor;
+		if (!ed) return;
+
 		const checkState = () => {
-			const state = SlashCommandPluginKey.getState(editor.state);
+			const state = SlashCommandPluginKey.getState(ed.state);
 			if (state) {
 				query = state.query;
 				selectedIndex = 0;
@@ -163,13 +167,20 @@
 			}
 		};
 
-		editor.on('transaction', checkState);
-		editor.on('selectionUpdate', () => {
+		// Find scrollable ancestor
+		scrollContainer = ed.view.dom.closest('.main-pane') || ed.view.dom.parentElement;
+		const onScroll = () => { if (visible) updatePosition(); };
+		scrollContainer?.addEventListener('scroll', onScroll, { passive: true });
+
+		ed.on('transaction', checkState);
+		ed.on('selectionUpdate', () => {
 			if (visible) updatePosition();
 		});
 
 		return () => {
-			editor.off('transaction', checkState);
+			ed.off('transaction', checkState);
+			scrollContainer?.removeEventListener('scroll', onScroll);
+			scrollContainer = null;
 		};
 	});
 

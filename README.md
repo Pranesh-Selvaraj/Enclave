@@ -1,6 +1,6 @@
 # Enclave
 
-> **Secure, local-first, zero-knowledge note-taking with P2P sync over local Wi-Fi.**
+> **Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi.**
 >
 > No cloud. No servers. No internet required.
 
@@ -9,13 +9,13 @@
 Enclave is built on three core principles:
 
 ### 1. Local-First
-All data lives on your device first. The application functions fully offline — create, edit, and organize notes without ever connecting to a network. Sync is an enhancement, not a requirement.
+All data lives on your device first. The application functions fully offline — create, edit, and organize pages without ever connecting to a network. Sync is an enhancement, not a requirement.
 
 ### 2. Zero-Knowledge Encryption
-Every note is encrypted with **AES-256-GCM** before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
+Every page is encrypted with **AES-256-GCM** before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
 
 ### 3. Peer-to-Peer Sync
-When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync encrypted notes directly over **WebSocket** data channels using **Yjs CRDTs**. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary.
+When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync encrypted pages directly over **WebSocket** data channels using **Yjs CRDTs**. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary.
 
 ## Tech Stack
 
@@ -213,9 +213,9 @@ npm run check -w @enclave/desktop
 
 ## Security Model
 
-- **At rest**: All notes encrypted via AES-256-GCM. Keys derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
+- **At rest**: All pages encrypted via AES-256-GCM. Keys derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
 - **In transit**: P2P connections use encrypted WebSocket channels within the local network perimeter. Messages are encrypted before leaving the device.
-- **Zero-trust sync**: Peers exchange only encrypted CRDT update blobs. The receiving device cannot read notes without the user's decryption key — even if they're on the same network.
+- **Zero-trust sync**: Peers exchange only encrypted CRDT update blobs. The receiving device cannot read pages without the user's decryption key — even if they're on the same network.
 - **No telemetry**: The application makes zero outbound network requests. All communication is strictly local-network-only.
 - **Key material**: The 12-word seed phrase and derived keys exist only in memory during the session. Never written to disk.
 

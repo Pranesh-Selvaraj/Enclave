@@ -86,7 +86,7 @@ pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     Ok(conn)
 }
 
-/// Open an existing vault: open the database, set the key, verify it works.
+/// Open an existing vault: open the database, set the key, ensure tables exist.
 /// Returns the open connection or an error if the key is wrong.
 pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
@@ -95,6 +95,9 @@ pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     // Verify the key by reading the schema — wrong key produces a corrupted view
     conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |_| Ok(()))
         .map_err(|_| "Invalid vault key".to_string())?;
+
+    // Ensure tables exist (idempotent — safe to call on every unlock)
+    create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
 
     Ok(conn)
 }
@@ -159,15 +162,17 @@ pub fn delete_document(db: &Connection, id: &str) -> rusqlite::Result<()> {
 // ── Block Queries ───────────────────────────────────────────────────────────
 
 pub fn row_to_block(row: &rusqlite::Row) -> rusqlite::Result<Block> {
-    let content_str: String = row.get(3)?;
     Ok(Block {
         id: row.get(0)?,
         document_id: row.get(1)?,
-        block_type: row.get(4)?,
-        content: serde_json::from_str(&content_str).unwrap_or(serde_json::json!({})),
-        sort_order: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
+        content: {
+            let s: String = row.get(2)?;
+            serde_json::from_str(&s).unwrap_or(serde_json::json!({}))
+        },
+        block_type: row.get(3)?,
+        sort_order: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
     })
 }
 
@@ -197,4 +202,152 @@ pub fn insert_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
 pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
     Ok(())
+}
+
+// ── Backlinks ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Backlink {
+    pub doc_id: String,
+    pub doc_title: String,
+    pub block_content: String,
+}
+
+pub fn query_backlinks(db: &Connection, page_title: &str) -> rusqlite::Result<Vec<Backlink>> {
+    let pattern = format!("%[[{}]]%", page_title);
+    let mut stmt = db.prepare(
+        "SELECT d.id, d.title, b.content FROM blocks b
+         JOIN documents d ON d.id = b.document_id
+         WHERE b.content LIKE ?1
+         ORDER BY d.updated_at DESC"
+    )?;
+    let rows = stmt.query_map(rusqlite::params![pattern], |row| {
+        Ok(Backlink {
+            doc_id: row.get(0)?,
+            doc_title: row.get(1)?,
+            block_content: row.get(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn query_all_page_titles(db: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut stmt = db.prepare("SELECT id, title FROM documents WHERE is_archived = 0 ORDER BY title ASC")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect()
+}
+
+// ── Full-text search ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub doc_id: String,
+    pub doc_title: String,
+    pub block_content: String,
+    pub r#type: String, // "title" | "content"
+}
+
+pub fn search_all(db: &Connection, query: &str) -> rusqlite::Result<Vec<SearchResult>> {
+    let like_pattern = format!("%{}%", query);
+    let mut stmt = db.prepare(
+        "SELECT d.id, d.title, b.content, 'content' AS type FROM blocks b
+         JOIN documents d ON d.id = b.document_id
+         WHERE b.content LIKE ?1 AND d.is_archived = 0
+         UNION ALL
+         SELECT d.id, d.title, '', 'title' AS type FROM documents d
+         WHERE d.title LIKE ?1 AND d.is_archived = 0
+         ORDER BY type DESC
+         LIMIT 30"
+    )?;
+    let rows = stmt.query_map(rusqlite::params![like_pattern], |row| {
+        Ok(SearchResult {
+            doc_id: row.get(0)?,
+            doc_title: row.get(1)?,
+            block_content: row.get(2)?,
+            r#type: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn find_or_create_document(db: &Connection, title: &str, now: &str) -> rusqlite::Result<Document> {
+    let doc = query_document_by_title(db, title);
+    match doc {
+        Ok(d) => Ok(d),
+        Err(_) => {
+            let doc = Document {
+                id: uuid::Uuid::new_v4().to_string(),
+                title: title.to_string(),
+                created_at: now.to_string(),
+                updated_at: now.to_string(),
+                is_favorite: false,
+                is_archived: false,
+            };
+            insert_document(db, &doc)?;
+            let block = Block {
+                id: uuid::Uuid::new_v4().to_string(),
+                document_id: doc.id.clone(),
+                block_type: "paragraph".into(),
+                content: serde_json::json!({}),
+                sort_order: 1.0,
+                created_at: now.to_string(),
+                updated_at: now.to_string(),
+            };
+            insert_block(db, &block)?;
+            Ok(doc)
+        }
+    }
+}
+
+fn query_document_by_title(db: &Connection, title: &str) -> rusqlite::Result<Document> {
+    db.query_row(
+        &format!("{DOC_COLS} WHERE title = ?1 AND is_archived = 0"),
+        rusqlite::params![title],
+        row_to_document,
+    )
+}
+
+// ── Favorites ──────────────────────────────────────────────────────────────────
+
+pub fn toggle_document_favorite(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET is_favorite = CASE WHEN is_favorite = 0 THEN 1 ELSE 0 END, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![updated_at, id],
+    )?;
+    Ok(())
+}
+
+// ── Duplicate ──────────────────────────────────────────────────────────────────
+
+pub fn duplicate_document(db: &Connection, id: &str, now: &str) -> rusqlite::Result<Document> {
+    let original = query_document(db, id)?;
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let new_title = format!("Copy of {}", original.title);
+
+    let doc = Document {
+        id: new_id.clone(),
+        title: new_title,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
+        is_favorite: false,
+        is_archived: false,
+    };
+    insert_document(db, &doc)?;
+
+    // Copy all blocks
+    let blocks = query_blocks(db, id)?;
+    for block in blocks {
+        let new_block = Block {
+            id: uuid::Uuid::new_v4().to_string(),
+            document_id: new_id.clone(),
+            block_type: block.block_type,
+            content: block.content,
+            sort_order: block.sort_order,
+            created_at: now.to_string(),
+            updated_at: now.to_string(),
+        };
+        insert_block(db, &new_block)?;
+    }
+
+    Ok(doc)
 }
