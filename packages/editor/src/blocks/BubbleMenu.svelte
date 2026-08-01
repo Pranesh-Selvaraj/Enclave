@@ -10,6 +10,7 @@
 	let visible = $state(false);
 	let position = $state({ x: 0, y: 0 });
 	let isMouseOverMenu = $state(false);
+	let active = $state({ bold: false, italic: false, strike: false, code: false });
 
 	function updateMenu() {
 		if (!editor) return;
@@ -18,6 +19,16 @@
 			visible = false;
 			return;
 		}
+
+		// Hoist isActive reads out of the template: with the reactive editor
+		// proxy they'd re-subscribe on every transaction and rerender on each
+		// keystroke.
+		active = {
+			bold: editor.isActive('bold'),
+			italic: editor.isActive('italic'),
+			strike: editor.isActive('strike'),
+			code: editor.isActive('code'),
+		};
 
 		const start = editor.view.coordsAtPos(from);
 		const end = editor.view.coordsAtPos(to);
@@ -80,7 +91,7 @@
 	>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('bold')}
+			class:active={active.bold}
 			onclick={toggleBold}
 			aria-label="Bold"
 		>
@@ -88,7 +99,7 @@
 		</button>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('italic')}
+			class:active={active.italic}
 			onclick={toggleItalic}
 			aria-label="Italic"
 		>
@@ -96,7 +107,7 @@
 		</button>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('strike')}
+			class:active={active.strike}
 			onclick={toggleStrike}
 			aria-label="Strikethrough"
 		>
@@ -105,7 +116,7 @@
 		<div class="bubble-divider"></div>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('code')}
+			class:active={active.code}
 			onclick={toggleCode}
 			aria-label="Inline code"
 		>

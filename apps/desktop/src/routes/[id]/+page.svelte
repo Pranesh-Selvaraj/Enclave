@@ -144,7 +144,7 @@
 		}
 	}
 
-	function handleEditorChange(json: object, _html: string) {
+	function handleEditorChange(json: object) {
 		// Auto-title: use first heading text if title is still "Untitled"
 		if (documentTitle === 'Untitled' || documentTitle === '') {
 			const doc = json as any;
@@ -205,7 +205,7 @@
 	});
 
 	$effect(() => {
-		if (docId && editor) {
+		if (docId && editor && editor.storage.image?.docId !== docId) {
 			editor.storage.image.docId = docId;
 		}
 	});
