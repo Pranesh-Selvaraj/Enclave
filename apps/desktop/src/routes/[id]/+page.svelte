@@ -8,6 +8,7 @@
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
+	import { loadAISettings, chatStream, type ChatMessage } from '$lib/ollama.js';
 
 	const COVERS = ['grad-0', 'grad-1', 'grad-2', 'grad-3', 'grad-4', 'grad-5'];
 
@@ -23,6 +24,13 @@
 	let tagInput = $state('');
 	let comments = $state<{ id: string; text: string; at: string }[]>([]);
 	let commentInput = $state('');
+	let aiEnabled = $state(false);
+	let aiOpen = $state(false);
+	let aiMessages = $state<ChatMessage[]>([]);
+	let aiQuestion = $state('');
+	let aiBusy = $state(false);
+	let aiError = $state('');
+	let aiAbort: (() => void) | undefined;
 	let icon = $state('');
 	let cover = $state('');
 	let fullWidth = $state(false);
@@ -293,6 +301,43 @@
 		contentSaveTimer = setTimeout(saveContent, 1000);
 	}
 
+	// ── Local AI (Ollama, off unless enabled in Settings) ──
+	$effect(() => {
+		aiEnabled = loadAISettings().enabled;
+	});
+
+	async function askAi() {
+		const q = aiQuestion.trim();
+		if (!q || aiBusy) return;
+		const s = loadAISettings();
+		const pageMd = editor ? htmlToMarkdown(editor.getHTML()) : '';
+		const system: ChatMessage = {
+			role: 'system',
+			content: `You are a helpful assistant inside the user's personal knowledge base. Answer using the page content below when relevant, and say so when the page does not contain the answer.\n\nPage title: ${documentTitle}\n\nPage content:\n${pageMd.slice(0, 20000)}`,
+		};
+		const messages = [
+			...aiMessages.filter((m) => m.role !== 'system'),
+			{ role: 'user' as const, content: q },
+		];
+		aiMessages = [...aiMessages, { role: 'user', content: q }, { role: 'assistant', content: '' }];
+		aiQuestion = '';
+		aiBusy = true;
+		aiError = '';
+		const { promise, abort } = chatStream(s.url, s.model, [system, ...messages], (d) => {
+			const last = aiMessages[aiMessages.length - 1];
+			aiMessages = [...aiMessages.slice(0, -1), { role: 'assistant', content: last.content + d }];
+		});
+		aiAbort = abort;
+		try {
+			await promise;
+		} catch (e: any) {
+			aiError = `Ollama error: ${e?.message || e}`;
+		} finally {
+			aiBusy = false;
+			aiAbort = undefined;
+		}
+	}
+
 	// Mention chips navigate to their page on click.
 	$effect(() => {
 		const handler = (e: MouseEvent) => {
@@ -448,6 +493,11 @@
 				<button class="icon-btn" class:active={fullWidth} onclick={toggleFullWidth} title="Toggle full width">
 					<Icon name="expand" size={15} />
 				</button>
+				{#if aiEnabled}
+					<button class="icon-btn" class:active={aiOpen} onclick={() => (aiOpen = !aiOpen)} title="Ask AI (local)">
+						<Icon name="sparkles" size={15} />
+					</button>
+				{/if}
 				<button class="icon-btn" class:faved={document.is_favorite} onclick={toggleFavorite} title={document.is_favorite ? 'Remove from favorites' : 'Add to favorites'}>
 					<Icon name="star" size={15} />
 				</button>
@@ -483,11 +533,51 @@
 						</div>
 					{/if}
 				</div>
-				<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
-					<Icon name="trash" size={15} />
-				</button>
-			</div>
+			<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
+				<Icon name="trash" size={15} />
+			</button>
 		</div>
+	</div>
+
+	{#if aiOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="ai-backdrop" onclick={() => (aiOpen = false)}></div>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<aside class="ai-panel" role="dialog" aria-label="Ask AI" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="ai-head">
+				<span>Ask AI</span>
+				<button class="ai-close" onclick={() => (aiOpen = false)} aria-label="Close">✕</button>
+			</div>
+			<div class="ai-thread">
+				{#each aiMessages as m (m)}
+					<div class="ai-msg {m.role}">{m.content || (aiBusy ? '…' : '')}</div>
+				{/each}
+				{#if aiError}
+					<div class="ai-err" role="alert">{aiError}</div>
+				{/if}
+				{#if aiMessages.length === 0}
+					<div class="ai-empty">Ask a question about this page. Runs on your device via Ollama.</div>
+				{/if}
+			</div>
+			<div class="ai-compose">
+				<input
+					class="ai-input"
+					bind:value={aiQuestion}
+					placeholder="Ask about this page…"
+					aria-label="Ask about this page"
+					disabled={aiBusy}
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); askAi(); } }}
+				/>
+				{#if aiBusy}
+					<button class="ai-stop" onclick={() => aiAbort?.()}>Stop</button>
+				{:else}
+					<button class="ai-send" onclick={askAi} disabled={!aiQuestion.trim()}>Ask</button>
+				{/if}
+			</div>
+		</aside>
+	{/if}
 
 		{#if mode === 'paper' && metaOpen}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -992,6 +1082,65 @@
 		cursor: pointer; font-family: inherit;
 	}
 	.comment-submit:disabled { opacity: 0.5; cursor: default; }
+
+	/* ── Ask AI panel ── */
+	.ai-backdrop {
+		position: fixed; inset: 0; z-index: 260;
+		background: var(--color-overlay);
+	}
+	.ai-panel {
+		position: fixed; top: 12px; right: 12px; bottom: 12px; z-index: 261;
+		width: 360px; max-width: 90vw;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-lg);
+		display: flex; flex-direction: column;
+		overflow: hidden;
+	}
+	.ai-head {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 12px 16px; border-bottom: 1px solid var(--color-border);
+		font-size: 14px; font-weight: 600;
+	}
+	.ai-close {
+		background: none; border: none; color: var(--color-text-muted);
+		cursor: pointer; font-size: 14px; padding: 2px 4px;
+	}
+	.ai-thread {
+		flex: 1; overflow-y: auto; padding: 12px 16px;
+		display: flex; flex-direction: column; gap: 8px;
+	}
+	.ai-msg {
+		font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+		padding: 8px 12px; border-radius: var(--radius-md);
+	}
+	.ai-msg.user { align-self: flex-end; background: var(--color-accent-subtle); }
+	.ai-msg.assistant { align-self: flex-start; background: var(--color-surface-hover); }
+	.ai-err { font-size: 12px; color: var(--color-danger); }
+	.ai-empty { font-size: 12px; color: var(--color-text-faint); text-align: center; padding: 20px 0; }
+	.ai-compose {
+		display: flex; gap: 8px; padding: 12px 16px;
+		border-top: 1px solid var(--color-border);
+	}
+	.ai-input {
+		flex: 1;
+		background: var(--color-surface-hover);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		color: var(--color-text);
+		font-size: 13px; font-family: inherit;
+		padding: 8px 12px; outline: none;
+	}
+	.ai-input:focus { border-color: var(--color-accent); }
+	.ai-input:disabled { opacity: 0.6; }
+	.ai-send, .ai-stop {
+		border: none; border-radius: var(--radius-md);
+		padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
+	}
+	.ai-send { background: var(--color-accent); color: #fff; }
+	.ai-send:disabled { opacity: 0.5; cursor: default; }
+	.ai-stop { background: var(--color-surface-active); color: var(--color-text); }
 
 	.doc-body {		display: flex;
 		gap: 32px;

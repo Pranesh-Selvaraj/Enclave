@@ -2,6 +2,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { Button } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES } from '@enclave/ui';
+	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ollama.js';
 
 	let {
 		open = $bindable(false),
@@ -36,6 +37,28 @@
 		} finally {
 			backingUp = false;
 		}
+	}
+
+	// ── Local AI (Ollama) ──
+	let ai = $state<AISettings>(loadAISettings());
+	let installedModels = $state<string[]>([]);
+	let aiStatus = $state('');
+
+	async function refreshModels() {
+		aiStatus = '';
+		try {
+			installedModels = await listModels(ai.url);
+			if (installedModels.length === 0) aiStatus = 'Connected — no models pulled (run `ollama pull`).';
+			else if (!installedModels.includes(ai.model)) aiStatus = `Tip: model "${ai.model}" not installed.`;
+		} catch (e: any) {
+			installedModels = [];
+			aiStatus = `Ollama not reachable at ${ai.url} — start it and retry. (${e?.message || e})`;
+		}
+	}
+
+	function onAiChange() {
+		saveAISettings(ai);
+		if (ai.enabled) refreshModels();
 	}
 
 	function handleBackdropKeydown(e: KeyboardEvent) {
@@ -100,6 +123,43 @@
 					<span>Lock vault</span>
 					<button class="danger-btn" onclick={lockVault}>Lock now</button>
 				</div>
+			</div>
+
+			<div class="settings-section">
+				<h3>AI assistant (local)</h3>
+				<div class="setting-row">
+					<span>Enable local AI</span>
+					<label class="switch">
+						<input type="checkbox" bind:checked={ai.enabled} onchange={onAiChange} />
+						<span class="switch-slider"></span>
+					</label>
+				</div>
+				{#if ai.enabled}
+					<div class="setting-row">
+						<span>Ollama URL</span>
+						<input class="ai-input" bind:value={ai.url} onchange={onAiChange} aria-label="Ollama URL" />
+					</div>
+					<div class="setting-row">
+						<span>Model</span>
+						<input
+							class="ai-input"
+							bind:value={ai.model}
+							onchange={onAiChange}
+							aria-label="Model name"
+							list="ai-models"
+						/>
+						<datalist id="ai-models">
+							{#each installedModels as m (m)}
+								<option value={m}></option>
+							{/each}
+						</datalist>
+					</div>
+					<div class="ai-status-row">
+						<Button onclick={refreshModels}>Check connection</Button>
+						{#if aiStatus}<span class="ai-status" role="status">{aiStatus}</span>{/if}
+					</div>
+					<div class="backup-hint">Requires Ollama running on this machine. Conversations stay on your device.</div>
+				{/if}
 			</div>
 
 			<div class="settings-section">
@@ -208,6 +268,25 @@
 		cursor: pointer; font-family: inherit;
 	}
 	.danger-btn:hover { background: var(--color-danger); color: white; }
+	.switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+	.switch input { opacity: 0; width: 0; height: 0; }
+	.switch-slider {
+		position: absolute; inset: 0; border-radius: 999px;
+		background: var(--color-surface-active); transition: background 0.15s; cursor: pointer;
+	}
+	.switch-slider::before {
+		content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+		left: 3px; top: 3px; background: var(--color-surface); transition: transform 0.15s;
+	}
+	.switch input:checked + .switch-slider { background: var(--color-accent); }
+	.switch input:checked + .switch-slider::before { transform: translateX(16px); background: #fff; }
+	.ai-input {
+		background: var(--color-surface-hover); border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm); color: var(--color-text);
+		font-size: 13px; font-family: var(--font-mono); padding: 3px 8px; width: 190px;
+	}
+	.ai-status-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+	.ai-status { font-size: 12px; color: var(--color-text-muted); line-height: 1.4; }
 	.backup-msg { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); word-break: break-all; }
 	.backup-hint { margin-top: 8px; font-size: 12px; color: var(--color-text-faint); line-height: 1.5; }
 	.backup-hint code {
