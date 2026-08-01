@@ -160,26 +160,30 @@
 	}
 </script>
 
-{#if step === 'loading' || step === 'checking'}
-	<div class="vault-wall">
-		<div class="vault-card">
-			<div class="vault-icon">🔒</div>
+<div class="vault-wall">
+	<div class="vault-glow vault-glow-a"></div>
+	<div class="vault-glow vault-glow-b"></div>
+
+	{#if step === 'loading' || step === 'checking'}
+		<div class="vault-card vault-card-center">
+			<div class="brand-mark">E</div>
 			<div class="vault-loader"></div>
 			<p class="vault-message">{step === 'loading' ? 'Initializing cryptography…' : 'Checking vault…'}</p>
 		</div>
-	</div>
 
-{:else if step === 'welcome'}
-	<div class="vault-wall">
+	{:else if step === 'welcome'}
 		<div class="vault-card">
-			<div class="vault-icon">🔒</div>
+			<div class="brand-mark">E</div>
 			<h1 class="vault-heading">Welcome to Enclave</h1>
 			<p class="vault-desc">Your pages are encrypted and live only on this device.</p>
 			<div class="vault-form">
 				<label class="field-label" for="password">Create vault password</label>
-				<input type="password" id="password" class="seed-input" bind:value={password} placeholder="Choose a strong password…" />
+				<!-- svelte-ignore a11y_autofocus -->
+				<input type="password" id="password" class="seed-input" bind:value={password} placeholder="Choose a strong password…" autofocus
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && passwordValid) handleCreateVault(); }} />
 				<label class="field-label" for="confirm">Confirm password</label>
-				<input type="password" id="confirm" class="seed-input" bind:value={confirmPassword} placeholder="Re-enter password…" />
+				<input type="password" id="confirm" class="seed-input" bind:value={confirmPassword} placeholder="Re-enter password…"
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && passwordValid) handleCreateVault(); }} />
 			</div>
 			<div class="vault-actions">
 				<Button onclick={handleCreateVault} disabled={!passwordValid}>
@@ -190,31 +194,30 @@
 				</button>
 			</div>
 		</div>
-	</div>
 
-{:else if step === 'create-seed'}
-	<div class="vault-wall">
+	{:else if step === 'create-seed'}
 		<div class="vault-card">
-			<div class="vault-icon">✅</div>
+			<div class="brand-mark brand-mark-ok">✓</div>
 			<h1 class="vault-heading">Vault created</h1>
 			<p class="vault-desc-warn">
 				Save these 12 words somewhere safe. This is your recovery phrase if you forget your password.
 			</p>
 			<div class="seed-box">
 				{#each mnemonic.split(' ') as word, i}
-					<span class="seed-word">{i + 1}. {word}</span>
+					<div class="seed-word">
+						<span class="seed-num">{i + 1}</span>
+						<span>{word}</span>
+					</div>
 				{/each}
 			</div>
 			<div class="vault-actions">
 				<Button onclick={handleFinishCreate}>I've saved my recovery phrase</Button>
 			</div>
 		</div>
-	</div>
 
-{:else if step === 'unlock'}
-	<div class="vault-wall">
+	{:else if step === 'unlock'}
 		<div class="vault-card">
-			<div class="vault-icon">🔒</div>
+			<div class="brand-mark">E</div>
 			<h1 class="vault-heading">{hasPassword ? 'Unlock your vault' : 'Enter recovery phrase'}</h1>
 			<p class="vault-desc">
 				{#if hasPassword}
@@ -224,7 +227,8 @@
 				{/if}
 			</p>
 			{#if hasPassword}
-				<input type="password" class="seed-input" bind:value={unlockInput} placeholder="Enter password…"
+				<!-- svelte-ignore a11y_autofocus -->
+				<input type="password" class="seed-input" bind:value={unlockInput} placeholder="Enter password…" autofocus
 					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') handleUnlock(); }} />
 			{:else}
 				<textarea class="seed-input" bind:value={unlockInput} placeholder="Enter all 12 words, separated by spaces…" rows={3}
@@ -232,7 +236,7 @@
 				></textarea>
 			{/if}
 			{#if errorMsg}
-				<p class="vault-error">{errorMsg}</p>
+				<p class="vault-error" role="alert">{errorMsg}</p>
 			{/if}
 			<div class="vault-actions">
 				<Button onclick={handleUnlock} disabled={!unlockReady}>
@@ -249,12 +253,10 @@
 				{/if}
 			</div>
 		</div>
-	</div>
 
-{:else if step === 'setup-password'}
-	<div class="vault-wall">
+	{:else if step === 'setup-password'}
 		<div class="vault-card">
-			<div class="vault-icon">🔑</div>
+			<div class="brand-mark">E</div>
 			<h1 class="vault-heading">Set up a password?</h1>
 			<p class="vault-desc">
 				You unlocked with your recovery phrase. Set up a password for faster unlocking next time.
@@ -266,7 +268,7 @@
 				<input type="password" id="setup-confirm" class="seed-input" bind:value={confirmPassword} placeholder="Re-enter password…" />
 			</div>
 			{#if errorMsg}
-				<p class="vault-error">{errorMsg}</p>
+				<p class="vault-error" role="alert">{errorMsg}</p>
 			{/if}
 			<div class="vault-actions">
 				<Button onclick={handleSetupPassword} disabled={!passwordValid}>
@@ -277,56 +279,116 @@
 				</button>
 			</div>
 		</div>
-	</div>
 
-{:else if step === 'error'}
-	<div class="vault-wall">
+	{:else if step === 'error'}
 		<div class="vault-card">
-			<div class="vault-icon">⚠️</div>
+			<div class="brand-mark brand-mark-err">!</div>
 			<h1 class="vault-heading">Something went wrong</h1>
-			<p class="vault-error">{errorMsg}</p>
+			<p class="vault-error" role="alert">{errorMsg}</p>
 			<div class="vault-actions">
 				<Button onclick={() => { errorMsg = ''; step = 'welcome'; }}>Try again</Button>
 			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.vault-wall {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		height: 100vh;
 		width: 100vw;
 		background-color: var(--color-bg);
+		overflow: hidden;
+	}
+
+	.vault-glow {
+		position: absolute;
+		border-radius: 50%;
+		filter: blur(90px);
+		pointer-events: none;
+	}
+	.vault-glow-a {
+		width: 480px;
+		height: 480px;
+		top: -160px;
+		left: -120px;
+		background: rgba(124, 111, 240, 0.16);
+	}
+	.vault-glow-b {
+		width: 420px;
+		height: 420px;
+		bottom: -140px;
+		right: -100px;
+		background: rgba(74, 144, 226, 0.12);
 	}
 
 	.vault-card {
+		position: relative;
 		width: 420px;
 		max-width: 90vw;
-		padding: 40px 36px;
-		border-radius: 16px;
+		padding: 44px 40px;
+		border-radius: 20px;
 		border: 1px solid var(--color-border);
 		background-color: var(--color-surface);
 		text-align: center;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+	}
+	.vault-card-center {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 
-	.vault-icon { font-size: 40px; margin-bottom: 12px; }
-	.vault-heading { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
-	.vault-desc { font-size: 14px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 24px; }
-	.vault-desc-warn { font-size: 13px; color: var(--color-warning); line-height: 1.6; margin: 0 0 16px; }
+	.brand-mark {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 56px;
+		height: 56px;
+		margin: 0 auto 18px;
+		border-radius: 16px;
+		background: linear-gradient(135deg, #7c6cf0, #4f46e5);
+		color: #fff;
+		font-size: 26px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		box-shadow: 0 8px 24px rgba(124, 111, 240, 0.35);
+	}
+	.brand-mark-ok {
+		background: linear-gradient(135deg, #46a758, #2f9e44);
+		box-shadow: 0 8px 24px rgba(70, 167, 88, 0.3);
+	}
+	.brand-mark-err {
+		background: linear-gradient(135deg, #e5484d, #b13b40);
+		box-shadow: 0 8px 24px rgba(229, 72, 77, 0.3);
+	}
+
+	.vault-heading { font-size: 22px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+	.vault-desc { font-size: 14px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 26px; }
+	.vault-desc-warn { font-size: 13px; color: var(--color-warning); line-height: 1.6; margin: 0 0 18px; }
 	.vault-message { font-size: 14px; color: var(--color-text-muted); margin: 16px 0 0; }
-	.vault-error { font-size: 13px; color: var(--color-danger); margin: 8px 0 0; }
-	.vault-form { text-align: left; margin-bottom: 20px; }
-	.field-label { display: block; font-size: 13px; font-weight: 600; color: var(--color-text-muted); margin: 12px 0 4px; }
+	.vault-error {
+		font-size: 13px;
+		color: var(--color-danger);
+		background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-danger) 25%, transparent);
+		border-radius: 8px;
+		padding: 8px 12px;
+		margin: 12px 0 0;
+	}
+	.vault-form { text-align: left; margin-bottom: 22px; }
+	.field-label { display: block; font-size: 13px; font-weight: 600; color: var(--color-text-muted); margin: 14px 0 5px; }
 	.field-label:first-child { margin-top: 0; }
 
 	.vault-actions {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 10px;
+		gap: 12px;
+		margin-top: 22px;
 	}
 
 	.vault-link-btn {
@@ -347,13 +409,36 @@
 		gap: 6px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
-		border-radius: 10px;
+		border-radius: 12px;
 		padding: 14px;
-		margin-bottom: 20px;
+		margin-bottom: 4px;
 		text-align: left;
 	}
 
-	.seed-word { font-size: 13px; font-family: var(--font-mono); color: var(--color-text); padding: 2px 6px; }
+	.seed-word {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		font-family: var(--font-mono);
+		color: var(--color-text);
+		padding: 3px 6px;
+		border-radius: 6px;
+	}
+	.seed-word:hover { background: var(--color-hover); }
+	.seed-num {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 18px;
+		height: 18px;
+		padding: 0 4px;
+		border-radius: 5px;
+		background: rgba(124, 111, 240, 0.15);
+		color: var(--color-accent);
+		font-size: 10px;
+		font-weight: 700;
+	}
 
 	.seed-input {
 		width: 100%;
@@ -368,15 +453,18 @@
 		line-height: 1.6;
 		resize: none;
 		outline: none;
-		transition: border-color 0.15s;
+		transition: border-color 0.15s, box-shadow 0.15s;
 	}
-	.seed-input:focus { border-color: var(--color-accent); }
+	.seed-input:focus {
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 3px rgba(124, 111, 240, 0.15);
+	}
 	.seed-input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
 
 	.vault-loader {
 		width: 24px;
 		height: 24px;
-		margin: 12px auto 0;
+		margin: 20px auto 0;
 		border: 3px solid var(--color-border);
 		border-top-color: var(--color-accent);
 		border-radius: 50%;
