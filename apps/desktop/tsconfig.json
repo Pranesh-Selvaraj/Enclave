@@ -12,5 +12,6 @@
     "moduleResolution": "bundler",
     "module": "esnext",
     "target": "esnext"
-  }
+  },
+  "exclude": ["./tests/**/*.ts"]
 }

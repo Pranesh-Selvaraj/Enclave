@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { Document } from '@enclave/ui';
+	import { extractLinks } from '$lib/graphLinks.js';
 
 	let documents = $state<Document[]>([]);
 	let links = $state<Array<{ source: string; target: string }>>([]);
@@ -19,14 +20,7 @@
 			for (const doc of documents) {
 				const blocks = await invoke<Array<{ content: Record<string, unknown> }>>('get_blocks', { documentId: doc.id });
 				for (const block of blocks) {
-					const text = JSON.stringify(block.content);
-					const matches = text.matchAll(/\[\[([^\]]+)\]\]/g);
-					for (const match of matches) {
-						const targetId = titleToId.get(match[1]);
-						if (targetId && targetId !== doc.id) {
-							allLinks.push({ source: doc.id, target: targetId });
-						}
-					}
+					allLinks.push(...extractLinks(block.content, titleToId, doc.id));
 				}
 			}
 			links = allLinks;
@@ -178,7 +172,7 @@
 		<p class="graph-subtitle">
 			{documents.length} pages, {links.length} connections
 			{#if links.length === 0}
-				— Link pages with <code>[[Page Title]]</code> to see connections
+				— Link pages with <code>[[Page Title]]</code> or /doc links to see connections
 			{/if}
 		</p>
 		<a href="/" class="back-link">← Back to pages</a>
