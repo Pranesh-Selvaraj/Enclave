@@ -268,21 +268,6 @@ npm run check -w @enclave/desktop
 | Command palette | `Ctrl+K` |
 | Markdown export | Button in editor toolbar |
 
-## Recent Fixes
-
-Bugs fixed across the codebase (issues [#9–#19](https://github.com/Pranesh-Selvaraj/Enclave/issues?q=is%3Aissue)):
-- **#9** `upsert_block` no longer uses `INSERT OR REPLACE` — plain upsert preserves `created_at` without the delete+reinsert FK-cascade landmine
-- **#10** `get_page_list` returns `{ id, title }` objects, not tuple arrays — graph-view edges now resolve
-- **#11** Failed vault creation calls `reset_vault` — no more permanent lockout from a half-created vault
-- **#12** Corrupt `vault.key` is validated with a clear error instead of a cryptic decrypt failure
-- **#13** `%`/`_` in page titles and search queries are LIKE-escaped — backlinks and search match literally
-- **#14** Export filenames keep non-ASCII characters (CJK/accents) instead of becoming `____.md`
-- **#15** Starting the network with a failing mDNS no longer leaves an orphaned WebSocket listener
-- **#16** Bubble menu buttons respond on the first click (menu no longer hides before the click lands)
-- **#17** `[[` page-link menu is wired into the editor; stale editor content can't leak into a new document
-- **#18** Seed-phrase unlock accepts any BIP39 length (12–24 words), not just 12
-- **#19** Favorites rows get the right-click menu; Escape closes the context menu
-
 ## Documentation
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute

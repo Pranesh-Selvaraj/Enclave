@@ -13,7 +13,7 @@
 	} = $props();
 
 	let vaultPath = $state('~/.local/share/com.enclave.app/enclave.db');
-	let appVersion = $state('0.1.0');
+	let appVersion = $state('0.2.0');
 
 	async function lockVault() {
 		try {
