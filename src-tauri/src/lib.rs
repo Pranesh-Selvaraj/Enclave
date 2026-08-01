@@ -358,7 +358,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // vault lifecycle            is_vault_initialized,
+            // vault lifecycle
+            is_vault_initialized,
             init_vault,
             unlock_vault,
             lock_vault,
