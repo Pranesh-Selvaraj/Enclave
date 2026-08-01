@@ -28,7 +28,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Data Model** | Document + Block with fractional indexing |
 | **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
 | **Key Derivation** | Argon2id (`hash-wasm`) |
-| **Markdown I/O** | `turndown` + `markdown-it` bidirectional bridge |
+| **Markdown I/O** | `turndown` (HTML → Markdown export) |
 | **Network Discovery** | mDNS (`mdns-sd`) |
 | **Transport** | WebSocket (`tokio-tungstenite`) |
 | **Sync Engine** | Yjs CRDT with encrypted transport |
@@ -57,13 +57,15 @@ enclave/
 │       │   ├── app.html           # Root HTML shell
 │       │   ├── app.css            # Global styles + theme variables (light/dark)
 │       │   ├── lib/
-│       │   │   ├── VaultGuard.svelte     # Seed phrase unlock / vault creation
+│       │   │   ├── VaultGuard.svelte     # Vault creation / password + seed unlock
 │       │   │   └── SettingsPanel.svelte  # Theme toggle + keyboard shortcuts
 │       │   └── routes/
 │       │       ├── +layout.svelte  # App shell, sidebar, command palette, network toggle
 │       │       ├── +page.svelte    # Home / recent pages
+│       │       ├── graph/
+│       │       │   └── +page.svelte  # Backlink graph view (canvas)
 │       │       └── [id]/
-│       │           └── +page.svelte  # Editor + slash menu + markdown export
+│       │           └── +page.svelte  # Editor + slash/bubble/link menus + export
 │       ├── static/
 │       ├── package.json
 │       ├── svelte.config.js
@@ -77,14 +79,16 @@ enclave/
 │   │   ├── src/
 │   │   │   ├── TipTapEditor.svelte   # Core editor (task lists, callouts, toggles)
 │   │   │   ├── reactivity.ts         # Svelte 5 ↔ TipTap reactivity bridge
-│   │   │   ├── markdown.ts           # HTML ↔ Markdown serialization
+│   │   │   ├── markdown.ts           # HTML → Markdown serialization
 │   │   │   ├── extensions/
 │   │   │   │   ├── slash-command.ts  # "/" trigger detection
+│   │   │   │   ├── page-link.ts      # "[[..." trigger detection
 │   │   │   │   ├── callout.ts        # Colored info/warning blocks
 │   │   │   │   └── toggle-block.ts   # Collapsible sections
 │   │   │   ├── blocks/
 │   │   │   │   ├── SlashMenu.svelte  # Slash command palette
-│   │   │   │   └── BubbleMenu.svelte # Text selection formatting
+│   │   │   │   ├── BubbleMenu.svelte # Text selection formatting
+│   │   │   │   └── PageLinkMenu.svelte # Page picker for [[ links
 │   │   │   └── index.ts
 │   │   └── test.ts                # Markdown round-trip verification
 │   ├── sync-engine/               # Yjs CRDT + encrypted P2P sync
@@ -92,11 +96,10 @@ enclave/
 │   │   └── test.ts                # Two-peer sync convergence test
 │   └── ui/                        # Shared Svelte component library
 │       ├── src/
-│       │   ├── theme.ts           # Reactive theme store (dark/light, persisted)
-│       │   ├── types.ts           # Document, Block interfaces
+│       │   ├── theme.svelte.ts     # Reactive theme store (dark/light, persisted)
+│       │   ├── types.ts            # Document, Block interfaces
 │       │   ├── components/
-│       │   │   ├── Button.svelte
-│       │   │   └── Modal.svelte
+│       │   │   └── Button.svelte
 │       │   └── index.ts
 │       └── package.json
 ├── src-tauri/                     # Rust backend (Tauri v2)
@@ -183,6 +186,9 @@ npx tsx packages/sync-engine/test.ts
 # Rust type-check
 cargo check --manifest-path src-tauri/Cargo.toml
 
+# Rust unit tests (storage semantics: upsert, LIKE escaping)
+cargo test --manifest-path src-tauri/Cargo.toml -p core-db
+
 # Frontend type-check
 npm run check -w @enclave/desktop
 ```
@@ -190,14 +196,14 @@ npm run check -w @enclave/desktop
 ## Vault & Security
 
 ### First Launch
-1. App prompts you to **create a new vault**
+1. App prompts you to **create a new vault** with a password
 2. A 12-word BIP39 English seed phrase is generated client-side
-3. You must save this phrase — it's the **only** way to unlock your vault
-4. Re-enter the phrase to confirm, then your encrypted vault is created
+3. You must save this phrase — it's the **only** way to recover the vault if you forget your password
+4. The seed phrase is stored locally, encrypted with Argon2id + AES-256-GCM (`vault.key`), so later unlocks only need your password
 
 ### Returning User
-1. Enter your 12-word seed phrase to unlock
-2. The phrase is validated then run through **Argon2id** (64 MiB, 3 iterations, 4 parallelism) to derive the 256-bit master key
+1. Enter your **password** (or the 12-word seed phrase if you forgot it)
+2. Credentials are run through **Argon2id** (64 MiB, 3 iterations, 4 parallelism) to derive the 256-bit master key
 3. The master key decrypts the **SQLCipher** database
 
 ### Crypto Flow
@@ -209,6 +215,9 @@ npm run check -w @enclave/desktop
        │
        ▼
   256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB)
+                                │
+                                └── vault.key: seed phrase re-encrypted
+                                    with Argon2id(password + random salt) + AES-256-GCM
 ```
 
 ## Security Model
@@ -217,7 +226,7 @@ npm run check -w @enclave/desktop
 - **In transit**: P2P connections use encrypted WebSocket channels within the local network perimeter. Messages are encrypted before leaving the device.
 - **Zero-trust sync**: Peers exchange only encrypted CRDT update blobs. The receiving device cannot read pages without the user's decryption key — even if they're on the same network.
 - **No telemetry**: The application makes zero outbound network requests. All communication is strictly local-network-only.
-- **Key material**: The 12-word seed phrase and derived keys exist only in memory during the session. Never written to disk.
+- **Key material**: The seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
 
 ## Network Design
 
@@ -254,9 +263,25 @@ npm run check -w @enclave/desktop
 | Callouts (info/warning boxes) | `/callout` |
 | Toggle blocks (collapsible) | `/toggle` |
 | Horizontal divider | `/divider` |
+| Page links (backlinks) | Type `[[` + page title |
 | Text formatting | Select + bubble menu |
 | Command palette | `Ctrl+K` |
 | Markdown export | Button in editor toolbar |
+
+## Recent Fixes
+
+Bugs fixed across the codebase (issues [#9–#19](https://github.com/Pranesh-Selvaraj/Enclave/issues?q=is%3Aissue)):
+- **#9** `upsert_block` no longer uses `INSERT OR REPLACE` — plain upsert preserves `created_at` without the delete+reinsert FK-cascade landmine
+- **#10** `get_page_list` returns `{ id, title }` objects, not tuple arrays — graph-view edges now resolve
+- **#11** Failed vault creation calls `reset_vault` — no more permanent lockout from a half-created vault
+- **#12** Corrupt `vault.key` is validated with a clear error instead of a cryptic decrypt failure
+- **#13** `%`/`_` in page titles and search queries are LIKE-escaped — backlinks and search match literally
+- **#14** Export filenames keep non-ASCII characters (CJK/accents) instead of becoming `____.md`
+- **#15** Starting the network with a failing mDNS no longer leaves an orphaned WebSocket listener
+- **#16** Bubble menu buttons respond on the first click (menu no longer hides before the click lands)
+- **#17** `[[` page-link menu is wired into the editor; stale editor content can't leak into a new document
+- **#18** Seed-phrase unlock accepts any BIP39 length (12–24 words), not just 12
+- **#19** Favorites rows get the right-click menu; Escape closes the context menu
 
 ## Documentation
 

@@ -5,6 +5,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import type { Document } from '@enclave/ui';
 	import { theme } from '@enclave/ui';
+	import Icon from '$lib/Icon.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 
@@ -22,6 +23,7 @@
 	let networkRunning = $state(false);
 	let networkStatus = $state<{ local_peer_id: string; running: boolean; port: number; peers: any[] } | null>(null);
 	const currentDocId = $derived($page.params?.id);
+	const currentPath = $derived($page.url.pathname);
 	let contextMenu = $state<{ doc: Document; x: number; y: number } | null>(null);
 
 	let searchTimer: ReturnType<typeof setTimeout>;
@@ -38,12 +40,7 @@
 		try {
 			const doc = await invoke<Document>('create_document', { title: 'Untitled' });
 			await loadDocuments();
-			// Use both methods for navigation — goto for SPA, with fallback
-			try {
-				await goto(`/${doc.id}`);
-			} catch {
-				window.location.href = `/${doc.id}`;
-			}
+			await goto(`/${doc.id}`);
 		} catch (e: any) {
 			console.error('Failed to create document:', e);
 			alert(`Failed to create page: ${e?.message || e}`);
@@ -117,6 +114,7 @@
 		}
 		if (e.key === 'Escape') {
 			commandPaletteOpen = false;
+			contextMenu = null;
 		}
 	}
 
@@ -149,70 +147,107 @@
 	<!-- Left Sidebar -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen}>
 		<div class="sidebar-header">
-			<div class="sidebar-brand">
-				<span class="brand-icon">🔒</span>
+			<a href="/" class="sidebar-brand" title="Enclave home">
+				<span class="brand-mark">
+					<Icon name="lock" size={14} />
+				</span>
 				{#if sidebarOpen}
 					<span class="brand-name">Enclave</span>
 				{/if}
-			</div>
-			<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)}>
-				{sidebarOpen ? '◀' : '▶'}
+			</a>
+			<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)} title="Toggle sidebar (Ctrl+B)">
+				<Icon name={sidebarOpen ? 'chevronLeft' : 'chevronRight'} size={14} />
 			</button>
 		</div>
 
 		{#if sidebarOpen}
-			<div class="sidebar-section">
-				<button class="new-page-btn" onclick={createDocument}>
-					<span class="new-page-icon">+</span>
-					New page
-				</button>
-			</div>
-
-			<nav class="page-tree">
-				{#if favorites.length > 0}
-					<div class="tree-section-title">Favorites</div>
-					{#each favorites as doc (doc.id)}
-						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id} oncontextmenu={(e: MouseEvent) => { e.preventDefault(); }}>
-							<button class="fav-star" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Unfavorite">
-								★
-							</button>
-							<span class="tree-item-icon">📄</span>
-							<span class="tree-item-label">{doc.title || 'Untitled'}</span>
-						</a>
-					{/each}
-				{/if}
-
-				<div class="tree-section-title">Pages <span class="page-count">{documents.length}</span></div>
-				{#each regularPages as doc (doc.id)}
-					<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id} oncontextmenu={(e: MouseEvent) => { e.preventDefault(); showContextMenu(e, doc); }}>
-						<button class="fav-star empty" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
-							☆
-						</button>
-						<span class="tree-item-icon">📄</span>
-						<span class="tree-item-label">{doc.title || 'Untitled'}</span>
-					</a>
-				{/each}
-				{#if documents.length === 0}
-					<div class="tree-empty">No pages yet — press <kbd>Ctrl+N</kbd></div>
-				{/if}
+			<nav class="side-nav">
+				<a href="/" class="nav-item" class:active={currentPath === '/'}>
+					<Icon name="home" size={16} />
+					<span>Home</span>
+				</a>
+				<a href="/graph" class="nav-item" class:active={currentPath === '/graph'}>
+					<Icon name="graph" size={16} />
+					<span>Graph view</span>
+				</a>
 			</nav>
 
-			<div class="sidebar-footer">
-				<div class="sync-status" class:online={networkRunning} class:offline={!networkRunning}>
-					<span class="sync-dot"></span>
-					<span>{networkRunning ? `P2P:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
+			<div class="pages-section">
+				<div class="section-head">
+					<span class="section-title">Pages</span>
+					<span class="page-count">{documents.length}</span>
 				</div>
-				<div class="footer-actions">
-					<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
-						{networkRunning ? '⏸' : '▶'}
-					</button>
-					<button class="icon-btn" onclick={() => theme.toggle()} title="Toggle theme">
-						{theme.value === 'dark' ? '☀' : '🌙'}
-					</button>
-					<a href="/graph" class="icon-btn" title="Graph view">🔗</a>
-					<button class="icon-btn" onclick={() => (settingsOpen = true)} title="Settings">
-						⚙
-					</button>
+
+				<div class="page-tree">
+					{#if favorites.length > 0}
+						<div class="tree-section-title">Favorites</div>
+						{#each favorites as doc (doc.id)}
+							<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
+								oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
+								<span class="tree-item-icon">
+									<Icon name="star" size={14} />
+								</span>
+								<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+								<span class="tree-item-actions">
+									<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Unfavorite">
+										<Icon name="star" size={13} />
+									</button>
+									<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
+										<Icon name="more" size={13} />
+									</button>
+								</span>
+							</a>
+						{/each}
+					{/if}
+
+					{#each regularPages as doc (doc.id)}
+						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
+							oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
+							<span class="tree-item-icon">
+								<Icon name="page" size={14} />
+							</span>
+							<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+							<span class="tree-item-actions">
+								<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
+									<Icon name="star" size={13} />
+								</button>
+								<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
+									<Icon name="more" size={13} />
+								</button>
+							</span>
+						</a>
+					{/each}
+
+					{#if documents.length === 0}
+						<div class="tree-empty">
+							No pages yet — press <kbd>Ctrl+N</kbd> or
+							<button class="link-btn" onclick={createDocument}>create one</button>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<div class="sidebar-footer">
+				<button class="new-page-btn" onclick={createDocument} title="New page (Ctrl+N)">
+					<Icon name="plus" size={15} />
+					<span>New page</span>
+				</button>
+				<div class="footer-row">
+					<div class="sync-status" class:online={networkRunning} title="P2P sync">
+						<span class="sync-dot"></span>
+						<span>{networkRunning ? `P2P:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
+					</div>
+					<div class="footer-actions">
+						<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
+							<Icon name="network" size={15} />
+						</button>
+						<button class="icon-btn" onclick={() => theme.toggle()} title="Toggle theme">
+							<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} />
+						</button>
+						<button class="icon-btn" onclick={() => (settingsOpen = true)} title="Settings">
+							<Icon name="gear" size={15} />
+						</button>
+					</div>
 				</div>
 				{#if networkStatus?.peers?.length}
 					<div class="peer-list">
@@ -230,18 +265,24 @@
 
 	<!-- Context Menu -->
 	{#if contextMenu}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div class="context-overlay" onclick={() => (contextMenu = null)} onkeydown={() => {}}>
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="context-overlay" onclick={() => (contextMenu = null)}>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="context-menu" style="left:{contextMenu.x}px;top:{contextMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<button class="context-item" onclick={() => { toggleFavorite(contextMenu!.doc.id); contextMenu = null; }}>
-					{contextMenu.doc.is_favorite ? '★ Unfavorite' : '☆ Favorite'}
+					<Icon name={contextMenu.doc.is_favorite ? 'star' : 'star'} size={14} />
+					{contextMenu.doc.is_favorite ? 'Unfavorite' : 'Add to favorites'}
 				</button>
 				<button class="context-item" onclick={() => { duplicateDocument(contextMenu!.doc.id); contextMenu = null; }}>
-					📋 Duplicate
+					<Icon name="duplicate" size={14} />
+					Duplicate
 				</button>
+				<div class="context-sep"></div>
 				<button class="context-item danger" onclick={() => { deleteDocument(contextMenu!.doc.id); contextMenu = null; }}>
-					🗑 Delete
+					<Icon name="trash" size={14} />
+					Delete
 				</button>
 			</div>
 		</div>
@@ -254,27 +295,46 @@
 
 	<!-- Command Palette Overlay -->
 	{#if commandPaletteOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div class="overlay" role="dialog" aria-modal="true" aria-label="Command palette" onclick={() => (commandPaletteOpen = false)} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') commandPaletteOpen = false; }}>
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="overlay" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1" onclick={() => (commandPaletteOpen = false)} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') commandPaletteOpen = false; }}>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="command-palette" onclick={(e: MouseEvent) => e.stopPropagation()}>
-				<input
-					type="text"
-					class="palette-input"
-					placeholder="Search pages or type a command…"
-					bind:value={searchQuery}
-					autofocus
-				/>
+				<div class="palette-input-wrap">
+					<Icon name="search" size={16} />
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						type="text"
+						class="palette-input"
+						placeholder="Search pages…"
+						bind:value={searchQuery}
+						autofocus
+					/>
+					<kbd class="palette-kbd">esc</kbd>
+				</div>
 				<div class="palette-results">
+					<div class="palette-group-title">Pages</div>
 					{#each filteredDocs as doc (doc.id)}
 						<a href="/{doc.id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
-							<span class="palette-icon">{doc.is_favorite ? '★' : '📄'}</span>
+							<span class="palette-icon">
+								<Icon name={doc.is_favorite ? 'star' : 'page'} size={15} />
+							</span>
 							<span>{doc.title || 'Untitled'}</span>
 						</a>
 					{/each}
 					{#if filteredDocs.length === 0 && searchQuery}
 						<div class="palette-empty">No pages found</div>
 					{/if}
+					<div class="palette-group-title">Actions</div>
+					<button class="palette-item" onclick={() => { commandPaletteOpen = false; createDocument(); }}>
+						<span class="palette-icon"><Icon name="plus" size={15} /></span>
+						<span>New page</span>
+					</button>
+					<button class="palette-item" onclick={() => { commandPaletteOpen = false; sidebarOpen = !sidebarOpen; }}>
+						<span class="palette-icon"><Icon name="chevronLeft" size={15} /></span>
+						<span>Toggle sidebar</span>
+					</button>
 				</div>
 			</div>
 		</div>
@@ -301,111 +361,113 @@
 		border-right: 1px solid var(--color-border);
 		transition: width 0.2s, min-width 0.2s;
 	}
-
-	.sidebar.collapsed {
-		width: 52px;
-		min-width: 52px;
-	}
+	.sidebar.collapsed { width: 48px; min-width: 48px; }
 
 	.sidebar-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 14px 12px;
-		min-height: 48px;
+		padding: 10px 10px 10px 14px;
 	}
 
 	.sidebar-brand {
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		color: var(--color-text);
+		text-decoration: none;
 	}
-
-	.brand-icon { font-size: 18px; }
-
-	.brand-name {
-		font-size: 15px;
-		font-weight: 700;
-		white-space: nowrap;
+	.brand-mark {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		border-radius: 8px;
+		background: var(--color-accent);
+		color: #fff;
 	}
+	.brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 
 	.sidebar-toggle {
 		background: none;
 		border: none;
 		color: var(--color-text-muted);
 		cursor: pointer;
-		font-size: 11px;
-		padding: 4px 6px;
+		padding: 5px;
 		border-radius: var(--radius-sm);
+		display: flex;
 	}
+	.sidebar-toggle:hover { color: var(--color-text); background: var(--color-surface-hover); }
 
-	.sidebar-toggle:hover {
-		color: var(--color-text);
-		background: var(--color-surface-hover);
+	/* ── Nav ── */
+	.side-nav {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 6px 8px;
+		border-bottom: 1px solid var(--color-border);
 	}
-
-	.sidebar-section {
-		padding: 4px 8px;
-	}
-
-	.new-page-btn {
+	.nav-item {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		width: 100%;
+		gap: 10px;
 		padding: 6px 10px;
-		border: none;
 		border-radius: var(--radius-md);
-		background: none;
 		color: var(--color-text-muted);
-		cursor: pointer;
+		text-decoration: none;
 		font-size: 14px;
-		font-family: inherit;
-		transition: background 0.15s, color 0.15s;
+		transition: background 0.1s, color 0.1s;
 	}
+	.nav-item:hover { background: var(--color-surface-hover); color: var(--color-text); }
+	.nav-item.active { background: var(--color-accent-subtle); color: var(--color-text); }
 
-	.new-page-btn:hover {
+	/* ── Pages ── */
+	.pages-section {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.section-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 16px 6px;
+	}
+	.section-title {
+		font-size: 12px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--color-text-faint);
+	}
+	.page-count {
+		font-size: 11px;
+		color: var(--color-text-faint);
 		background: var(--color-surface-hover);
-		color: var(--color-text);
+		padding: 1px 7px;
+		border-radius: 10px;
 	}
 
-	.new-page-icon {
-		font-size: 18px;
-		font-weight: 300;
-		width: 24px;
-		text-align: center;
-	}
-
-	/* ── Page Tree ── */
 	.page-tree {
 		flex: 1;
-		padding: 8px;
 		overflow-y: auto;
+		padding: 2px 8px 8px;
 	}
-
 	.tree-section-title {
 		font-size: 11px;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-		padding: 8px 8px 4px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.page-count {
-		font-size: 10px;
-		background: var(--color-surface-hover);
-		padding: 1px 6px;
-		border-radius: 10px;
+		color: var(--color-text-faint);
+		padding: 8px 8px 2px;
 	}
 
 	.tree-item {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 8px;
 		padding: 4px 8px;
 		border-radius: var(--radius-md);
 		color: var(--color-text-muted);
@@ -413,21 +475,45 @@
 		font-size: 14px;
 		min-height: 30px;
 		transition: background 0.1s, color 0.1s;
+		position: relative;
 	}
+	.tree-item:hover { background: var(--color-surface-hover); color: var(--color-text); }
+	.tree-item.active { background: var(--color-accent-subtle); color: var(--color-text); }
 
-	.tree-item:hover {
-		background: var(--color-surface-hover);
-		color: var(--color-text);
-	}
-
-	.tree-item.active {
-		background: var(--color-accent-subtle);
-		color: var(--color-text);
-	}
-
-	.tree-item-icon { font-size: 16px; flex-shrink: 0; }
+	.tree-item-icon { display: flex; color: var(--color-text-faint); flex-shrink: 0; }
+	.tree-item.active .tree-item-icon,
+	.tree-item:hover .tree-item-icon { color: var(--color-accent); }
 	.tree-item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-	.tree-empty { font-size: 12px; color: var(--color-text-muted); padding: 8px; }
+
+	.tree-item-actions {
+		display: none;
+		gap: 2px;
+		flex-shrink: 0;
+	}
+	.tree-item:hover .tree-item-actions { display: flex; }
+	.tree-item.active .tree-item-actions { display: flex; }
+
+	.row-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: none;
+		color: var(--color-text-faint);
+		cursor: pointer;
+		padding: 0;
+	}
+	.row-btn:hover { background: var(--color-surface-active); color: var(--color-text); }
+
+	.tree-empty {
+		font-size: 13px;
+		color: var(--color-text-faint);
+		padding: 10px 8px;
+		line-height: 1.5;
+	}
 	.tree-empty kbd {
 		background: var(--color-surface-hover);
 		border: 1px solid var(--color-border);
@@ -436,66 +522,85 @@
 		font-size: 11px;
 		font-family: var(--font-mono);
 	}
-
-	.fav-star {
+	.link-btn {
 		background: none;
 		border: none;
+		padding: 0;
+		color: var(--color-accent);
 		cursor: pointer;
-		font-size: 12px;
-		padding: 0 2px;
-		color: var(--color-warning);
-		line-height: 1;
-		flex-shrink: 0;
+		font-size: 13px;
 	}
-	.fav-star.empty { color: var(--color-text-muted); }
-	.fav-star.empty:hover { color: var(--color-warning); }
+	.link-btn:hover { text-decoration: underline; }
 
+	/* ── Footer ── */
 	.sidebar-footer {
-		padding: 10px 16px;
 		border-top: 1px solid var(--color-border);
+		padding: 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
+	.new-page-btn {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 7px 10px;
+		border: none;
+		border-radius: var(--radius-md);
+		background: var(--color-accent-subtle);
+		color: var(--color-text);
+		cursor: pointer;
+		font-size: 14px;
+		font-weight: 500;
+		transition: background 0.15s;
+	}
+	.new-page-btn:hover { background: var(--color-accent);
+		color: #fff; }
 
+	.footer-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
 	.sync-status {
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		font-size: 12px;
-		color: var(--color-text-muted);
+		color: var(--color-text-faint);
 	}
-
 	.sync-dot {
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: #666;
+		background: var(--color-border-strong);
 	}
-
 	.sync-status.online .sync-dot { background: var(--color-success); }
-	.sync-status.online { color: var(--color-success); }
+	.sync-status.online { color: var(--color-text-muted); }
 
-	.footer-actions {
-		display: flex;
-		gap: 4px;
-		margin-top: 8px;
-	}
-
+	.footer-actions { display: flex; gap: 2px; }
 	.icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: var(--radius-md);
 		background: none;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
 		color: var(--color-text-muted);
 		cursor: pointer;
-		font-size: 14px;
-		padding: 3px 8px;
-		line-height: 1;
-		text-decoration: none;
-		transition: background 0.15s, color 0.15s;
+		padding: 0;
+		transition: background 0.1s, color 0.1s;
 	}
+	.icon-btn:hover { background: var(--color-surface-hover); color: var(--color-text); }
 
-	.icon-btn:hover {
-		background: var(--color-surface-hover);
-		color: var(--color-text);
-	}
+	.peer-list { display: flex; flex-direction: column; gap: 4px; }
+	.peer-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-faint); }
+	.peer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-border-strong); }
+	.peer-dot.connected { background: var(--color-success); }
 
 	/* ── Context Menu ── */
 	.context-overlay {
@@ -503,26 +608,24 @@
 		inset: 0;
 		z-index: 250;
 	}
-
 	.context-menu {
 		position: fixed;
 		z-index: 251;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-		padding: 4px;
-		min-width: 160px;
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-lg);
+		padding: 5px;
+		min-width: 180px;
 	}
-
 	.context-item {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 10px;
 		width: 100%;
-		padding: 8px 12px;
+		padding: 7px 10px;
 		border: none;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		background: none;
 		color: var(--color-text);
 		cursor: pointer;
@@ -533,7 +636,8 @@
 	}
 	.context-item:hover { background: var(--color-surface-hover); }
 	.context-item.danger { color: var(--color-danger); }
-	.context-item.danger:hover { background: rgba(224, 62, 62, 0.1); }
+	.context-item.danger:hover { background: rgba(229, 83, 75, 0.12); }
+	.context-sep { height: 1px; background: var(--color-border); margin: 4px 6px; }
 
 	/* ── Main Pane ── */
 	.main-pane {
@@ -547,67 +651,84 @@
 		position: fixed;
 		inset: 0;
 		z-index: 200;
-		background: rgba(0, 0, 0, 0.5);
+		background: var(--color-overlay);
 		display: flex;
 		justify-content: center;
-		padding-top: 15vh;
+		padding-top: 14vh;
+		backdrop-filter: blur(2px);
 	}
-
 	.command-palette {
 		width: 560px;
-		max-height: 400px;
+		max-width: 90vw;
+		max-height: 420px;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-lg);
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 	}
-
-	.palette-input {
-		width: 100%;
+	.palette-input-wrap {
+		display: flex;
+		align-items: center;
+		gap: 10px;
 		padding: 14px 18px;
-		border: none;
 		border-bottom: 1px solid var(--color-border);
+		color: var(--color-text-faint);
+	}
+	.palette-input {
+		flex: 1;
+		border: none;
 		background: none;
 		color: var(--color-text);
 		font-size: 16px;
 		font-family: inherit;
 		outline: none;
 	}
-
-	.palette-input::placeholder {
-		color: var(--color-text-muted);
+	.palette-input::placeholder { color: var(--color-text-faint); }
+	.palette-kbd {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		background: var(--color-surface-hover);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 2px 6px;
+		font-family: var(--font-mono);
 	}
 
-	.palette-results {
-		flex: 1;
-		overflow-y: auto;
-		padding: 6px;
+	.palette-results { flex: 1; overflow-y: auto; padding: 6px; }
+	.palette-group-title {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--color-text-faint);
+		padding: 8px 10px 4px;
 	}
-
 	.palette-item {
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 8px 12px;
+		width: 100%;
+		padding: 8px 10px;
+		border: none;
 		border-radius: var(--radius-md);
+		background: none;
 		color: var(--color-text);
 		text-decoration: none;
 		font-size: 14px;
+		font-family: inherit;
+		cursor: pointer;
+		text-align: left;
 		transition: background 0.1s;
 	}
-
-	.palette-item:hover {
-		background: var(--color-surface-hover);
-	}
-
-	.palette-icon { font-size: 18px; }
+	.palette-item:hover { background: var(--color-surface-hover); }
+	.palette-icon { display: flex; color: var(--color-text-faint); }
 	.palette-empty {
-		padding: 16px;
+		padding: 14px;
 		text-align: center;
-		color: var(--color-text-muted);
+		color: var(--color-text-faint);
 		font-size: 13px;
 	}
 </style>

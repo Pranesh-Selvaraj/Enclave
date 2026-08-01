@@ -51,6 +51,9 @@ npx tsx packages/sync-engine/test.ts
 # Rust type-check
 cargo check --manifest-path src-tauri/Cargo.toml
 
+# Rust unit tests (storage semantics: upsert, LIKE escaping)
+cargo test --manifest-path src-tauri/Cargo.toml -p core-db
+
 # Frontend type-check
 npm run check -w @enclave/desktop
 ```
@@ -95,8 +98,9 @@ enclave/
 Changes to these files need extra scrutiny — tag them clearly in the PR description:
 
 - `packages/crypto/src/index.ts` — key derivation, encryption/decryption
-- `src-tauri/crates/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling
+- `src-tauri/crates/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling, LIKE-query semantics
 - `src-tauri/crates/core-network/` — peer discovery, message transport
+- `apps/desktop/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
 - `apps/desktop/src/routes/[id]/+page.svelte` — editor UI that handles exported content
 
 Rules for crypto/non-trivial changes: leave one runnable check behind. For security code, show the test passing in the PR description.

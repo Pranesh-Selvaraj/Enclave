@@ -213,12 +213,17 @@ pub struct Backlink {
     pub block_content: String,
 }
 
+/// Escape LIKE wildcards so `%`/`_`/`\` in titles and queries match literally.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 pub fn query_backlinks(db: &Connection, page_title: &str) -> rusqlite::Result<Vec<Backlink>> {
-    let pattern = format!("%[[{}]]%", page_title);
+    let pattern = format!("%[[{}]]%", like_escape(page_title));
     let mut stmt = db.prepare(
         "SELECT d.id, d.title, b.content FROM blocks b
          JOIN documents d ON d.id = b.document_id
-         WHERE b.content LIKE ?1
+         WHERE b.content LIKE ?1 ESCAPE '\\'
          ORDER BY d.updated_at DESC"
     )?;
     let rows = stmt.query_map(rusqlite::params![pattern], |row| {
@@ -231,9 +236,19 @@ pub fn query_backlinks(db: &Connection, page_title: &str) -> rusqlite::Result<Ve
     rows.collect()
 }
 
-pub fn query_all_page_titles(db: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageInfo {
+    pub id: String,
+    pub title: String,
+}
+
+// Returns objects, not tuples — tuples serialize to JSON arrays, which the
+// frontend would misread as { id, title }.
+pub fn query_all_page_titles(db: &Connection) -> rusqlite::Result<Vec<PageInfo>> {
     let mut stmt = db.prepare("SELECT id, title FROM documents WHERE is_archived = 0 ORDER BY title ASC")?;
-    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    let rows = stmt.query_map([], |row| {
+        Ok(PageInfo { id: row.get(0)?, title: row.get(1)? })
+    })?;
     rows.collect()
 }
 
@@ -248,14 +263,14 @@ pub struct SearchResult {
 }
 
 pub fn search_all(db: &Connection, query: &str) -> rusqlite::Result<Vec<SearchResult>> {
-    let like_pattern = format!("%{}%", query);
+    let like_pattern = format!("%{}%", like_escape(query));
     let mut stmt = db.prepare(
         "SELECT d.id, d.title, b.content, 'content' AS type FROM blocks b
          JOIN documents d ON d.id = b.document_id
-         WHERE b.content LIKE ?1 AND d.is_archived = 0
+         WHERE b.content LIKE ?1 ESCAPE '\\' AND d.is_archived = 0
          UNION ALL
          SELECT d.id, d.title, '', 'title' AS type FROM documents d
-         WHERE d.title LIKE ?1 AND d.is_archived = 0
+         WHERE d.title LIKE ?1 ESCAPE '\\' AND d.is_archived = 0
          ORDER BY type DESC
          LIMIT 30"
     )?;
@@ -350,4 +365,124 @@ pub fn duplicate_document(db: &Connection, id: &str, now: &str) -> rusqlite::Res
     }
 
     Ok(doc)
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn like_escape_escapes_wildcards() {
+        assert_eq!(like_escape("a%b_c\\d"), "a\\%b\\_c\\\\d");
+        assert_eq!(like_escape("plain"), "plain");
+    }
+
+    #[test]
+    fn upsert_preserves_created_at() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 't', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES ('b1', 'd1', 'paragraph', '{}', 1.0, 'old-created', 'old-updated')",
+            [],
+        )
+        .unwrap();
+        // Same shape as the tauri command's upsert (no OR REPLACE)
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(id) DO UPDATE SET
+                 document_id = excluded.document_id,
+                 type = excluded.type,
+                 content = excluded.content,
+                 sort_order = excluded.sort_order,
+                 updated_at = excluded.updated_at",
+            rusqlite::params!["b1", "d1", "paragraph", "{}", 1.0, "new-now"],
+        )
+        .unwrap();
+        let row: (String, String) = conn
+            .query_row("SELECT created_at, updated_at FROM blocks WHERE id = 'b1'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(row, ("old-created".to_string(), "new-now".to_string()));
+    }
+
+    #[test]
+    fn backlinks_escape_wildcards_in_titles() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 'd', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES ('b1', 'd1', 'paragraph', '{\"text\":\"see [[50%_off]]\"}', 1.0, 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        // Literal `%` in the title must only match the literal `%` in content
+        let links = query_backlinks(&conn, "50%_off").unwrap();
+        assert_eq!(links.len(), 1);
+        let none = query_backlinks(&conn, "50X_off").unwrap();
+        assert!(none.is_empty(), "_ must not act as a single-char wildcard");
+        let none = query_backlinks(&conn, "50%anything").unwrap();
+        assert!(none.is_empty(), "% must not match everything");
+    }
+
+    #[test]
+    fn sqlcipher_encrypted_roundtrip() {
+        // Exercise the real production path: keyed (encrypted) on-disk DB,
+        // same statements the tauri commands run.
+        let dir = std::env::temp_dir().join(format!("enclave-db-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let key = [7u8; 32];
+
+        let conn = init_vault(&db_path, &key).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 'Doc', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        // First insert (new block)
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            rusqlite::params!["b1", "d1", "doc", "{\"type\":\"doc\"}", 0.0, "t1"],
+        )
+        .unwrap();
+        // Second upsert (update path) — must preserve created_at
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            rusqlite::params!["b1", "d1", "doc", "{\"type\":\"doc\",\"edited\":true}", 0.0, "t2"],
+        )
+        .unwrap();
+        drop(conn);
+
+        // Reopen with the same key — data must survive
+        let conn = open_vault(&db_path, &key).unwrap();
+        let blocks = query_blocks(&conn, "d1").unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content["edited"], true);
+        assert_eq!(blocks[0].created_at, "t1");
+        drop(conn);
+
+        // Wrong key must be rejected
+        assert!(open_vault(&db_path, &[1u8; 32]).is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

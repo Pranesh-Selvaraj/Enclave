@@ -26,16 +26,19 @@
 	}
 
 	function deserialize(data: Uint8Array): EncryptedNote {
+		if (data.length < 3) throw new Error('Corrupt vault key file');
 		const saltLen = data[0];
-		const salt = Uint8Array.from(data.slice(1, 1 + saltLen)) as Uint8Array<ArrayBuffer>;
 		const ivLen = data[1 + saltLen];
+		if (2 + saltLen + ivLen > data.length) throw new Error('Corrupt vault key file');
+		const salt = Uint8Array.from(data.slice(1, 1 + saltLen)) as Uint8Array<ArrayBuffer>;
 		const iv = Uint8Array.from(data.slice(2 + saltLen, 2 + saltLen + ivLen)) as Uint8Array<ArrayBuffer>;
 		const ct = data.slice(2 + saltLen + ivLen);
 		return { salt, iv, ciphertext: ct.buffer.slice(ct.byteOffset, ct.byteOffset + ct.byteLength) };
 	}
 
 	let passwordValid = $derived(password.length >= 4 && password === confirmPassword);
-	let unlockReady = $derived(hasPassword ? unlockInput.length >= 4 : unlockInput.trim().split(/\s+/).length === 12);
+	// BIP39 supports 12-24 words; don't lock out users with longer phrases
+	let unlockReady = $derived(hasPassword ? unlockInput.length >= 4 : unlockInput.trim().split(/\s+/).length >= 12);
 
 	$effect(() => {
 		(async () => {
@@ -142,6 +145,9 @@
 
 			step = 'create-seed';
 		} catch (e: any) {
+			// A half-created vault (init ok, key store failed) would leave the
+			// user permanently locked out — no password and no seed shown.
+			try { await invoke('reset_vault'); } catch { /* already clean */ }
 			errorMsg = `Failed to create vault: ${e?.message || e}`;
 			step = 'error';
 		} finally {

@@ -1,40 +1,56 @@
-/* Enclave — dark theme (default) */
+/* Enclave — AFFiNE-inspired design tokens (dark default) */
 :root {
-	--color-bg: #191919;
-	--color-surface: #202020;
-	--color-surface-hover: #282828;
-	--color-border: #333333;
-	--color-text: #e8e8e8;
-	--color-text-muted: #888888;
-	--color-accent: #6b5ce7;
-	--color-accent-hover: #7d6ff0;
-	--color-accent-subtle: rgba(107, 92, 231, 0.12);
-	--color-danger: #e03e3e;
-	--color-warning: #dfab3f;
+	--color-bg: #141416;
+	--color-surface: #1c1c1f;
+	--color-surface-hover: #26262a;
+	--color-surface-active: #2e2e33;
+	--color-border: #2c2c31;
+	--color-border-strong: #3a3a40;
+	--color-text: #e8e8ec;
+	--color-text-muted: #9a9aa2;
+	--color-text-faint: #6a6a72;
+	--color-accent: #7c6cf0;
+	--color-accent-hover: #8d7ff2;
+	--color-accent-subtle: rgba(124, 108, 240, 0.13);
+	--color-danger: #e5534b;
+	--color-warning: #d9a53f;
 	--color-success: #3ec97e;
 
 	--font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	--font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-	--radius-sm: 4px;
-	--radius-md: 6px;
-	--radius-lg: 8px;
+	--radius-sm: 6px;
+	--radius-md: 8px;
+	--radius-lg: 12px;
+	--radius-xl: 16px;
+
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+	--color-overlay: rgba(0, 0, 0, 0.55);
 }
 
 /* Light theme */
 [data-theme="light"] {
-	--color-bg: #ffffff;
-	--color-surface: #f7f7f5;
-	--color-surface-hover: #efefec;
-	--color-border: #e0e0dc;
-	--color-text: #1a1a1a;
-	--color-text-muted: #8c8c8c;
+	--color-bg: #fafaf8;
+	--color-surface: #ffffff;
+	--color-surface-hover: #f2f2ef;
+	--color-surface-active: #eaeae6;
+	--color-border: #e6e6e2;
+	--color-border-strong: #d4d4cf;
+	--color-text: #1b1b1f;
+	--color-text-muted: #8a8a90;
+	--color-text-faint: #b0b0b6;
 	--color-accent: #6b5ce7;
 	--color-accent-hover: #5a4bd6;
-	--color-accent-subtle: rgba(107, 92, 231, 0.08);
-	--color-danger: #d32f2f;
-	--color-warning: #b8860b;
-	--color-success: #2e7d32;
-	--color-shadow: rgba(0, 0, 0, 0.06);
+	--color-accent-subtle: rgba(107, 92, 231, 0.09);
+	--color-danger: #d3382f;
+	--color-warning: #a8780e;
+	--color-success: #2e8f57;
+
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.14);
+	--color-overlay: rgba(0, 0, 0, 0.35);
 }
 
 html, body {
@@ -52,7 +68,17 @@ html, body {
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); border: 2px solid transparent; background-clip: content-box; }
+
+/* Focus rings for keyboard navigation */
+:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+button {
+	font-family: inherit;
+}

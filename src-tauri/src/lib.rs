@@ -69,6 +69,18 @@ fn lock_vault(state: tauri::State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Delete vault + key file. Only safe when no user data exists (used when
+/// vault creation fails partway and would otherwise lock the user out).
+#[tauri::command]
+fn reset_vault(state: tauri::State<AppState>) -> Result<(), String> {
+    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
+    *guard = None;
+    for f in [DB_FILENAME, "vault.key"] {
+        let _ = std::fs::remove_file(state.app_dir.join(f));
+    }
+    Ok(())
+}
+
 // ── Document Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -150,10 +162,12 @@ fn upsert_block(
     with_db(&state, |db| {
         let now = chrono::Utc::now().to_rfc3339();
 
+        // Plain upsert: OR REPLACE would delete+reinsert (FK cascade landmine
+        // and it silently swallows the ON CONFLICT clause). created_at is
+        // preserved by not touching it in DO UPDATE.
         db.execute(
-            "INSERT OR REPLACE INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-                     COALESCE((SELECT created_at FROM blocks WHERE id = ?1), ?6))
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
              ON CONFLICT(id) DO UPDATE SET
                  document_id = excluded.document_id,
                  type = excluded.type,
@@ -180,12 +194,13 @@ fn delete_block(state: tauri::State<AppState>, id: String) -> Result<(), String>
 
 // ── Markdown Import / Export ────────────────────────────────────────────────
 
+/// Write arbitrary bytes (markdown text or PNG) into the exports dir.
 #[tauri::command]
-fn export_markdown(state: tauri::State<AppState>, filename: String, contents: String) -> Result<String, String> {
+fn export_file(state: tauri::State<AppState>, filename: String, data: Vec<u8>) -> Result<String, String> {
     let exports_dir = state.app_dir.join("exports");
     std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
     let path = exports_dir.join(sanitize_filename(&filename));
-    std::fs::write(&path, &contents).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &data).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -195,12 +210,14 @@ fn import_markdown(path: String) -> Result<String, String> {
 }
 
 fn sanitize_filename(name: &str) -> String {
+    // is_alphanumeric is unicode-aware so CJK/accents survive; only path
+    // separators and control chars are replaced.
     let safe: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == ' ' { c } else { '_' })
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == ' ' { c } else { '_' })
         .collect();
     let trimmed = safe.trim();
-    if trimmed.is_empty() { "untitled.md".into() } else { format!("{trimmed}.md") }
+    if trimmed.is_empty() { "untitled".into() } else { trimmed.into() }
 }
 
 // ── Backlinks ────────────────────────────────────────────────────────────────
@@ -211,7 +228,7 @@ fn get_backlinks(state: tauri::State<AppState>, title: String) -> Result<Vec<cor
 }
 
 #[tauri::command]
-fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<(String, String)>, String> {
+fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<core_db::PageInfo>, String> {
     with_db(&state, |db| core_db::query_all_page_titles(db).map_err(|e| e.to_string()))
 }
 
@@ -307,6 +324,7 @@ pub fn run() {
             init_vault,
             unlock_vault,
             lock_vault,
+            reset_vault,
             // documents
             get_document_list,
             get_document,
@@ -318,7 +336,7 @@ pub fn run() {
             upsert_block,
             delete_block,
             // markdown import/export
-            export_markdown,
+            export_file,
             import_markdown,
             // vault key
             store_vault_key,

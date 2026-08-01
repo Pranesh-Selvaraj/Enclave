@@ -96,7 +96,7 @@ impl NetworkState {
             .map_err(|e| format!("Failed to bind: {e}"))?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         inner.port = port;
-        inner.ws_shutdown = Some(shutdown_tx);
+        inner.ws_shutdown = Some(shutdown_tx.clone());
 
         // Spawn WS accept loop (clone what it needs)
         let ws_peer_id = peer_id.clone();
@@ -105,8 +105,17 @@ impl NetworkState {
             ws::accept_loop(listener, shutdown, ws_peer_id, peer_tx).await;
         });
 
-        // Start mDNS
-        let mdns_handle = mdns::start(peer_id.clone(), port).await?;
+        // Start mDNS — on failure tear the WS listener back down so we
+        // don't leave an orphaned accepting socket behind.
+        let mdns_handle = match mdns::start(peer_id.clone(), port).await {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = shutdown_tx.send(true);
+                inner.ws_shutdown = None;
+                inner.port = 0;
+                return Err(e);
+            }
+        };
         inner.mdns_handle = Some(mdns_handle);
 
         Ok(())

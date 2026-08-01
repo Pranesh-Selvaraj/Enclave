@@ -72,6 +72,7 @@
 	<div
 		class="bubble-menu"
 		style="left: {position.x}px; top: {position.y}px;"
+		onpointerdown={() => isMouseOverMenu = true}
 		onmouseenter={() => isMouseOverMenu = true}
 		onmouseleave={() => { isMouseOverMenu = false; visible = false; }}
 		role="toolbar"
