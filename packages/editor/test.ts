@@ -28,6 +28,26 @@ assert.ok(md.includes('> A blockquote'), 'should have blockquote');
 assert.ok(md.includes('```'), 'should have code block');
 console.log('HTML → Markdown: PASS\n');
 
+// Database block → Markdown table
+const dbData = {
+	columns: [
+		{ id: 'c1', name: 'Task', type: 'text' },
+		{ id: 'c2', name: 'Priority', type: 'number' },
+	],
+	rows: [
+		{ id: 'r1', cells: { c1: 'Ship database', c2: '1' } },
+		{ id: 'r2', cells: { c1: 'Write docs', c2: '2' } },
+	],
+};
+const dbHtml = `<div data-database="${JSON.stringify(dbData).replace(/"/g, '&quot;')}">\u200b</div>`;
+const dbMd = htmlToMarkdown(dbHtml);
+assert.ok(dbMd.includes('| Task | Priority |'), 'table header row');
+assert.ok(dbMd.includes('| --- | --- |'), 'table separator row');
+assert.ok(dbMd.includes('| Ship database | 1 |'), 'table data row');
+assert.ok(dbMd.includes('| Write docs | 2 |'), 'table second row');
+assert.ok(!htmlToMarkdown('<div data-database="not-json"></div>').includes('|'), 'bad json yields no table');
+console.log('Database export: PASS\n');
+
 console.log('Result:');
 console.log(md);
 console.log('\n=== All checks passed ===');

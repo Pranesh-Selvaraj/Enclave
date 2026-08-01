@@ -88,6 +88,13 @@
 			action: (ed) => ed.chain().focus().setToggleBlock().run(),
 		},
 		{
+			id: 'database',
+			label: 'Database',
+			icon: '▦',
+			description: 'Insert a typed table database',
+			action: (ed) => ed.chain().focus().setDatabase().run(),
+		},
+		{
 			id: 'codeBlock',
 			label: 'Code Block',
 			icon: '</>',

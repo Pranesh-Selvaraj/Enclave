@@ -8,6 +8,7 @@
 	import { PageLink } from './extensions/page-link.js';
 	import { Callout } from './extensions/callout.js';
 	import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
+	import { Database } from './extensions/database.js';
 	import { makeReactive } from './reactivity.js';
 
 	let {
@@ -46,6 +47,7 @@
 				Callout,
 				ToggleBlock,
 				ToggleSummary,
+				Database,
 				SlashCommand,
 				PageLink,
 			],
