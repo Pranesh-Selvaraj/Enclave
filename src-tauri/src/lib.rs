@@ -516,21 +516,22 @@ pub fn run() {
                 .expect("network rx uncontended at setup")
                 .take()
                 .expect("sync receiver exists once");
-            let state_arc = Arc::new(AppState {
+            app.manage(AppState {
                 app_dir: app_dir.clone(),
                 db: Mutex::new(None),
                 network: network.clone(),
             });
-            app.manage(state_arc.clone());
 
             // Consume peer messages for the lifetime of the app: hello →
             // send snapshot, snapshot → merge into vault, ack → notify UI.
+            // State is looked up per message so the task doesn't need to own
+            // an Arc (commands resolve State<AppState> by exact type).
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut rx = sync_rx;
                 while let Some(msg) = rx.recv().await {
-                    let st = state_arc.clone();
-                    let net = network.clone();
+                    let st = app_handle.state::<AppState>();
+                    let net = st.network.clone();
                     handle_sync_message(&app_handle, &st, &net, msg).await;
                 }
             });
@@ -586,4 +587,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("Error while launching Enclave");
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: commands take State<AppState>, so AppState must be managed
+    /// as a plain value — managing an Arc<AppState> instead makes every invoke
+    /// fail with "state not managed" (Tauri 2 keys state by exact type).
+    #[test]
+    fn app_state_resolves_for_commands() {
+        let app = tauri::test::mock_app();
+        app.manage(AppState {
+            app_dir: PathBuf::from("/tmp/enclave-test"),
+            db: Mutex::new(None),
+            network: Arc::new(core_network::NetworkState::new()),
+        });
+        let state = app.state::<AppState>();
+        assert!(!is_vault_initialized(state), "no vault in the test dir");
+    }
 }
