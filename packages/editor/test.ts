@@ -1,6 +1,7 @@
 import { htmlToMarkdown, rewriteTaskItems } from './src/markdown.ts';
 import * as assert from 'node:assert';
 import { marked } from 'marked';
+import { listDatabases, walkDatabases } from './src/dbLink.ts';
 
 // markdownToJson's generateJSON half needs a DOM, so check the marked half
 // (the same transform) here in node.
@@ -88,6 +89,43 @@ const cbMd = htmlToMarkdown(cbHtml);
 assert.ok(cbMd.includes('```js'), 'code fence keeps language');
 assert.ok(cbMd.includes('const a = 1;'), 'code content preserved');
 console.log('Code block export: PASS\n');
+
+// Linked database doc-walk: positions must be real PM positions
+const linkedDoc = {
+	type: 'doc',
+	content: [
+		{ type: 'paragraph', content: [{ type: 'text', text: 'hello' }] }, // size 6 → pos 0, next block at 7
+		{
+			type: 'database',
+			attrs: {
+				data: JSON.stringify({
+					id: 'db1',
+					columns: [{ id: 'c1', name: 'Tasks', type: 'text' }],
+					rows: [{ id: 'r1', cells: {} }, { id: 'r2', cells: {} }],
+				}),
+			},
+		}, // pos 7
+		{ type: 'paragraph', content: [] }, // pos 8
+		{
+			type: 'database',
+			attrs: { data: JSON.stringify({ columns: [{ id: 'c1', name: 'Old', type: 'text' }], rows: [] }) },
+		}, // pos 9, no id
+	],
+};
+const refs = listDatabases(linkedDoc);
+assert.strictEqual(refs.length, 2, 'two databases found');
+assert.strictEqual(refs[0].pos, 7, 'db after text paragraph sits at pos 7');
+assert.strictEqual(refs[0].name, 'Tasks', 'name from first column');
+assert.strictEqual(refs[0].rowCount, 2, 'row count');
+assert.strictEqual(refs[0].id, 'db1', 'id parsed');
+assert.strictEqual(refs[1].pos, 9, 'second db position');
+assert.strictEqual(refs[1].id, '', 'old db has no id — gets stamped on link');
+assert.deepStrictEqual(
+	walkDatabases(linkedDoc).map((w) => w.pos),
+	[7, 9],
+	'walkDatabases positions agree'
+);
+console.log('dbLink doc-walk: PASS\n');
 
 console.log('Result:');
 console.log(md);

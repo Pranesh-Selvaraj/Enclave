@@ -4,6 +4,8 @@
 	import { SlashCommandPluginKey } from '../extensions/slash-command.js';
 	import { templates } from '../templates.js';
 	import type { Template } from '../templates.js';
+	import { listDatabases } from '../dbLink.js';
+	import type { DatabaseRef } from '../dbLink.js';
 
 	interface Command {
 		id: string;
@@ -119,6 +121,16 @@
 			action: (ed) => ed.chain().focus().setDatabase().run(),
 		},
 		{
+			id: 'linkedDatabase',
+			label: 'Linked Database',
+			icon: '⧉',
+			description: 'Mirror another database on this page',
+			action: () => {
+				showingLinkedDb = !showingLinkedDb;
+				refreshLinked();
+			},
+		},
+		{
 			id: 'pageEmbed',
 			label: 'Embed Page',
 			icon: '🔗',
@@ -171,6 +183,8 @@
 	let selectedIndex = $state(0);
 	let visible = $state(false);
 	let showingTemplates = $state(false);
+	let showingLinkedDb = $state(false);
+	let linkedDbs = $state<DatabaseRef[]>([]);
 	let position = $state({ x: 0, y: 0 });
 
 	let filtered = $derived(
@@ -211,6 +225,48 @@
 		showingTemplates = false;
 	}
 
+	function refreshLinked() {
+		if (!editor) return;
+		linkedDbs = listDatabases(editor.state.doc.toJSON());
+	}
+
+	function genId(): string {
+		return Math.random().toString(36).slice(2, 10);
+	}
+
+	function pickLinkedDb(ref: DatabaseRef) {
+		if (!editor) return;
+		deleteSlashTrigger(editor);
+		// Re-resolve the node after the trigger deletion shifted positions.
+		const fresh =
+			(listDatabases(editor.state.doc.toJSON()).find(
+				(r) => (ref.id && r.id === ref.id) || (r.name === ref.name && r.rowCount === ref.rowCount)
+			) ?? ref);
+		let sourceId = fresh.id;
+		let data = fresh.data;
+		if (!sourceId) {
+			// Older databases have no id — stamp one so the link can resolve.
+			sourceId = genId();
+			data = { ...fresh.data, id: sourceId };
+			editor.view.dispatch(editor.state.tr.setNodeMarkup(fresh.pos, undefined, { data: JSON.stringify(data) }));
+		}
+		editor
+			.chain()
+			.focus()
+			.setLinkedDatabase(sourceId, {
+				columns: data.columns ?? [],
+				rows: data.rows ?? [],
+				view: data.view,
+				groupBy: data.groupBy ?? null,
+				sort: data.sort ?? null,
+				filters: data.filters ?? {},
+			})
+			.run();
+		visible = false;
+		query = '';
+		showingLinkedDb = false;
+	}
+
 	function updatePosition() {
 		if (!editor) return;
 		const { from } = editor.state.selection;
@@ -238,9 +294,11 @@
 				selectedIndex = 0;
 				visible = true;
 				updatePosition();
+				if (showingLinkedDb) refreshLinked();
 			} else {
 				visible = false;
 				showingTemplates = false;
+				showingLinkedDb = false;
 			}
 		};
 
@@ -275,6 +333,9 @@
 			if (showingTemplates) {
 				const t = templates[selectedIndex];
 				if (t) pickTemplate(t);
+			} else if (showingLinkedDb) {
+				const ref = linkedDbs[selectedIndex];
+				if (ref) pickLinkedDb(ref);
 			} else {
 				const cmd = filtered[selectedIndex];
 				if (cmd) selectCommand(cmd);
@@ -282,6 +343,7 @@
 		} else if (e.key === 'Escape') {
 			visible = false;
 			showingTemplates = false;
+			showingLinkedDb = false;
 		}
 	}
 </script>
@@ -321,6 +383,21 @@
 					</div>
 				</button>
 			{/each}
+		{:else if showingLinkedDb}
+			<div class="slash-menu-header">Linked Database</div>
+			{#if linkedDbs.length === 0}
+				<div class="slash-empty">No databases on this page yet</div>
+			{:else}
+				{#each linkedDbs as ref}
+					<button class="slash-item" onclick={() => pickLinkedDb(ref)}>
+						<span class="slash-item-icon">⧉</span>
+						<div class="slash-item-text">
+							<span class="slash-item-label">{ref.name}</span>
+							<span class="slash-item-desc">{ref.rowCount} {ref.rowCount === 1 ? 'row' : 'rows'}</span>
+						</div>
+					</button>
+				{/each}
+			{/if}
 		{:else}
 			<div class="slash-menu-header">Basic Blocks</div>
 			{#each filtered as cmd, i}
@@ -414,5 +491,11 @@
 
 	.hidden-file-input {
 		display: none;
+	}
+
+	.slash-empty {
+		padding: 8px 10px;
+		font-size: 13px;
+		color: var(--color-text-muted);
 	}
 </style>
