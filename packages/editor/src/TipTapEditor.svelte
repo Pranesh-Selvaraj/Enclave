@@ -16,7 +16,7 @@ import { makeReactive } from './reactivity.js';
 		editable?: boolean;
 		autofocus?: boolean;
 		editor?: Editor | undefined;
-		onChange?: (json: object) => void;
+		onChange?: () => void;
 	} = $props();
 
 	let element: HTMLElement | undefined = $state();
@@ -34,9 +34,9 @@ import { makeReactive } from './reactivity.js';
 			editable,
 			autofocus,
 			onUpdate: ({ editor: ed }) => {
-				// getHTML() per keystroke serializes the whole doc including
-				// database data attrs — the JSON alone drives autosave.
-				onChange?.(ed.getJSON());
+				// Signal-only: serializing (getJSON) here allocates a full doc
+				// tree per keystroke; the page serializes once at save time.
+				onChange?.();
 			},
 		});
 

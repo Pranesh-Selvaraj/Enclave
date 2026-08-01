@@ -129,9 +129,11 @@
 		titleSaveTimer = setTimeout(saveTitle, 500);
 	}
 
-	async function saveContent(json: object) {
-		if (!document) return;
+	async function saveContent() {
+		if (!document || !editor) return;
 		try {
+			// Serialize once, here — not on every keystroke.
+			const json = editor.getJSON();
 			await invoke('upsert_block', {
 				id: `${docId}-content`,
 				documentId: docId,
@@ -144,19 +146,22 @@
 		}
 	}
 
-	function handleEditorChange(json: object) {
-		// Auto-title: use first heading text if title is still "Untitled"
+	function handleEditorChange() {
+		// Auto-title: use first heading text if title is still "Untitled".
+		// state.doc.firstChild avoids a full-doc getJSON per keystroke.
 		if (documentTitle === 'Untitled' || documentTitle === '') {
-			const doc = json as any;
-			const firstBlock = doc?.content?.[0];
-			if (firstBlock?.type === 'heading' && firstBlock?.content?.[0]?.text) {
-				documentTitle = firstBlock.content[0].text;
-				debouncedSaveTitle();
+			const first = editor?.state.doc.firstChild;
+			if (first?.type.name === 'heading') {
+				const text = first.textContent;
+				if (text && documentTitle !== text) {
+					documentTitle = text;
+					debouncedSaveTitle();
+				}
 			}
 		}
 		// Debounced auto-save
 		clearTimeout(contentSaveTimer);
-		contentSaveTimer = setTimeout(() => saveContent(json), 1000);
+		contentSaveTimer = setTimeout(saveContent, 1000);
 	}
 
 	async function deleteDocument() {
