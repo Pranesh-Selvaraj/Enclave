@@ -101,3 +101,19 @@ export async function exportMarkdownDialog(title: string, md: string): Promise<b
 	await invoke('write_file', { path, data: Array.from(new TextEncoder().encode(md)) });
 	return true;
 }
+
+/** Export the current page as a self-contained HTML file. */
+export async function exportHtmlDialog(title: string, html: string): Promise<boolean> {
+	const path = await save({
+		defaultPath: `${title || 'untitled'}.html`,
+		filters: [{ name: 'HTML', extensions: ['html'] }],
+	});
+	if (!path) return false;
+	const safe = (title || 'Untitled').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!);
+	const doc =
+		'<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + safe + '</title>' +
+		'<style>body{max-width:720px;margin:40px auto;padding:0 20px;font-family:system-ui,sans-serif;line-height:1.7;color:#1a1a1a}pre{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto}blockquote{border-left:3px solid #999;padding-left:12px;color:#555;margin-left:0}img{max-width:100%}</style>' +
+		'</head><body>' + html + '</body></html>';
+	await invoke('write_file', { path, data: Array.from(new TextEncoder().encode(doc)) });
+	return true;
+}

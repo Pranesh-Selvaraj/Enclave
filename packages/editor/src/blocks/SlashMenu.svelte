@@ -140,6 +140,18 @@
 			action: () => { showingTemplates = !showingTemplates; },
 		},
 		{
+			id: 'bookmark',
+			label: 'Bookmark',
+			icon: '🔖',
+			description: 'Insert a link card',
+			// ponytail: window.prompt for the URL — a small inline form is
+			// nicer but costs a menu state; paste-URL already inserts directly.
+			action: (ed) => {
+				const url = window.prompt('Paste a URL:');
+				if (url) ed.chain().focus().setBookmark(url.trim()).run();
+			},
+		},
+		{
 			id: 'codeBlock',
 			label: 'Code Block',
 			icon: '</>',

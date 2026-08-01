@@ -80,6 +80,7 @@ import { makeReactive } from './reactivity.js';
 		outline: none;
 		min-height: 200px;
 		padding: 8px 0;
+		position: relative;
 	}
 
 	:global(.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before) {

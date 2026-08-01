@@ -26,6 +26,18 @@ turndown.addRule('pageEmbed', {
 	},
 });
 
+// Render bookmarks as links in exports.
+turndown.addRule('bookmark', {
+	filter: (node) => node.nodeName === 'DIV' && (node as HTMLElement).hasAttribute('data-bookmark'),
+	replacement: (_content, node) => {
+		const el = node as HTMLElement;
+		const url = el.getAttribute('data-url') ?? '';
+		const title = el.getAttribute('data-title') ?? '';
+		if (!url) return '';
+		return `\n\n[${title || url}](<${url}>)\n\n`;
+	},
+});
+
 // Render database blocks as Markdown tables in exports.
 turndown.addRule('database', {
 	filter: (node) => node.nodeName === 'DIV' && (node as HTMLElement).hasAttribute('data-database'),

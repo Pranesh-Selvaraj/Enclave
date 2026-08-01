@@ -75,6 +75,20 @@ assert.ok(importHtml.includes('<table>'), 'markdown table');
 assert.ok(!/<li><input /.test(importHtml), 'no bare checkbox remains');
 console.log('Markdown import pipeline: PASS\n');
 
+// Bookmark block → markdown link
+const bmHtml = `<div data-bookmark="" data-url="https://example.com/guide" data-title="The Guide">\u200b</div>`;
+const bmMd = htmlToMarkdown(bmHtml);
+assert.ok(bmMd.includes('[The Guide](<https://example.com/guide>)'), 'bookmark as link');
+assert.ok(!htmlToMarkdown('<div data-bookmark="" data-url="">\u200b</div>').includes('['), 'empty bookmark yields nothing');
+console.log('Bookmark export: PASS\n');
+
+// Code block language round-trip (fenced style keeps the language tag)
+const cbHtml = `<pre><code class="language-js">const a = 1;</code></pre>`;
+const cbMd = htmlToMarkdown(cbHtml);
+assert.ok(cbMd.includes('```js'), 'code fence keeps language');
+assert.ok(cbMd.includes('const a = 1;'), 'code content preserved');
+console.log('Code block export: PASS\n');
+
 console.log('Result:');
 console.log(md);
 console.log('\n=== All checks passed ===');

@@ -2,12 +2,15 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { invoke } from '@tauri-apps/api/core';
-	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu } from '@enclave/editor';
+	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, TocPanel, DragHandleMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
 	import { htmlToMarkdown } from '@enclave/editor';
-	import { exportMarkdownDialog } from '$lib/importExport.js';
+	import { EmojiPicker } from '@enclave/ui';
+	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
+
+	const COVERS = ['grad-0', 'grad-1', 'grad-2', 'grad-3', 'grad-4', 'grad-5'];
 
 	let document = $state<Document | null>(null);
 	let documentTitle = $state('');
@@ -19,6 +22,11 @@
 	let mode = $state<'paper' | 'whiteboard'>('paper');
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
+	let icon = $state('');
+	let cover = $state('');
+	let fullWidth = $state(false);
+	let metaOpen = $state(false);
+	let exportOpen = $state(false);
 
 	const docId = $derived($page.params.id);
 
@@ -26,6 +34,7 @@
 	let titleSaveTimer: ReturnType<typeof setTimeout>;
 	let contentSaveTimer: ReturnType<typeof setTimeout>;
 	let tagSaveTimer: ReturnType<typeof setTimeout>;
+	let metaSaveTimer: ReturnType<typeof setTimeout>;
 
 	function saveTags() {
 		try {
@@ -60,6 +69,37 @@
 		try { localStorage.setItem(`enclave-mode-${docId}`, m); } catch { /* ignore */ }
 	}
 
+	function saveMeta() {
+		try {
+			invoke('upsert_block', {
+				id: `${docId}-meta`,
+				documentId: docId,
+				blockType: 'meta',
+				content: { icon, cover },
+				sortOrder: 3,
+			});
+		} catch (e) {
+			console.error('Failed to save page meta:', e);
+		}
+	}
+
+	function setIcon(next: string) {
+		icon = next;
+		clearTimeout(metaSaveTimer);
+		metaSaveTimer = setTimeout(saveMeta, 300);
+	}
+
+	function setCover(next: string) {
+		cover = next;
+		clearTimeout(metaSaveTimer);
+		metaSaveTimer = setTimeout(saveMeta, 300);
+	}
+
+	function toggleFullWidth() {
+		fullWidth = !fullWidth;
+		try { localStorage.setItem(`enclave-fullwidth-${docId}`, String(fullWidth)); } catch { /* ignore */ }
+	}
+
 	async function loadDocument() {
 		try {
 			document = await invoke<Document>('get_document', { id: docId });
@@ -76,6 +116,11 @@
 			if (tagsBlock?.content && Array.isArray((tagsBlock.content as any).tags)) {
 				tags = ((tagsBlock.content as any).tags as unknown[]).filter(t => typeof t === 'string');
 			}
+			const metaBlock = blocks.find(b => b.type === 'meta');
+			const meta = (metaBlock?.content as { icon?: string; cover?: string } | undefined) ?? {};
+			icon = meta.icon ?? '';
+			cover = meta.cover ?? '';
+			try { fullWidth = localStorage.getItem(`enclave-fullwidth-${docId}`) === 'true'; } catch { fullWidth = false; }
 			if (blocks.length > 0) {
 				const contentBlock = blocks.find(b => {
 					if (typeof b.content === 'object' && b.content !== null) {
@@ -187,10 +232,33 @@
 		if (!editor) return;
 		try {
 			const md = htmlToMarkdown(editor.getHTML());
+			exportOpen = false;
 			const ok = await exportMarkdownDialog(documentTitle, md);
 			if (ok) console.log('Exported');
 		} catch (e) {
 			console.error('Export failed:', e);
+		}
+	}
+
+	async function exportHtml() {
+		if (!editor) return;
+		try {
+			exportOpen = false;
+			const ok = await exportHtmlDialog(documentTitle, editor.getHTML());
+			if (ok) console.log('Exported');
+		} catch (e) {
+			console.error('Export failed:', e);
+		}
+	}
+
+	function printPage() {
+		exportOpen = false;
+		try {
+			// ponytail: WebKitGTK may no-op window.print — HTML export is the
+			// reliable path; add a Rust PDF renderer when print is asked for.
+			window.print();
+		} catch (e) {
+			alert('Printing is not supported in this build — use HTML export instead.');
 		}
 	}
 
@@ -202,6 +270,8 @@
 			editorContent = undefined;
 			tags = [];
 			tagInput = '';
+			icon = '';
+			cover = '';
 			loadDocument();
 			loadBlocks();
 			loadPageList();
@@ -225,8 +295,16 @@
 {#if loading}
 	<div class="loading">Loading…</div>
 {:else if document}
-	<div class="document-page">
+	<div class="document-page" class:full-width={fullWidth}>
+		{#if mode === 'paper' && cover}
+			<div class="doc-cover {cover}"></div>
+		{/if}
 		<div class="doc-topbar">
+			{#if mode === 'paper'}
+				<button class="icon-btn page-icon" class:has-icon={!!icon} onclick={() => (metaOpen = !metaOpen)} title="Page icon">
+					{#if icon}{icon}{:else}<Icon name="smile" size={15} />{/if}
+				</button>
+			{/if}
 			<input
 				type="text"
 				class="doc-title-input"
@@ -241,17 +319,58 @@
 					<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
 					<button class="mode-btn" class:active={mode === 'whiteboard'} onclick={() => setMode('whiteboard')} role="tab">Whiteboard</button>
 				</div>
+				<button class="icon-btn" class:active={fullWidth} onclick={toggleFullWidth} title="Toggle full width">
+					<Icon name="expand" size={15} />
+				</button>
 				<button class="icon-btn" class:faved={document.is_favorite} onclick={toggleFavorite} title={document.is_favorite ? 'Remove from favorites' : 'Add to favorites'}>
 					<Icon name="star" size={15} />
 				</button>
-				<button class="icon-btn" onclick={exportMarkdown} title="Export as Markdown">
-					<Icon name="download" size={15} />
+				<div class="export-wrap">
+					<button class="icon-btn" onclick={() => (exportOpen = !exportOpen)} title="Export page">
+						<Icon name="download" size={15} />
+					</button>
+					{#if exportOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="export-backdrop" onclick={() => (exportOpen = false)}></div>
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="export-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
+							<button class="export-item" onclick={exportMarkdown}>Markdown…</button>
+							<button class="export-item" onclick={exportHtml}>HTML…</button>
+							<button class="export-item" onclick={printPage}>Print (PDF)…</button>
+						</div>
+					{/if}
+				</div>
+				<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
+					<Icon name="trash" size={15} />
 				</button>
-			<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
-				<Icon name="trash" size={15} />
-			</button>
+			</div>
 		</div>
-	</div>
+
+		{#if mode === 'paper' && metaOpen}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="meta-backdrop" onclick={() => (metaOpen = false)}></div>
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="meta-popover" onclick={(e: MouseEvent) => e.stopPropagation()}>
+				<div class="meta-section-title">Page icon</div>
+				<EmojiPicker value={icon} onPick={setIcon} />
+				<div class="meta-section-title">Cover</div>
+				<div class="cover-row">
+					{#each COVERS as c}
+						<button
+							class="cover-swatch {c}"
+							class:selected={cover === c}
+							onclick={() => setCover(c)}
+							aria-label={`Cover ${c}`}
+						></button>
+					{/each}
+					{#if cover}
+						<button class="cover-remove" onclick={() => setCover('')} title="Remove cover">✕</button>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 	<div class="doc-tags">
 		{#each tags as t (t)}
@@ -290,6 +409,7 @@
 					<SlashMenu {editor} />
 					<BubbleMenu {editor} />
 					<PageLinkMenu {editor} allPages={pageList} />
+					<DragHandleMenu {editor} />
 				</div>
 
 				{#if backlinks.length > 0}
@@ -303,6 +423,8 @@
 						{/each}
 					</aside>
 				{/if}
+
+				<TocPanel {editor} />
 			</div>
 		{:else}
 			<Whiteboard docId={docId!} />
@@ -377,6 +499,142 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
+	}
+
+	.document-page.full-width {
+		max-width: 1600px;
+	}
+
+	/* ── Cover ── */
+	.doc-cover {
+		height: 140px;
+		border-radius: var(--radius-lg);
+		margin-top: 16px;
+		flex-shrink: 0;
+	}
+
+	.grad-0 { background: linear-gradient(135deg, #7c6ff0, #4fc3f7); }
+	.grad-1 { background: linear-gradient(135deg, #f0a45c, #f0608c); }
+	.grad-2 { background: linear-gradient(135deg, #57d3a3, #2f9e77); }
+	.grad-3 { background: linear-gradient(135deg, #8b5cf6, #ec4899); }
+	.grad-4 { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+	.grad-5 { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
+
+	/* ── Page icon & meta popover ── */
+	.page-icon {
+		font-size: 20px;
+		flex-shrink: 0;
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+	}
+
+	.page-icon.has-icon { background: var(--color-surface-hover); }
+
+	.meta-popover {
+		position: fixed;
+		z-index: 320;
+		top: 76px;
+		left: 50%;
+		transform: translateX(-50%);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		box-shadow: var(--shadow-lg);
+		padding: 12px 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.meta-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 310;
+		background: var(--color-overlay);
+	}
+
+	.meta-section-title {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--color-text-faint);
+	}
+
+	.cover-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.cover-swatch {
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+		border: 2px solid transparent;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.cover-swatch.selected {
+		border-color: var(--color-text);
+	}
+
+	.cover-remove {
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 12px;
+	}
+
+	/* ── Export menu ── */
+	.export-wrap {
+		position: relative;
+		display: flex;
+	}
+
+	.export-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 290;
+	}
+
+	.export-menu {
+		position: absolute;
+		z-index: 291;
+		top: calc(100% + 4px);
+		right: 0;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+		padding: 5px;
+		min-width: 150px;
+	}
+
+	.export-item {
+		display: block;
+		width: 100%;
+		border: none;
+		background: none;
+		color: var(--color-text);
+		font-size: 13px;
+		font-family: inherit;
+		text-align: left;
+		padding: 6px 10px;
+		border-radius: 6px;
+		cursor: pointer;
+	}
+
+	.export-item:hover {
+		background: var(--color-surface-hover);
+	}
+
+	.icon-btn.active {
+		color: var(--color-accent);
+		background: var(--color-accent-subtle);
 	}
 
 	.doc-topbar {

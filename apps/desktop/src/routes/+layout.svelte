@@ -5,6 +5,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import type { Document } from '@enclave/ui';
 	import { theme } from '@enclave/ui';
+	import { ShortcutsDialog } from '@enclave/ui';
 	import Icon from '$lib/Icon.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
@@ -13,6 +14,7 @@
 	let { children } = $props();
 
 	let settingsOpen = $state(false);
+	let shortcutsOpen = $state(false);
 	theme.init();
 
 	let vaultUnlocked = $state(false);
@@ -137,9 +139,17 @@
 			e.preventDefault();
 			sidebarOpen = !sidebarOpen;
 		}
+		if (e.key === '?' && !mod) {
+			const tag = (e.target as HTMLElement)?.tagName;
+			if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
+				e.preventDefault();
+				shortcutsOpen = !shortcutsOpen;
+			}
+		}
 		if (e.key === 'Escape') {
 			commandPaletteOpen = false;
 			contextMenu = null;
+			shortcutsOpen = false;
 		}
 	}
 
@@ -451,6 +461,10 @@
 						<span class="palette-icon"><Icon name="chevronLeft" size={15} /></span>
 						<span>Toggle sidebar</span>
 					</button>
+					<button class="palette-item" onclick={() => { commandPaletteOpen = false; shortcutsOpen = true; }}>
+						<span class="palette-icon"><Icon name="text" size={15} /></span>
+						<span>Keyboard shortcuts…</span>
+					</button>
 				</div>
 			</div>
 		</div>
@@ -459,6 +473,8 @@
 {/if}
 
 <SettingsPanel bind:open={settingsOpen} onlock={() => (vaultUnlocked = false)} />
+
+<ShortcutsDialog bind:open={shortcutsOpen} />
 
 <style>
 	.app-shell {

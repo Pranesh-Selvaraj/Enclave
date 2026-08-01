@@ -1,4 +1,7 @@
 import StarterKit from '@tiptap/starter-kit';
+import CodeBlock from '@tiptap/extension-code-block';
+import { mount, unmount } from 'svelte';
+import CodeBlockView from './blocks/CodeBlockView.svelte';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -9,6 +12,8 @@ import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
 import { Database } from './extensions/database.js';
 import { Image } from './extensions/image.js';
 import { PageEmbed } from './extensions/page-embed.js';
+import { Bookmark } from './extensions/bookmark.js';
+import { DragHandle } from './extensions/drag-handle.js';
 
 /** Shared editor extension list — used by the editor and by HTML/JSON converters. */
 export function editorExtensions() {
@@ -25,7 +30,51 @@ export function editorExtensions() {
 		Database,
 		Image,
 		PageEmbed,
+		Bookmark,
 		SlashCommand,
 		PageLink,
+		DragHandle,
+		// Replaces starter-kit's bare codeBlock with the toolbar node view.
+		CodeBlock.extend({
+			addNodeView() {
+				return ({ node, editor, getPos }) => {
+					const dom = document.createElement('div');
+					const contentDOM = document.createElement('pre');
+					contentDOM.className = 'cb-pre';
+					let lang = node.attrs.language ?? 'plaintext';
+					const view = mount(CodeBlockView, {
+						target: dom,
+						props: {
+							language: lang,
+							contentDOM,
+							onLanguageChange: (next: string) => {
+								const pos = getPos();
+								if (pos == null) return;
+								lang = next;
+								editor.view.dispatch(
+									editor.state.tr.setNodeMarkup(pos, undefined, {
+										language: next === 'plaintext' ? null : next,
+									})
+								);
+							},
+						},
+					});
+					return {
+						dom,
+						contentDOM,
+						update(newNode) {
+							const next = newNode.attrs.language ?? 'plaintext';
+							if (next === lang) return true;
+							lang = next;
+							(view as unknown as { $set: (p: Record<string, unknown>) => void }).$set({ language: next });
+							return true;
+						},
+						destroy() {
+							unmount(view);
+						},
+					};
+				};
+			},
+		}),
 	];
 }

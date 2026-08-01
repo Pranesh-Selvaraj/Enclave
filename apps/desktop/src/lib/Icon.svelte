@@ -33,6 +33,11 @@
 		check: 'M5 13l4 4L19 7',
 		text: 'M4 6h16M12 6v14',
 		table: 'M4 4h16v16H4zM4 10h16M10 4v16',
+		expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+		bookmark: 'M6 3h12v18l-6-4-6 4z',
+		chevronDown: 'M5 9l7 7 7-7',
+		print: 'M6 8V3h12v5M6 15H3V8h18v7h-3M6 21h12v-6H6z',
+		smile: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8.5 10a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM15.5 10a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM8.8 14.5a5 5 0 0 0 6.4 0',
 	};
 </script>
 
