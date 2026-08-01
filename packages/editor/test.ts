@@ -1,5 +1,9 @@
-import { htmlToMarkdown } from './src/markdown.ts';
+import { htmlToMarkdown, rewriteTaskItems } from './src/markdown.ts';
 import * as assert from 'node:assert';
+import { marked } from 'marked';
+
+// markdownToJson's generateJSON half needs a DOM, so check the marked half
+// (the same transform) here in node.
 
 const html = `<h1>Hello World</h1>
 <p>This is a <strong>bold</strong> statement with <em>italic</em> text and <code>inline code</code>.</p>
@@ -47,6 +51,29 @@ assert.ok(dbMd.includes('| Ship database | 1 |'), 'table data row');
 assert.ok(dbMd.includes('| Write docs | 2 |'), 'table second row');
 assert.ok(!htmlToMarkdown('<div data-database="not-json"></div>').includes('|'), 'bad json yields no table');
 console.log('Database export: PASS\n');
+
+// Markdown import pipeline (marked + task-item rewrite)
+const importMd = `# Title
+
+- [ ] todo one
+- [x] done one
+- [ ] *italic task*
+
+\`\`\`js
+const a = 1;
+\`\`\`
+
+| A | B |
+| - | - |
+| 1 | 2 |`;
+const importHtml = rewriteTaskItems(marked.parse(importMd, { async: false }) as string);
+assert.ok(importHtml.includes('<li data-type="taskItem" data-checked="false">'), 'unchecked task item');
+assert.ok(importHtml.includes('<li data-type="taskItem" data-checked="true">'), 'checked task item');
+assert.ok(importHtml.includes('<em>italic task</em>'), 'inline markdown inside task');
+assert.ok(importHtml.includes('<pre><code class="language-js">'), 'fenced code with language');
+assert.ok(importHtml.includes('<table>'), 'markdown table');
+assert.ok(!/<li><input /.test(importHtml), 'no bare checkbox remains');
+console.log('Markdown import pipeline: PASS\n');
 
 console.log('Result:');
 console.log(md);

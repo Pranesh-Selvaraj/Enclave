@@ -1,4 +1,6 @@
 import TurndownService from 'turndown';
+import { marked } from 'marked';
+import type { JSONContent } from '@tiptap/core';
 
 const turndown = new TurndownService({
 	headingStyle: 'atx',
@@ -44,3 +46,34 @@ turndown.addRule('database', {
 		}
 	},
 });
+
+/**
+ * TipTap's TaskItem matches li[data-type=taskItem], marked only emits bare
+ * checkboxes — rewrite so `- [ ]` imports as interactive tasks.
+ */
+export function rewriteTaskItems(html: string): string {
+	return html.replace(
+		/<li><input (checked="" )?disabled="" type="checkbox">/g,
+		(_m: string, checked: string) => `<li data-type="taskItem" data-checked="${checked ? 'true' : 'false'}">`,
+	);
+}
+
+// The extension list drags in .svelte node views, so it's imported lazily —
+// keeps this module loadable in plain node (tests) and in the browser.
+async function withExtensions<T>(fn: (extensions: ReturnType<typeof import('./extensions.js')['editorExtensions']>) => T): Promise<T> {
+	const { editorExtensions } = await import('./extensions.js');
+	return fn(editorExtensions());
+}
+
+/** Convert a Markdown string to ProseMirror JSON. */
+export async function markdownToJson(md: string): Promise<JSONContent> {
+	const { generateJSON } = await import('@tiptap/html');
+	const html = rewriteTaskItems(marked.parse(md, { async: false }) as string);
+	return withExtensions((ext) => generateJSON(html, ext));
+}
+
+/** Convert ProseMirror JSON back to Markdown. */
+export async function jsonToMarkdown(json: JSONContent): Promise<string> {
+	const { generateHTML } = await import('@tiptap/html');
+	return withExtensions((ext) => htmlToMarkdown(generateHTML(json, ext)));
+}

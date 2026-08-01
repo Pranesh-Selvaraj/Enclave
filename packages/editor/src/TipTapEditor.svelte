@@ -1,17 +1,7 @@
 <script lang="ts">
-	import { Editor } from '@tiptap/core';
-	import StarterKit from '@tiptap/starter-kit';
-	import Placeholder from '@tiptap/extension-placeholder';
-	import TaskList from '@tiptap/extension-task-list';
-	import TaskItem from '@tiptap/extension-task-item';
-	import { SlashCommand } from './extensions/slash-command.js';
-	import { PageLink } from './extensions/page-link.js';
-	import { Callout } from './extensions/callout.js';
-	import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
-	import { Database } from './extensions/database.js';
-	import { Image } from './extensions/image.js';
-	import { PageEmbed } from './extensions/page-embed.js';
-	import { makeReactive } from './reactivity.js';
+import { Editor } from '@tiptap/core';
+import { editorExtensions } from './extensions.js';
+import { makeReactive } from './reactivity.js';
 
 	let {
 		content = undefined,
@@ -39,22 +29,7 @@
 
 		const instance = new Editor({
 			element,
-			extensions: [
-				StarterKit.configure({
-					heading: { levels: [1, 2, 3] },
-				}),
-				Placeholder.configure({ placeholder }),
-				TaskList,
-				TaskItem.configure({ nested: true }),
-				Callout,
-				ToggleBlock,
-				ToggleSummary,
-				Database,
-				Image,
-				PageEmbed,
-				SlashCommand,
-				PageLink,
-			],
+			extensions: editorExtensions(),
 			content: content as string | undefined,
 			editable,
 			autofocus,

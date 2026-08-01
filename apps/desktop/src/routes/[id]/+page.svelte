@@ -5,6 +5,7 @@
 	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
 	import { htmlToMarkdown } from '@enclave/editor';
+	import { exportMarkdownDialog } from '$lib/importExport.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
 
@@ -180,11 +181,9 @@
 	async function exportMarkdown() {
 		if (!editor) return;
 		try {
-			const html = editor.getHTML();
-			const md = htmlToMarkdown(html);
-			const data = Array.from(new TextEncoder().encode(md));
-			const path = await invoke<string>('export_file', { filename: `${documentTitle || 'untitled'}.md`, data });
-			console.log('Exported to', path);
+			const md = htmlToMarkdown(editor.getHTML());
+			const ok = await exportMarkdownDialog(documentTitle, md);
+			if (ok) console.log('Exported');
 		} catch (e) {
 			console.error('Export failed:', e);
 		}

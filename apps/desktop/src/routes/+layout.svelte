@@ -8,6 +8,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
+	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
 
 	let { children } = $props();
 
@@ -437,6 +438,14 @@
 					<button class="palette-item" onclick={() => { commandPaletteOpen = false; createDocument(); }}>
 						<span class="palette-icon"><Icon name="plus" size={15} /></span>
 						<span>New page</span>
+					</button>
+					<button class="palette-item" onclick={() => { commandPaletteOpen = false; importMarkdownFiles((n) => { loadDocuments(); loadTags(); if (n > 0) alert(`Imported ${n} page${n > 1 ? 's' : ''}`); }); }}>
+						<span class="palette-icon"><Icon name="download" size={15} /></span>
+						<span>Import Markdown…</span>
+					</button>
+					<button class="palette-item" onclick={() => { commandPaletteOpen = false; exportVaultAsMarkdown().then((n) => { if (n > 0) alert(`Exported ${n} pages`); }); }}>
+						<span class="palette-icon"><Icon name="upload" size={15} /></span>
+						<span>Export vault as Markdown…</span>
 					</button>
 					<button class="palette-item" onclick={() => { commandPaletteOpen = false; sidebarOpen = !sidebarOpen; }}>
 						<span class="palette-icon"><Icon name="chevronLeft" size={15} /></span>

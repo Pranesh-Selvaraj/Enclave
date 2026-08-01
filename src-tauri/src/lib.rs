@@ -209,6 +209,12 @@ fn import_markdown(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
 }
 
+/// Write bytes to a user-chosen path (markdown vault export, PNG saves).
+#[tauri::command]
+fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
+}
+
 fn sanitize_filename(name: &str) -> String {
     // is_alphanumeric is unicode-aware so CJK/accents survive; only path
     // separators and control chars are replaced.
@@ -332,6 +338,7 @@ async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_networ
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -351,8 +358,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // vault lifecycle
-            is_vault_initialized,
+            // vault lifecycle            is_vault_initialized,
             init_vault,
             unlock_vault,
             lock_vault,
@@ -369,6 +375,7 @@ pub fn run() {
             delete_block,
             // markdown import/export
             export_file,
+            write_file,
             import_markdown,
             // vault key
             store_vault_key,
