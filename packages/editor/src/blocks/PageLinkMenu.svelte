@@ -49,9 +49,10 @@
 	}
 
 	$effect(() => {
-		if (!editor) return;
+		const ed = editor;
+		if (!ed) return;
 		const checkState = () => {
-			const state = PageLinkPluginKey.getState(editor.state);
+			const state = PageLinkPluginKey.getState(ed.state);
 			if (state) {
 				query = state.query;
 				selectedIndex = 0;
@@ -61,8 +62,8 @@
 				visible = false;
 			}
 		};
-		editor.on('transaction', checkState);
-		return () => { editor.off('transaction', checkState); };
+		ed.on('transaction', checkState);
+		return () => { ed.off('transaction', checkState); };
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
