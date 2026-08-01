@@ -25,6 +25,7 @@
 		onclick={() => onPick('')}
 		title="No icon"
 		role="option"
+		aria-selected={value === ''}
 	>
 		—
 	</button>
@@ -35,6 +36,7 @@
 			onclick={() => onPick(e)}
 			title={e}
 			role="option"
+			aria-selected={value === e}
 		>
 			{e}
 		</button>

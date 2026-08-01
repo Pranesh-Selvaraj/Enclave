@@ -35,6 +35,7 @@
 			role="dialog"
 			aria-modal="true"
 			aria-label="Keyboard shortcuts"
+			tabindex="-1"
 			onclick={(e: MouseEvent) => e.stopPropagation()}
 		>
 			<div class="sd-header">

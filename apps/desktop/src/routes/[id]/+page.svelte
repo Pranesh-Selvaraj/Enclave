@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 	import { invoke } from '@tauri-apps/api/core';
 	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, TocPanel, DragHandleMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
@@ -27,6 +26,9 @@
 	let fullWidth = $state(false);
 	let metaOpen = $state(false);
 	let exportOpen = $state(false);
+	let infoOpen = $state(false);
+	let toast = $state<string | null>(null);
+	let toastTimer: ReturnType<typeof setTimeout>;
 
 	const docId = $derived($page.params.id);
 
@@ -35,6 +37,44 @@
 	let contentSaveTimer: ReturnType<typeof setTimeout>;
 	let tagSaveTimer: ReturnType<typeof setTimeout>;
 	let metaSaveTimer: ReturnType<typeof setTimeout>;
+
+	/** Run all pending debounced saves immediately (app close / tab hide). */
+	function flushPendingSaves() {
+		if (titleSaveTimer) {
+			clearTimeout(titleSaveTimer);
+			titleSaveTimer = undefined as never;
+			void saveTitle();
+		}
+		if (contentSaveTimer) {
+			clearTimeout(contentSaveTimer);
+			contentSaveTimer = undefined as never;
+			void saveContent();
+		}
+		if (tagSaveTimer) {
+			clearTimeout(tagSaveTimer);
+			tagSaveTimer = undefined as never;
+			void saveTags();
+		}
+		if (metaSaveTimer) {
+			clearTimeout(metaSaveTimer);
+			metaSaveTimer = undefined as never;
+			void saveMeta();
+		}
+	}
+
+	$effect(() => {
+		// `document` here is the page's local state — use window.document.
+		const onVis = () => {
+			if (window.document.visibilityState === 'hidden') flushPendingSaves();
+		};
+		const onUnload = () => flushPendingSaves();
+		window.document.addEventListener('visibilitychange', onVis);
+		window.addEventListener('beforeunload', onUnload);
+		return () => {
+			window.document.removeEventListener('visibilitychange', onVis);
+			window.removeEventListener('beforeunload', onUnload);
+		};
+	});
 
 	function saveTags() {
 		try {
@@ -210,12 +250,25 @@
 	}
 
 	async function deleteDocument() {
-		if (!document || !confirm(`Delete "${documentTitle || 'Untitled'}"? This cannot be undone.`)) return;
+		if (!document || !confirm(`Move "${documentTitle || 'Untitled'}" to trash?`)) return;
 		try {
-			await invoke('delete_document', { id: docId });
-			goto('/');
+			await invoke('archive_document', { id: docId });
+			// Stay on the page so the undo toast can act (Notion-style);
+			// the sidebar list refreshes on the next navigation.
+			toast = 'Moved to trash';
+			clearTimeout(toastTimer);
+			toastTimer = setTimeout(() => (toast = null), 5000);
 		} catch (e) {
-			console.error('Failed to delete document:', e);
+			console.error('Failed to archive document:', e);
+		}
+	}
+
+	async function undoArchive() {
+		try {
+			await invoke('restore_document', { id: docId });
+			toast = null;
+		} catch (e) {
+			console.error('Failed to restore document:', e);
 		}
 	}
 
@@ -260,6 +313,19 @@
 		} catch (e) {
 			alert('Printing is not supported in this build — use HTML export instead.');
 		}
+	}
+
+	let wordCount = $derived.by(() => {
+		if (!editor?.state) return 0;
+		const text = editor.state.doc.textContent;
+		return text.trim() ? text.trim().split(/\s+/).length : 0;
+	});
+
+	function formatDate(iso: string | undefined): string {
+		if (!iso) return '—';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return iso;
+		return d.toLocaleString();
 	}
 
 	$effect(() => {
@@ -325,6 +391,22 @@
 				<button class="icon-btn" class:faved={document.is_favorite} onclick={toggleFavorite} title={document.is_favorite ? 'Remove from favorites' : 'Add to favorites'}>
 					<Icon name="star" size={15} />
 				</button>
+				<div class="export-wrap">
+					<button class="icon-btn" onclick={() => (infoOpen = !infoOpen)} title="Page info">
+						<Icon name="info" size={15} />
+					</button>
+					{#if infoOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="export-backdrop" onclick={() => (infoOpen = false)}></div>
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="export-menu info-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
+							<div class="info-row"><span>Created</span><span>{formatDate(document.created_at)}</span></div>
+							<div class="info-row"><span>Modified</span><span>{formatDate(document.updated_at)}</span></div>
+							<div class="info-row"><span>Words</span><span>{wordCount}</span></div>
+						</div>
+					{/if}
+				</div>
 				<div class="export-wrap">
 					<button class="icon-btn" onclick={() => (exportOpen = !exportOpen)} title="Export page">
 						<Icon name="download" size={15} />
@@ -428,6 +510,13 @@
 			</div>
 		{:else}
 			<Whiteboard docId={docId!} />
+		{/if}
+
+		{#if toast}
+			<div class="toast" role="status">
+				<span>{toast}</span>
+				<button class="toast-undo" onclick={undoArchive}>Undo</button>
+			</div>
 		{/if}
 	</div>
 {:else}
@@ -630,6 +719,64 @@
 
 	.export-item:hover {
 		background: var(--color-surface-hover);
+	}
+
+	.info-menu {
+		width: 220px;
+		padding: 8px 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.info-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		font-size: 12px;
+	}
+
+	.info-row span:first-child {
+		color: var(--color-text-muted);
+	}
+
+	.info-row span:last-child {
+		color: var(--color-text);
+		text-align: right;
+	}
+
+	/* ── Toast ── */
+	.toast {
+		position: fixed;
+		bottom: 24px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 400;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		box-shadow: var(--shadow-lg);
+		padding: 10px 16px;
+		font-size: 13px;
+		color: var(--color-text);
+	}
+
+	.toast-undo {
+		border: none;
+		background: none;
+		color: var(--color-accent);
+		cursor: pointer;
+		font-size: 13px;
+		font-weight: 600;
+		font-family: inherit;
+		padding: 0;
+	}
+
+	.toast-undo:hover {
+		text-decoration: underline;
 	}
 
 	.icon-btn.active {

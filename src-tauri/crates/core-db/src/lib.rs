@@ -66,8 +66,103 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
             updated_at   TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_blocks_document
-         ON blocks(document_id, sort_order);",
+         ON blocks(document_id, sort_order);
+        CREATE VIRTUAL TABLE IF NOT EXISTS blocks_fts USING fts5(
+            doc_id UNINDEXED,
+            block_id UNINDEXED,
+            title,
+            content
+        );",
     )
+}
+
+/// Pragmas that make the vault fast on modern hardware without weakening
+/// SQLCipher encryption (WAL is encrypted in SQLCipher 4+).
+/// ponytail: single connection behind a Mutex, so no busy_timeout pressure
+/// today; it only costs one line to be ready for the async sync engine.
+fn set_perf_pragmas(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA temp_store = MEMORY;
+         PRAGMA busy_timeout = 5000;",
+    )
+}
+
+/// Plain-text extract of a doc block's JSON so the FTS index holds prose,
+/// not JSON keys or node-type names.
+fn extract_text(value: &serde_json::Value, out: &mut String) {
+    match value {
+        serde_json::Value::String(s) => out.push_str(s),
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                extract_text(v, out)
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                if k == "type" || k == "attrs" {
+                    continue;
+                }
+                extract_text(v, out)
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Build an FTS5 MATCH query: every token prefix-matched, AND-joined.
+/// Quotes inside the user input are escaped per the FTS5 string grammar.
+fn fts_match_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .map(|t| format!("\"{}\"*", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+// ── FTS sync (kept manual — 5 mutation sites, zero trigger cleverness) ──────
+
+fn fts_remove_doc(db: &Connection, doc_id: &str) -> rusqlite::Result<()> {
+    db.execute("DELETE FROM blocks_fts WHERE doc_id = ?1", rusqlite::params![doc_id])?;
+    Ok(())
+}
+
+fn fts_remove_block(db: &Connection, block_id: &str) -> rusqlite::Result<()> {
+    db.execute("DELETE FROM blocks_fts WHERE block_id = ?1", rusqlite::params![block_id])?;
+    Ok(())
+}
+
+fn fts_index_doc_title(db: &Connection, doc_id: &str, title: &str) -> rusqlite::Result<()> {
+    fts_remove_block(db, &format!("t:{doc_id}"))?;
+    db.execute(
+        "INSERT INTO blocks_fts (doc_id, block_id, title, content)
+         VALUES (?1, ?2, ?3, '')",
+        rusqlite::params![doc_id, format!("t:{doc_id}"), title],
+    )?;
+    Ok(())
+}
+
+fn fts_index_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
+    if block.block_type != "doc" {
+        return Ok(()); // only prose blocks are searchable
+    }
+    let mut text = String::new();
+    extract_text(&block.content, &mut text);
+    let title: String = db
+        .query_row(
+            "SELECT title FROM documents WHERE id = ?1",
+            rusqlite::params![block.document_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    fts_remove_block(db, &block.id)?;
+    db.execute(
+        "INSERT INTO blocks_fts (doc_id, block_id, title, content)
+         VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![block.document_id, block.id, title, text],
+    )?;
+    Ok(())
 }
 
 // ── Vault Lifecycle ─────────────────────────────────────────────────────────
@@ -83,6 +178,7 @@ pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to create database: {e}"))?;
     set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
     create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    set_perf_pragmas(&conn).map_err(|e| format!("Failed to set perf pragmas: {e}"))?;
     Ok(conn)
 }
 
@@ -98,6 +194,7 @@ pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
 
     // Ensure tables exist (idempotent — safe to call on every unlock)
     create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    set_perf_pragmas(&conn).map_err(|e| format!("Failed to set perf pragmas: {e}"))?;
 
     Ok(conn)
 }
@@ -142,7 +239,7 @@ pub fn insert_document(db: &Connection, doc: &Document) -> rusqlite::Result<()> 
             doc.is_favorite as i32, doc.is_archived as i32
         ],
     )?;
-    Ok(())
+    fts_index_doc_title(db, &doc.id, &doc.title)
 }
 
 pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at: &str) -> rusqlite::Result<()> {
@@ -150,13 +247,17 @@ pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at:
         "UPDATE documents SET title = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![title, updated_at, id],
     )?;
+    db.execute(
+        "UPDATE blocks_fts SET title = ?1 WHERE doc_id = ?2",
+        rusqlite::params![title, id],
+    )?;
     Ok(())
 }
 
 pub fn delete_document(db: &Connection, id: &str) -> rusqlite::Result<()> {
     db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![id])?;
     db.execute("DELETE FROM documents WHERE id = ?1", rusqlite::params![id])?;
-    Ok(())
+    fts_remove_doc(db, id)
 }
 
 // ── Block Queries ───────────────────────────────────────────────────────────
@@ -196,12 +297,37 @@ pub fn insert_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
             block.content.to_string(), block.sort_order, block.created_at, block.updated_at
         ],
     )?;
-    Ok(())
+    fts_index_block(db, block)
+}
+
+/// Upsert a block (the shape the Tauri command uses) and keep the FTS index
+/// in sync. created_at is preserved by not touching it in DO UPDATE.
+pub fn upsert_block(db: &Connection, block: &Block) -> rusqlite::Result<Block> {
+    db.execute(
+        "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+             document_id = excluded.document_id,
+             type = excluded.type,
+             content = excluded.content,
+             sort_order = excluded.sort_order,
+             updated_at = excluded.updated_at",
+        rusqlite::params![
+            block.id, block.document_id, block.block_type,
+            block.content.to_string(), block.sort_order, block.updated_at
+        ],
+    )?;
+    fts_index_block(db, block)?;
+    db.query_row(
+        "SELECT b.id, b.document_id, b.content, b.type, b.sort_order, b.created_at, b.updated_at FROM blocks b WHERE b.id = ?1",
+        rusqlite::params![block.id],
+        row_to_block,
+    )
 }
 
 pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
-    Ok(())
+    fts_remove_block(db, id)
 }
 
 // ── Backlinks ────────────────────────────────────────────────────────────────
@@ -293,18 +419,21 @@ pub struct SearchResult {
 }
 
 pub fn search_all(db: &Connection, query: &str) -> rusqlite::Result<Vec<SearchResult>> {
-    let like_pattern = format!("%{}%", like_escape(query));
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(vec![]);
+    }
+    let match_q = fts_match_query(trimmed);
     let mut stmt = db.prepare(
-        "SELECT d.id, d.title, b.content, 'content' AS type FROM blocks b
-         JOIN documents d ON d.id = b.document_id
-         WHERE b.content LIKE ?1 ESCAPE '\\' AND d.is_archived = 0
-         UNION ALL
-         SELECT d.id, d.title, '', 'title' AS type FROM documents d
-         WHERE d.title LIKE ?1 ESCAPE '\\' AND d.is_archived = 0
-         ORDER BY type DESC
-         LIMIT 30"
+        "SELECT doc_id, title, content,
+                CASE WHEN block_id LIKE 't:%' THEN 'title' ELSE 'content' END AS type
+         FROM blocks_fts
+         WHERE blocks_fts MATCH ?1
+           AND doc_id IN (SELECT id FROM documents WHERE is_archived = 0)
+         ORDER BY rank
+         LIMIT 30",
     )?;
-    let rows = stmt.query_map(rusqlite::params![like_pattern], |row| {
+    let rows = stmt.query_map(rusqlite::params![match_q], |row| {
         Ok(SearchResult {
             doc_id: row.get(0)?,
             doc_title: row.get(1)?,
@@ -312,6 +441,33 @@ pub fn search_all(db: &Connection, query: &str) -> rusqlite::Result<Vec<SearchRe
             r#type: row.get(3)?,
         })
     })?;
+    rows.collect()
+}
+
+// ── Trash (soft delete) ────────────────────────────────────────────────────────
+// is_archived has always existed; these make it usable as a trash can.
+
+pub fn archive_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET is_archived = 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![updated_at, id],
+    )?;
+    Ok(())
+}
+
+pub fn restore_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET is_archived = 0, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![updated_at, id],
+    )?;
+    Ok(())
+}
+
+pub fn query_archived_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
+    let mut stmt = db.prepare(&format!(
+        "{DOC_COLS} WHERE is_archived = 1 ORDER BY updated_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_document)?;
     rows.collect()
 }
 
@@ -504,6 +660,99 @@ mod tests {
         assert_eq!(d1.tags, vec!["work", "urgent"]);
         assert!(tags.iter().any(|t| t.doc_id == "d2" && t.tags == vec!["work"]));
         assert!(tags.iter().all(|t| t.doc_id != "d3"), "archived doc's tags excluded");
+    }
+
+    #[test]
+    fn fts_search_ranks_and_excludes_archived() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let now = "t";
+        let doc = Document {
+            id: "d1".into(),
+            title: "Meeting Notes".into(),
+            created_at: now.into(),
+            updated_at: now.into(),
+            is_favorite: false,
+            is_archived: false,
+        };
+        insert_document(&conn, &doc).unwrap();
+        let block = Block {
+            id: "b1".into(),
+            document_id: "d1".into(),
+            block_type: "doc".into(),
+            content: serde_json::json!({
+                "type": "doc",
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Quarterly review with the sales team"}]}]
+            }),
+            sort_order: 0.0,
+            created_at: now.into(),
+            updated_at: now.into(),
+        };
+        insert_block(&conn, &block).unwrap();
+        // Non-prose blocks (tags/meta/whiteboard) must not be indexed
+        insert_block(&conn, &Block {
+            id: "b2".into(),
+            document_id: "d1".into(),
+            block_type: "whiteboard".into(),
+            content: serde_json::json!({"type":"doc","content":[{"type":"text","text":"quarterly secret"}]}),
+            sort_order: 1.0,
+            created_at: now.into(),
+            updated_at: now.into(),
+        }).unwrap();
+
+        let hits = search_all(&conn, "quarterly").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].doc_id, "d1");
+        assert!(!hits[0].block_content.contains("secret"), "whiteboard JSON not indexed");
+        assert!(hits[0].block_content.contains("sales team"));
+
+        // Title search matches the title-only row
+        let by_title = search_all(&conn, "meeting").unwrap();
+        assert!(by_title.iter().any(|h| h.r#type == "title"));
+
+        // Renaming the doc must re-index the title
+        update_document_title(&conn, "d1", "Renamed Doc", now).unwrap();
+        assert!(search_all(&conn, "renamed").unwrap().len() >= 1);
+        assert!(search_all(&conn, "meeting").unwrap().is_empty());
+
+        // Updating block content refreshes the index
+        upsert_block(&conn, &Block {
+            id: "b1".into(),
+            document_id: "d1".into(),
+            block_type: "doc".into(),
+            content: serde_json::json!({"type":"doc","content":[]}),
+            sort_order: 0.0,
+            created_at: now.into(),
+            updated_at: now.into(),
+        }).unwrap();
+        assert!(search_all(&conn, "quarterly").unwrap().is_empty());
+
+        // Archived docs drop out of search but stay in the trash
+        archive_document(&conn, "d1", now).unwrap();
+        assert!(search_all(&conn, "renamed").unwrap().is_empty());
+        let trash = query_archived_documents(&conn).unwrap();
+        assert_eq!(trash.len(), 1);
+        restore_document(&conn, "d1", now).unwrap();
+        assert!(search_all(&conn, "renamed").unwrap().len() >= 1);
+    }
+
+    #[test]
+    fn fts_query_escapes_user_input() {
+        assert_eq!(fts_match_query("hello"), "\"hello\"*");
+        assert_eq!(fts_match_query("a b"), "\"a\"* AND \"b\"*");
+        // Double quotes become doubled (FTS5 string escaping), no injection
+        assert_eq!(fts_match_query("say \"hi\""), "\"say\"* AND \"\"\"hi\"\"\"*");
+    }
+
+    #[test]
+    fn extract_text_walks_doc_json() {
+        let v = serde_json::json!({"type":"doc","content":[
+            {"type":"paragraph","content":[{"type":"text","text":"alpha "}]},
+            {"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"beta"}]}
+        ]});
+        let mut out = String::new();
+        extract_text(&v, &mut out);
+        assert_eq!(out, "alpha beta");
     }
 
     #[test]

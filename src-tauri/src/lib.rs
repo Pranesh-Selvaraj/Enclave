@@ -128,6 +128,29 @@ fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), Stri
 }
 
 #[tauri::command(async)]
+fn archive_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::archive_document(db, &id, &now).map_err(|e| e.to_string())?;
+        core_db::query_document(db, &id).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command(async)]
+fn restore_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::restore_document(db, &id, &now).map_err(|e| e.to_string())?;
+        core_db::query_document(db, &id).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command(async)]
+fn get_archived_documents(state: tauri::State<AppState>) -> Result<Vec<core_db::Document>, String> {
+    with_db(&state, |db| core_db::query_archived_documents(db).map_err(|e| e.to_string()))
+}
+
+#[tauri::command(async)]
 fn update_document_title(
     state: tauri::State<AppState>,
     id: String,
@@ -161,29 +184,16 @@ fn upsert_block(
 ) -> Result<core_db::Block, String> {
     with_db(&state, |db| {
         let now = chrono::Utc::now().to_rfc3339();
-
-        // Plain upsert: OR REPLACE would delete+reinsert (FK cascade landmine
-        // and it silently swallows the ON CONFLICT clause). created_at is
-        // preserved by not touching it in DO UPDATE.
-        db.execute(
-            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-             ON CONFLICT(id) DO UPDATE SET
-                 document_id = excluded.document_id,
-                 type = excluded.type,
-                 content = excluded.content,
-                 sort_order = excluded.sort_order,
-                 updated_at = excluded.updated_at",
-            rusqlite::params![id, document_id, block_type, content.to_string(), sort_order, now],
-        )
-        .map_err(|e| e.to_string())?;
-
-        db.query_row(
-            "SELECT b.id, b.document_id, b.content, b.type, b.sort_order, b.created_at, b.updated_at FROM blocks b WHERE b.id = ?1",
-            rusqlite::params![id],
-            core_db::row_to_block,
-        )
-        .map_err(|e| e.to_string())
+        let block = core_db::Block {
+            id,
+            document_id,
+            block_type,
+            content,
+            sort_order,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        core_db::upsert_block(db, &block).map_err(|e| e.to_string())
     })
 }
 
@@ -369,6 +379,9 @@ pub fn run() {
             get_document,
             create_document,
             delete_document,
+            archive_document,
+            restore_document,
+            get_archived_documents,
             update_document_title,
             // blocks
             get_blocks,

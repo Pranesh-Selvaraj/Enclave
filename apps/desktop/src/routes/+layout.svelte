@@ -19,6 +19,7 @@
 
 	let vaultUnlocked = $state(false);
 	let documents = $state<Document[]>([]);
+	let archivedDocs = $state<Document[]>([]);
 	let sidebarOpen = $state(true);
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
@@ -59,6 +60,36 @@
 		}
 	}
 
+	async function loadArchived() {
+		try {
+			archivedDocs = await invoke<Document[]>('get_archived_documents');
+		} catch (e) {
+			console.error('Failed to load trash:', e);
+		}
+	}
+
+	async function restoreDocument(id: string) {
+		try {
+			await invoke('restore_document', { id });
+			await loadDocuments();
+			await loadArchived();
+			loadTags();
+		} catch (e) {
+			console.error('Failed to restore document:', e);
+		}
+	}
+
+	async function deleteDocumentPermanently(id: string) {
+		const doc = archivedDocs.find(d => d.id === id);
+		if (!confirm(`Permanently delete "${doc?.title || 'Untitled'}"? This cannot be undone.`)) return;
+		try {
+			await invoke('delete_document', { id });
+			await loadArchived();
+		} catch (e) {
+			console.error('Failed to delete document:', e);
+		}
+	}
+
 	async function createDocument() {
 		try {
 			const doc = await invoke<Document>('create_document', { title: 'Untitled' });
@@ -93,13 +124,14 @@
 
 	async function deleteDocument(id: string) {
 		const doc = documents.find(d => d.id === id);
-		if (!confirm(`Delete "${doc?.title || 'Untitled'}"? This cannot be undone.`)) return;
+		if (!confirm(`Move "${doc?.title || 'Untitled'}" to trash?`)) return;
 		try {
-			await invoke('delete_document', { id });
+			await invoke('archive_document', { id });
 			await loadDocuments();
+			await loadArchived();
 			loadTags();
 		} catch (e) {
-			console.error('Failed to delete document:', e);
+			console.error('Failed to archive document:', e);
 		}
 	}
 
@@ -170,15 +202,19 @@
 		invoke<{ doc_id: string; doc_title: string; block_content: string; type: string }[]>('search_all', { query: q })
 			.then((rows) => {
 				if (q !== debouncedQuery.trim()) return; // superseded by a newer keystroke
+				// FTS ranks rows interleaved — title rows always win, content
+				// rows only fill in a snippet when no snippet exists yet.
 				const byId = new Map<string, { doc_id: string; doc_title: string; snippet: string }>();
 				for (const r of rows) {
+					const snippet = r.type === 'title' ? '' : r.block_content.replace(/\s+/g, ' ').slice(0, 140);
 					const existing = byId.get(r.doc_id);
-					if (existing && existing.snippet) continue; // keep the title match
-					byId.set(r.doc_id, {
-						doc_id: r.doc_id,
-						doc_title: r.doc_title,
-						snippet: r.type === 'title' ? '' : r.block_content.replace(/\s+/g, ' ').slice(0, 140),
-					});
+					if (r.type === 'title' || !existing || existing.snippet === '') {
+						byId.set(r.doc_id, {
+							doc_id: r.doc_id,
+							doc_title: r.doc_title,
+							snippet: r.type === 'title' && existing ? existing.snippet : snippet,
+						});
+					}
 				}
 				searchResults = [...byId.values()].slice(0, 12);
 			})
@@ -202,6 +238,7 @@
 	$effect(() => {
 		if (vaultUnlocked) {
 			loadDocuments();
+			loadArchived();
 			loadTags();
 		}
 	});
@@ -327,6 +364,32 @@
 				</div>
 			{/if}
 
+			{#if archivedDocs.length > 0}
+				<div class="pages-section trash-section">
+					<div class="section-head">
+						<span class="section-title">Trash</span>
+					</div>
+					<div class="page-tree">
+						{#each archivedDocs as doc (doc.id)}
+							<div class="tree-item" title={doc.title || 'Untitled'}>
+								<span class="tree-item-icon">
+									<Icon name="trash" size={14} />
+								</span>
+								<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+								<span class="tree-item-actions">
+									<button class="row-btn" onclick={() => restoreDocument(doc.id)} title="Restore">
+										<Icon name="upload" size={13} />
+									</button>
+									<button class="row-btn danger-row" onclick={() => deleteDocumentPermanently(doc.id)} title="Delete permanently">
+										<Icon name="trash" size={13} />
+									</button>
+								</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			<div class="sidebar-footer">
 				<button class="new-page-btn" onclick={createDocument} title="New page (Ctrl+N)">
 					<Icon name="plus" size={15} />
@@ -414,7 +477,7 @@
 					<kbd class="palette-kbd">esc</kbd>
 				</div>
 				<div class="palette-results">
-					<div class="palette-group-title">{searchQuery.trim() ? 'Results' : 'Pages'}</div>
+					<div class="palette-group-title">{searchQuery.trim() ? 'Results' : 'Recent'}</div>
 					{#if searchQuery.trim() && searchResults}
 						{#each searchResults as r (r.doc_id)}
 							<a href="/{r.doc_id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
@@ -464,6 +527,10 @@
 					<button class="palette-item" onclick={() => { commandPaletteOpen = false; shortcutsOpen = true; }}>
 						<span class="palette-icon"><Icon name="text" size={15} /></span>
 						<span>Keyboard shortcuts…</span>
+					</button>
+					<button class="palette-item" onclick={() => { commandPaletteOpen = false; theme.toggle(); }}>
+						<span class="palette-icon"><Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} /></span>
+						<span>Toggle theme</span>
 					</button>
 				</div>
 			</div>
@@ -641,6 +708,7 @@
 		padding: 0;
 	}
 	.row-btn:hover { background: var(--color-surface-active); color: var(--color-text); }
+	.row-btn.danger-row:hover { color: var(--color-danger); background: rgba(229, 83, 75, 0.1); }
 
 	.tree-empty {
 		font-size: 13px;
