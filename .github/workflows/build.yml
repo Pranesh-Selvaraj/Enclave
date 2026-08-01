@@ -9,7 +9,47 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: npm install
+        run: npm ci
+
+      - name: Rust tests
+        run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+
+      - name: Svelte typecheck
+        run: npm run check -w @enclave/desktop
+
+      - name: TypeScript tests
+        run: |
+          for p in packages/editor packages/crypto packages/sync-engine; do
+            npx tsx "$p/test.ts"
+          done
+          for t in apps/desktop/tests/*.test.ts; do
+            npx tsx "$t"
+          done
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +78,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
 
       - name: Install Linux system deps
         if: runner.os == 'Linux'
