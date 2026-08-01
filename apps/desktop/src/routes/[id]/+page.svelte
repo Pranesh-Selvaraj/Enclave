@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { invoke } from '@tauri-apps/api/core';
-	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, TocPanel, DragHandleMenu } from '@enclave/editor';
+	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
 	import { htmlToMarkdown } from '@enclave/editor';
 	import { EmojiPicker } from '@enclave/ui';
@@ -21,6 +21,8 @@
 	let mode = $state<'paper' | 'whiteboard'>('paper');
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
+	let comments = $state<{ id: string; text: string; at: string }[]>([]);
+	let commentInput = $state('');
 	let icon = $state('');
 	let cover = $state('');
 	let fullWidth = $state(false);
@@ -88,6 +90,33 @@
 		} catch (e) {
 			console.error('Failed to save tags:', e);
 		}
+	}
+
+	function saveComments() {
+		try {
+			invoke('upsert_block', {
+				id: `${docId}-comments`,
+				documentId: docId,
+				blockType: 'comments',
+				content: { comments },
+				sortOrder: 4,
+			});
+		} catch (e) {
+			console.error('Failed to save comments:', e);
+		}
+	}
+
+	function addComment() {
+		const text = commentInput.trim();
+		if (!text) return;
+		comments = [...comments, { id: crypto.randomUUID(), text, at: new Date().toISOString() }];
+		commentInput = '';
+		saveComments();
+	}
+
+	function removeComment(id: string) {
+		comments = comments.filter((c) => c.id !== id);
+		saveComments();
 	}
 
 	function addTag() {
@@ -160,6 +189,11 @@
 			const meta = (metaBlock?.content as { icon?: string; cover?: string } | undefined) ?? {};
 			icon = meta.icon ?? '';
 			cover = meta.cover ?? '';
+			const commentsBlock = blocks.find(b => b.type === 'comments');
+			if (commentsBlock?.content && Array.isArray((commentsBlock.content as any).comments)) {
+				comments = ((commentsBlock.content as any).comments as { id: string; text: string; at: string }[])
+					.filter((c) => c && typeof c.text === 'string');
+			}
 			try { fullWidth = localStorage.getItem(`enclave-fullwidth-${docId}`) === 'true'; } catch { fullWidth = false; }
 			if (blocks.length > 0) {
 				const contentBlock = blocks.find(b => {
@@ -258,6 +292,22 @@
 		clearTimeout(contentSaveTimer);
 		contentSaveTimer = setTimeout(saveContent, 1000);
 	}
+
+	// Mention chips navigate to their page on click.
+	$effect(() => {
+		const handler = (e: MouseEvent) => {
+			const el = (e.target as HTMLElement).closest('[data-mention]') as HTMLElement | null;
+			if (!el) return;
+			e.preventDefault();
+			const id = el.getAttribute('data-doc-id');
+			if (id && id !== docId) {
+				flushPendingSaves();
+				window.location.href = `/${id}`;
+			}
+		};
+		window.document.addEventListener('click', handler);
+		return () => window.document.removeEventListener('click', handler);
+	});
 
 	async function deleteDocument() {
 		if (!document || !confirm(`Move "${documentTitle || 'Untitled'}" to trash?`)) return;
@@ -488,6 +538,31 @@
 		/>
 	</div>
 
+			<div class="doc-comments">
+				{#each comments as c (c.id)}
+					<div class="comment-item">
+						<div class="comment-text">{c.text}</div>
+						<div class="comment-meta">
+							<span>{new Date(c.at).toLocaleString()}</span>
+							<button class="comment-del" aria-label="Delete comment" onclick={() => removeComment(c.id)}>✕</button>
+						</div>
+					</div>
+				{/each}
+				{#if comments.length === 0}
+					<div class="comments-empty">No comments yet.</div>
+				{/if}
+				<div class="comment-add">
+					<input
+						class="comment-input"
+						bind:value={commentInput}
+						placeholder="Write a comment…"
+						aria-label="Write a comment"
+						onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
+					/>
+					<button class="comment-submit" onclick={addComment} disabled={!commentInput.trim()}>Add</button>
+				</div>
+			</div>
+
 		{#if mode === 'paper'}
 			<div class="doc-body">
 				<div class="doc-editor">
@@ -501,6 +576,7 @@
 					<SlashMenu {editor} />
 					<BubbleMenu {editor} />
 					<PageLinkMenu {editor} allPages={pageList} />
+					<MentionMenu {editor} allPages={pageList} />
 					<DragHandleMenu {editor} />
 				</div>
 
@@ -866,8 +942,58 @@
 	.icon-btn.faved { color: var(--color-warning); }
 	.icon-btn.danger:hover { color: var(--color-danger); background: rgba(229, 83, 75, 0.1); }
 
-	.doc-body {
+	.doc-comments {
+		max-width: 720px;
+		margin: 0 auto 24px;
+		padding: 0 40px;
 		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.comments-head {
+		font-size: 12px; font-weight: 600; text-transform: uppercase;
+		letter-spacing: 0.05em; color: var(--color-text-faint);
+		margin-top: 12px;
+	}
+	.comment-item {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 10px 12px;
+	}
+	.comment-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+	.comment-meta {
+		display: flex; justify-content: space-between; align-items: center;
+		margin-top: 6px; font-size: 11px; color: var(--color-text-faint);
+	}
+	.comment-del {
+		background: none; border: none; color: var(--color-text-faint);
+		cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 4px;
+	}
+	.comment-del:hover { background: rgba(229, 83, 75, 0.12); color: var(--color-danger); }
+	.comments-empty { font-size: 13px; color: var(--color-text-faint); }
+	.comment-add { display: flex; gap: 8px; }
+	.comment-input {
+		flex: 1;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		color: var(--color-text);
+		font-size: 14px;
+		font-family: inherit;
+		padding: 8px 12px;
+		outline: none;
+	}
+	.comment-input:focus { border-color: var(--color-accent); }
+	.comment-submit {
+		background: var(--color-accent); color: #fff;
+		border: none; border-radius: var(--radius-md);
+		padding: 8px 16px; font-size: 13px; font-weight: 500;
+		cursor: pointer; font-family: inherit;
+	}
+	.comment-submit:disabled { opacity: 0.5; cursor: default; }
+
+	.doc-body {		display: flex;
 		gap: 32px;
 		flex: 1;
 		min-height: 0;

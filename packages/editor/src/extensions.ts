@@ -7,6 +7,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { SlashCommand } from './extensions/slash-command.js';
 import { PageLink } from './extensions/page-link.js';
+import { Mention, MentionTrigger } from './extensions/mention.js';
 import { Callout } from './extensions/callout.js';
 import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
 import { Database } from './extensions/database.js';
@@ -33,6 +34,8 @@ export function editorExtensions() {
 		Bookmark,
 		SlashCommand,
 		PageLink,
+		Mention,
+		MentionTrigger,
 		DragHandle,
 		// Replaces starter-kit's bare codeBlock with the toolbar node view.
 		CodeBlock.extend({

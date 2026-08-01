@@ -203,4 +203,24 @@ import { makeReactive } from './reactivity.js';
 	:global(.tiptap-editor details[data-toggle] > summary::marker) {
 		color: var(--color-text-muted);
 	}
+
+	/* ── Mention chips ── */
+	:global(.tiptap-editor .mention-chip) {
+		display: inline;
+		background: var(--color-accent-subtle);
+		color: var(--color-accent);
+		border-radius: 999px;
+		padding: 1px 8px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+	:global(.tiptap-editor .mention-chip:hover) {
+		background: var(--color-accent);
+		color: #fff;
+	}
+	:global(.tiptap-editor .mention-chip.selected) {
+		background: var(--color-accent);
+		color: #fff;
+	}
 </style>

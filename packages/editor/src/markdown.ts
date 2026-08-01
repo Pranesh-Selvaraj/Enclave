@@ -14,6 +14,16 @@ export function htmlToMarkdown(html: string): string {
 	return turndown.turndown(html);
 }
 
+// Mentions export as wikilinks so backlinks/graph still see them.
+turndown.addRule('mention', {
+	filter: (node) => node.nodeName === 'SPAN' && (node as HTMLElement).hasAttribute('data-mention'),
+	replacement: (_content, node) => {
+		const el = node as HTMLElement;
+		const title = el.getAttribute('data-title') ?? '';
+		return title ? `[[${title}]]` : '';
+	},
+});
+
 // Render page embeds as links in exports.
 turndown.addRule('pageEmbed', {
 	filter: (node) => node.nodeName === 'DIV' && (node as HTMLElement).hasAttribute('data-page-embed'),
