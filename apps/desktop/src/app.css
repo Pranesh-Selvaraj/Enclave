@@ -11,7 +11,7 @@
 	--color-text-faint: #6a6a72;
 	--color-accent: #7c6cf0;
 	--color-accent-hover: #8d7ff2;
-	--color-accent-subtle: rgba(124, 108, 240, 0.13);
+	--color-accent-subtle: color-mix(in srgb, var(--color-accent) 13%, transparent);
 	--color-danger: #e5534b;
 	--color-warning: #d9a53f;
 	--color-success: #3ec97e;
@@ -42,7 +42,6 @@
 	--color-text-faint: #b0b0b6;
 	--color-accent: #6b5ce7;
 	--color-accent-hover: #5a4bd6;
-	--color-accent-subtle: rgba(107, 92, 231, 0.09);
 	--color-danger: #d3382f;
 	--color-warning: #a8780e;
 	--color-success: #2e8f57;
@@ -52,6 +51,17 @@
 	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.14);
 	--color-overlay: rgba(0, 0, 0, 0.35);
 }
+
+/* Appearance presets — applied via data-* attributes on <html> */
+[data-accent="blue"] { --color-accent: #4f8ef7; --color-accent-hover: #6ba0f9; }
+[data-accent="green"] { --color-accent: #2fbf71; --color-accent-hover: #4cca88; }
+[data-accent="teal"] { --color-accent: #2bb6b6; --color-accent-hover: #45c6c6; }
+[data-accent="orange"] { --color-accent: #e8873a; --color-accent-hover: #ee9b58; }
+[data-accent="red"] { --color-accent: #e5534b; --color-accent-hover: #ea6d66; }
+
+[data-font="system"] { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+[data-font="serif"] { --font-sans: Georgia, 'Times New Roman', serif; }
+[data-font="mono"] { --font-sans: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
 
 html, body {
 	height: 100%;

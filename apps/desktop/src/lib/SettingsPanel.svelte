@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
 	import { Button } from '@enclave/ui';
-	import { theme } from '@enclave/ui';
+	import { theme, ACCENTS, FONTS, DENSITIES } from '@enclave/ui';
 
 	let {
 		open = $bindable(false),
@@ -44,6 +44,37 @@
 					<button class="theme-toggle" onclick={() => theme.toggle()}>
 						{theme.value === 'dark' ? '☀ Light' : '🌙 Dark'}
 					</button>
+				</div>
+				<div class="setting-row">
+					<span>Accent color</span>
+					<div class="swatch-row">
+						{#each ACCENTS as a (a.id)}
+							<button
+								class="swatch"
+								class:active={theme.accent === a.id}
+								style={`background: ${a.color}`}
+								title={a.id}
+								aria-label={`Accent ${a.id}`}
+								onclick={() => (theme.accent = a.id)}
+							></button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Font</span>
+					<div class="seg-row">
+						{#each FONTS as f (f)}
+							<button class="seg" class:active={theme.font === f} onclick={() => (theme.font = f)}>{f}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Sidebar width</span>
+					<div class="seg-row">
+						{#each DENSITIES as d (d)}
+							<button class="seg" class:active={theme.density === d} onclick={() => (theme.density = d)}>{d}</button>
+						{/each}
+					</div>
 				</div>
 			</div>
 
@@ -124,6 +155,22 @@
 		border-radius: var(--radius-md); color: var(--color-text);
 		padding: 4px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
 	}
+	.setting-row { margin: 10px 0; }
+	.swatch-row { display: flex; gap: 6px; }
+	.swatch {
+		width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
+		cursor: pointer; padding: 0;
+	}
+	.swatch.active { border-color: var(--color-text); }
+	.swatch:hover { transform: scale(1.15); }
+	.seg-row { display: flex; gap: 4px; }
+	.seg {
+		background: var(--color-surface-hover); border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm); color: var(--color-text-muted);
+		padding: 3px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+		text-transform: capitalize;
+	}
+	.seg.active { background: var(--color-accent-subtle); color: var(--color-accent); border-color: var(--color-accent); }
 	.danger-btn {
 		background: none; border: 1px solid var(--color-danger); color: var(--color-danger);
 		border-radius: var(--radius-md); padding: 4px 12px; font-size: 13px;

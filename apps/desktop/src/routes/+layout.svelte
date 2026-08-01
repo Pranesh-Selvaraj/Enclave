@@ -478,6 +478,8 @@
 		transition: width 0.2s, min-width 0.2s;
 	}
 	.sidebar.collapsed { width: 48px; min-width: 48px; }
+	:global([data-density="narrow"]) .sidebar { width: 220px; min-width: 220px; }
+	:global([data-density="wide"]) .sidebar { width: 320px; min-width: 320px; }
 
 	.sidebar-header {
 		display: flex;
