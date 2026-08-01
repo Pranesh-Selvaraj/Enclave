@@ -7,10 +7,12 @@
 		col,
 		row,
 		onSet,
+		titles,
 	}: {
 		col: DBColumn;
 		row: DBRow;
 		onSet?: (value: string | boolean | string[]) => void;
+		titles?: Map<string, string>;
 	} = $props();
 
 	const TAG_COLORS = ['#e5484d', '#f0a020', '#46a758', '#2f9e9e', '#3b82f6', '#8b5cf6', '#d6409f', '#f0b429'];
@@ -56,6 +58,14 @@
 	<span class="cell text"><a class="link" href={linkHref(String(v()))} target="_blank" rel="noopener noreferrer">{String(v())}</a></span>
 {:else if col.type === 'email' && v()}
 	<span class="cell text"><a class="link" href="mailto:{String(v())}">{String(v())}</a></span>
+{:else if col.type === 'relation'}
+	<span class="cell text">
+		{#if v()}
+			<a class="link" href="/{String(v())}" title="Open page">{titles?.get(String(v())) ?? 'Untitled'}</a>
+		{:else}
+			<span class="muted">—</span>
+		{/if}
+	</span>
 {:else if col.type === 'createdAt' || col.type === 'updatedAt'}
 	<span class="cell muted">{String(v()).slice(0, 10) || '—'}</span>
 {:else}

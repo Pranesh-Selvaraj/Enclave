@@ -183,7 +183,17 @@
 	async function loadBacklinks() {
 		if (!documentTitle) return;
 		try {
-			backlinks = await invoke<typeof backlinks>('get_backlinks', { title: documentTitle });
+			const [text, rel] = await Promise.all([
+				invoke<typeof backlinks>('get_backlinks', { title: documentTitle }),
+				invoke<typeof backlinks>('find_relation_backlinks', { docId }),
+			]);
+			const seen = new Set<string>();
+			backlinks = [...text, ...rel].filter((b) => {
+				const k = b.doc_id + '\u0000' + b.block_content;
+				if (seen.has(k)) return false;
+				seen.add(k);
+				return true;
+			});
 		} catch (e) {
 			// Backlinks are non-critical; ignore errors
 		}

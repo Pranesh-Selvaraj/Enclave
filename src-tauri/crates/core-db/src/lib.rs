@@ -362,6 +362,101 @@ pub fn query_backlinks(db: &Connection, page_title: &str) -> rusqlite::Result<Ve
     rows.collect()
 }
 
+/// Collect database-block payloads (their `attrs.data`) found anywhere in a
+/// doc's JSON — top-level blocks or nested content.
+fn collect_databases<'a>(v: &'a serde_json::Value, out: &mut Vec<serde_json::Value>) {
+    if v.get("type").and_then(|t| t.as_str()) == Some("database") {
+        if let Some(data) = v
+            .pointer("/attrs/data")
+            .and_then(|d| d.as_str())
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        {
+            out.push(data);
+        }
+    }
+    if let Some(arr) = v.as_array() {
+        for c in arr {
+            collect_databases(c, out);
+        }
+    } else if let Some(obj) = v.as_object() {
+        for (k, val) in obj {
+            if k == "attrs" {
+                continue; // attrs.data is a string, nothing to descend into
+            }
+            collect_databases(val, out);
+        }
+    }
+}
+
+/// Databases whose `relation`-typed columns reference `doc_id` — the
+/// database-flavored backlink. `block_content` carries "db · column" context
+/// so the existing backlinks panel can render it.
+pub fn find_relation_backlinks(db: &Connection, doc_id: &str) -> rusqlite::Result<Vec<Backlink>> {
+    let mut stmt = db.prepare(
+        "SELECT d.id, d.title, b.content FROM blocks b
+         JOIN documents d ON d.id = b.document_id
+         WHERE d.is_archived = 0 AND d.id != ?1
+         ORDER BY d.updated_at DESC",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![doc_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, title, content) = row?;
+        if let Some(context) = relation_hit(&content, doc_id) {
+            out.push(Backlink {
+                doc_id: id,
+                doc_title: title,
+                block_content: context,
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn relation_hit(content: &str, doc_id: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(content).ok()?;
+    let mut dbs = Vec::new();
+    collect_databases(&json, &mut dbs);
+    for data in dbs {
+        let cols = data.get("columns")?.as_array()?;
+        let rel_cols: Vec<&serde_json::Value> = cols
+            .iter()
+            .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("relation"))
+            .collect();
+        if rel_cols.is_empty() {
+            continue;
+        }
+        let db_name = cols
+            .first()
+            .and_then(|c| c.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("Database");
+        let rows = data.get("rows").and_then(|r| r.as_array());
+        if let Some(rows) = rows {
+            for col in &rel_cols {
+                let col_id = col.get("id")?.as_str()?;
+                let col_name = col.get("name")?.as_str()?;
+                let hit = rows.iter().any(|row| {
+                    row.get("cells")
+                        .and_then(|c| c.get(col_id))
+                        .and_then(|v| v.as_str())
+                        == Some(doc_id)
+                });
+                if hit {
+                    return Some(format!("{db_name} · {col_name}"));
+                }
+            }
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PageInfo {
     pub id: String,
@@ -623,6 +718,79 @@ mod tests {
         assert!(none.is_empty(), "_ must not act as a single-char wildcard");
         let none = query_backlinks(&conn, "50%anything").unwrap();
         assert!(none.is_empty(), "% must not match everything");
+    }
+
+    #[test]
+    fn find_relation_backlinks_scans_database_blocks() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let insert_doc = |id: &str, title: &str, archived: i64| {
+            conn.execute(
+                "INSERT INTO documents (id, title, created_at, updated_at, is_archived)
+                 VALUES (?1, ?2, 'c', 'u', ?3)",
+                rusqlite::params![id, title, archived],
+            )
+            .unwrap();
+        };
+        insert_doc("d1", "Tracker", 0);
+        insert_doc("d2", "Sprint", 0);
+        insert_doc("d3", "Backlog", 1);
+        let db_data = serde_json::json!({
+            "id": "db1",
+            "columns": [
+                {"id": "c1", "name": "Task", "type": "text"},
+                {"id": "c2", "name": "Related", "type": "relation"}
+            ],
+            "rows": [
+                {"id": "r1", "cells": {"c1": "Ship", "c2": "d2"}},
+                {"id": "r2", "cells": {"c1": "Other", "c2": "d3"}}
+            ]
+        });
+        let content = serde_json::json!({
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "hi"}]},
+                {"type": "database", "attrs": {"data": db_data.to_string()}}
+            ]
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES ('b1', 'd1', 'doc', ?1, 0.0, 'c', 'u')",
+            rusqlite::params![content],
+        )
+        .unwrap();
+
+        let hit_d2 = find_relation_backlinks(&conn, "d2").unwrap();
+        assert_eq!(hit_d2.len(), 1, "one doc references d2");
+        assert_eq!(hit_d2[0].doc_id, "d1");
+        assert_eq!(hit_d2[0].doc_title, "Tracker");
+        assert_eq!(hit_d2[0].block_content, "Task · Related");
+        // Referenced docs may be archived; the REFERENCING doc's status matters
+        let hit_d3 = find_relation_backlinks(&conn, "d3").unwrap();
+        assert_eq!(hit_d3.len(), 1, "d1 also references archived d3");
+        assert!(find_relation_backlinks(&conn, "missing").unwrap().is_empty());
+        // Archiving the referencing doc removes the backlink
+        conn.execute("UPDATE documents SET is_archived = 1 WHERE id = 'd1'", [])
+            .unwrap();
+        assert!(find_relation_backlinks(&conn, "d2").unwrap().is_empty());
+        // A database without relation columns never matches
+        let plain = serde_json::json!({
+            "type": "doc",
+            "content": [
+                {"type": "database", "attrs": {"data": serde_json::json!({
+                    "columns": [{"id": "c1", "name": "Task", "type": "text"}],
+                    "rows": [{"id": "r1", "cells": {"c1": "d2"}}]
+                }).to_string()}}
+            ]
+        })
+        .to_string();
+        conn.execute(
+            "UPDATE blocks SET content = ?1 WHERE id = 'b1'",
+            rusqlite::params![plain],
+        )
+        .unwrap();
+        assert!(find_relation_backlinks(&conn, "d2").unwrap().is_empty());
     }
 
     #[test]

@@ -244,6 +244,11 @@ fn get_backlinks(state: tauri::State<AppState>, title: String) -> Result<Vec<cor
 }
 
 #[tauri::command(async)]
+fn find_relation_backlinks(state: tauri::State<AppState>, doc_id: String) -> Result<Vec<core_db::Backlink>, String> {
+    with_db(&state, |db| core_db::find_relation_backlinks(db, &doc_id).map_err(|e| e.to_string()))
+}
+
+#[tauri::command(async)]
 fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<core_db::PageInfo>, String> {
     with_db(&state, |db| core_db::query_all_page_titles(db).map_err(|e| e.to_string()))
 }
@@ -396,6 +401,7 @@ pub fn run() {
             load_vault_key,
             // backlinks
             get_backlinks,
+            find_relation_backlinks,
             get_page_list,
             get_all_tags,
             search_all,

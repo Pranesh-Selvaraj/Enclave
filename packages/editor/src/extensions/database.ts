@@ -20,6 +20,7 @@ export const DB_TYPES = [
 	'progress',
 	'createdAt',
 	'updatedAt',
+	'relation',
 ] as const;
 export type DBType = (typeof DB_TYPES)[number];
 

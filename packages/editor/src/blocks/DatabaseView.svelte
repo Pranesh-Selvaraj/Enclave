@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invoke } from '@tauri-apps/api/core';
 	import type { DBColumn, DBRow } from '../extensions/database.js';
 	import DBCell from './DBCell.svelte';
 
@@ -24,6 +25,7 @@
 		'progress',
 		'createdAt',
 		'updatedAt',
+		'relation',
 	] as const;
 	const TAG_COLORS = ['#e5484d', '#f0a020', '#46a758', '#2f9e9e', '#3b82f6', '#8b5cf6', '#d6409f', '#f0b429'];
 	const VIEWS = ['table', 'kanban', 'list', 'gallery', 'timeline'] as const;
@@ -38,6 +40,32 @@
 	let filterOpen = $state(false);
 	let menu = $state<{ colId: string; rowId: string; x: number; y: number } | null>(null);
 	let newOption = $state('');
+	let relMenu = $state<{ colId: string; rowId: string; x: number; y: number } | null>(null);
+	let relQuery = $state('');
+	let pages = $state<{ id: string; title: string }[]>([]);
+	let titles = $state<Map<string, string>>(new Map());
+
+	// Page titles for relation cells. Stale until remount after a rename —
+	// ponytail: page list is small, refresh is a remount away.
+	$effect(() => {
+		let alive = true;
+		invoke<{ id: string; title: string }[]>('get_page_list')
+			.then((list) => {
+				if (!alive) return;
+				pages = list;
+				titles = new Map(list.map((p) => [p.id, p.title || 'Untitled']));
+			})
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
+	});
+
+	let filteredPages = $derived(
+		relQuery
+			? pages.filter((p) => (p.title || '').toLowerCase().includes(relQuery.toLowerCase()))
+			: pages
+	);
 
 	function uid(): string {
 		return Math.random().toString(36).slice(2, 10);
@@ -167,6 +195,11 @@
 		if (col.type === 'number' || col.type === 'progress') return (parseFloat(av) || 0) - (parseFloat(bv) || 0);
 		if (col.type === 'date' || col.type === 'createdAt' || col.type === 'updatedAt')
 			return (Date.parse(av) || 0) - (Date.parse(bv) || 0);
+		if (col.type === 'relation') {
+			const ta = titles.get(av) ?? av;
+			const tb = titles.get(bv) ?? bv;
+			return ta.localeCompare(tb);
+		}
 		return av.localeCompare(bv);
 	}
 
@@ -177,7 +210,9 @@
 			out = out.filter((r) =>
 				active.every(([colId, q]) => {
 					const col = columns.find((c) => c.id === colId);
-					return String(r.cells[colId] ?? '').toLowerCase().includes(q.toLowerCase());
+					const raw = String(r.cells[colId] ?? '');
+					const searchable = col?.type === 'relation' ? (titles.get(raw) ?? raw) : raw;
+					return searchable.toLowerCase().includes(q.toLowerCase());
 				})
 			);
 		}
@@ -202,6 +237,21 @@
 		if (!col.options?.length && col.type === 'select') return;
 		const rect = el.getBoundingClientRect();
 		menu = { colId: col.id, rowId, x: rect.left, y: rect.bottom + 4 };
+	}
+
+	function openRelMenu(e: MouseEvent | HTMLElement, col: DBColumn, rowId: string) {
+		if (readOnly) return;
+		const el = e instanceof HTMLElement ? e : (e.currentTarget as HTMLElement);
+		const rect = el.getBoundingClientRect();
+		relMenu = { colId: col.id, rowId, x: rect.left, y: rect.bottom + 4 };
+		relQuery = '';
+	}
+
+	function pickRelation(rowId: string, docId: string) {
+		const col = columns.find((c) => c.id === relMenu!.colId);
+		if (!col) return;
+		setCell(rowId, col, docId);
+		relMenu = null;
 	}
 
 	function menuCol(): DBColumn | null {
@@ -412,6 +462,24 @@
 								<span class="db-cell-empty">+</span>
 							{/if}
 						</div>
+					{:else if col.type === 'relation'}
+						<div
+							class="db-cell db-cell-rel"
+							role="button"
+							tabindex="0"
+							onclick={(e) => openRelMenu(e, col, row.id)}
+							onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); openRelMenu(e.currentTarget as HTMLElement, col, row.id); } }}
+						>
+							{#if cellValue(row, col)}
+								<span class="db-chip-rel">{titles.get(String(cellValue(row, col))) ?? 'Untitled'}</span>
+								<a class="db-rel-open" href="/{String(cellValue(row, col))}" title="Open page" onclick={(e) => e.stopPropagation()}>↗</a>
+								{#if !readOnly}
+									<button class="db-rel-clear" aria-label="Clear relation" onclick={(e: MouseEvent) => { e.stopPropagation(); setCell(row.id, col, ''); }}>✕</button>
+								{/if}
+							{:else}
+								<span class="db-cell-empty">+</span>
+							{/if}
+						</div>
 					{:else if col.type === 'progress'}
 						<div class="db-cell db-cell-progress">
 							<input type="range" min="0" max="100" disabled={readOnly} value={Number(cellValue(row, col)) || 0} aria-label={col.name} oninput={(e) => setCell(row.id, col, (e.currentTarget as HTMLInputElement).value)} />
@@ -454,7 +522,7 @@
 											{/each}
 										</div>
 									{:else if col.id !== groupBy}
-										<div class="db-kb-cell"><DBCell {col} {row} onSet={(v) => setCell(row.id, col, v)} /></div>
+										<div class="db-kb-cell"><DBCell {col} {row} {titles} onSet={(v) => setCell(row.id, col, v)} /></div>
 									{/if}
 								{/each}
 							</div>
@@ -468,7 +536,7 @@
 			{#each visibleRows as row (row.id)}
 				<div class="db-list-row">
 					{#each columns as col, i (col.id)}
-						<div class="db-list-item" class:db-list-title={i === 0}><DBCell {col} {row} /></div>
+						<div class="db-list-item" class:db-list-title={i === 0}><DBCell {col} {row} {titles} /></div>
 					{/each}
 					{#if !readOnly}
 						<button class="db-remove" aria-label="Delete row" onclick={() => removeRow(row.id)}>✕</button>
@@ -481,7 +549,7 @@
 			{#each visibleRows as row (row.id)}
 				<div class="db-card">
 					{#each columns as col, i (col.id)}
-						<div class="db-card-item" class:db-card-title={i === 0}><DBCell {col} {row} /></div>
+									<div class="db-card-item" class:db-card-title={i === 0}><DBCell {col} {row} {titles} /></div>
 					{/each}
 					{#if !readOnly}
 						<button class="db-remove db-card-del" aria-label="Delete row" onclick={() => removeRow(row.id)}>✕</button>
@@ -499,7 +567,7 @@
 							<span class="db-tl-date">{item.date.slice(8, 10)}</span>
 							<div class="db-card db-tl-card">
 								{#each columns as col, i (col.id)}
-									<div class="db-card-item" class:db-card-title={i === 0}><DBCell col={col} row={item.row} /></div>
+									<div class="db-card-item" class:db-card-title={i === 0}><DBCell col={col} row={item.row} {titles} /></div>
 								{/each}
 								{#if !readOnly}
 									<button class="db-remove db-card-del" aria-label="Delete row" onclick={() => removeRow(item.row.id)}>✕</button>
@@ -517,7 +585,7 @@
 							<span class="db-tl-date">—</span>
 							<div class="db-card db-tl-card">
 								{#each columns as col, i (col.id)}
-									<div class="db-card-item" class:db-card-title={i === 0}><DBCell {col} {row} /></div>
+						<div class="db-card-item" class:db-card-title={i === 0}><DBCell {col} {row} {titles} /></div>
 								{/each}
 								{#if !readOnly}
 									<button class="db-remove db-card-del" aria-label="Delete row" onclick={() => removeRow(row.id)}>✕</button>
@@ -536,6 +604,26 @@
 		</div>
 	{/if}
 </div>
+
+{#if relMenu}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="db-menu-backdrop" onclick={() => (relMenu = null)}></div>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="db-menu" role="listbox" aria-label="Link a page" tabindex="-1" style="left:{relMenu.x}px; top:{relMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
+		<div class="db-menu-title">Link a page</div>
+		<input class="db-menu-input" placeholder="Search pages…" bind:value={relQuery} />
+		{#each filteredPages as p (p.id)}
+			<div class="db-menu-opt" role="option" aria-selected={false} tabindex="0" onclick={() => pickRelation(relMenu!.rowId, p.id)}>
+				<span class="db-rel-icon">📄</span>
+				<span>{p.title || 'Untitled'}</span>
+			</div>
+		{/each}
+		{#if filteredPages.length === 0}
+			<div class="db-menu-title">No pages found</div>
+		{/if}
+	</div>
+{/if}
 
 {#if menu}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -820,6 +908,53 @@
 	.db-cell-empty {
 		color: var(--color-text-muted);
 		font-size: 14px;
+	}
+
+	.db-cell-rel {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 8px;
+		min-width: 180px;
+		cursor: pointer;
+		border-right: 1px solid var(--color-border);
+	}
+
+	.db-chip-rel {
+		border-radius: 999px;
+		padding: 1px 8px;
+		font-size: 11px;
+		font-weight: 500;
+		white-space: nowrap;
+		background: rgba(124, 111, 240, 0.12);
+		color: #7c6cf0;
+	}
+
+	.db-rel-open {
+		color: var(--color-text-muted);
+		text-decoration: none;
+		font-size: 12px;
+	}
+
+	.db-rel-open:hover {
+		color: #7c6cf0;
+	}
+
+	.db-rel-clear {
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 10px;
+		padding: 0 2px;
+	}
+
+	.db-rel-clear:hover {
+		color: #e5484d;
+	}
+
+	.db-rel-icon {
+		font-size: 12px;
 	}
 
 	.db-chip {
