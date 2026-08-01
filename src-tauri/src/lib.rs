@@ -283,6 +283,33 @@ fn duplicate_document(state: tauri::State<AppState>, id: String) -> Result<core_
     })
 }
 
+// ── Attachments (images etc.) ────────────────────────────────────────────────
+
+/// Writes an attachment under <app_data>/attachments/<document_id>/ and
+/// returns the absolute path (frontend serves it via the asset protocol).
+#[tauri::command]
+fn save_attachment(
+    state: tauri::State<AppState>,
+    document_id: String,
+    filename: String,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    let dir = state.app_dir.join("attachments").join(&document_id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let base = sanitize_filename(&filename);
+    let mut path = dir.join(&base);
+    let mut i = 1;
+    while path.exists() {
+        // ponytail: naive "name (2)" dedupe, fine for local usage
+        let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(&base);
+        let ext = base.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+        path = dir.join(format!("{stem} ({i}).{ext}"));
+        i += 1;
+    }
+    std::fs::write(&path, &data).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 // ── Network Commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -351,6 +378,7 @@ pub fn run() {
             get_page_list,
             get_all_tags,
             search_all,
+            save_attachment,
             find_or_create_document,
             // favorites & duplicates
             toggle_favorite,

@@ -12,6 +12,18 @@ export function htmlToMarkdown(html: string): string {
 	return turndown.turndown(html);
 }
 
+// Render page embeds as links in exports.
+turndown.addRule('pageEmbed', {
+	filter: (node) => node.nodeName === 'DIV' && (node as HTMLElement).hasAttribute('data-page-embed'),
+	replacement: (_content, node) => {
+		const el = node as HTMLElement;
+		const docId = el.getAttribute('data-doc-id') ?? '';
+		const title = el.getAttribute('data-title') ?? '';
+		if (!docId) return '';
+		return `\n\n[${title || 'Open page'}](/doc/${docId})\n\n`;
+	},
+});
+
 // Render database blocks as Markdown tables in exports.
 turndown.addRule('database', {
 	filter: (node) => node.nodeName === 'DIV' && (node as HTMLElement).hasAttribute('data-database'),

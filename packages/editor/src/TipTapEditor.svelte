@@ -9,6 +9,8 @@
 	import { Callout } from './extensions/callout.js';
 	import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
 	import { Database } from './extensions/database.js';
+	import { Image } from './extensions/image.js';
+	import { PageEmbed } from './extensions/page-embed.js';
 	import { makeReactive } from './reactivity.js';
 
 	let {
@@ -48,6 +50,8 @@
 				ToggleBlock,
 				ToggleSummary,
 				Database,
+				Image,
+				PageEmbed,
 				SlashCommand,
 				PageLink,
 			],

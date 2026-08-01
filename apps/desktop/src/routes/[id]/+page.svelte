@@ -206,6 +206,12 @@
 	});
 
 	$effect(() => {
+		if (docId && editor) {
+			editor.storage.image.docId = docId;
+		}
+	});
+
+	$effect(() => {
 		if (documentTitle && document) {
 			loadBacklinks();
 		}

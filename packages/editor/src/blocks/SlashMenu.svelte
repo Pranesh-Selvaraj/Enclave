@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 	import { SlashCommandPluginKey } from '../extensions/slash-command.js';
+	import { templates } from '../templates.js';
+	import type { Template } from '../templates.js';
 
 	interface Command {
 		id: string;
@@ -15,6 +18,27 @@
 	}: {
 		editor: Editor | undefined;
 	} = $props();
+
+	let fileInput: HTMLInputElement | undefined = $state();
+
+	async function importImage(file: File) {
+		if (!editor) return;
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const abs = await invoke<string>('save_attachment', {
+				documentId: editor.storage.image.docId,
+				filename: file.name || `image-${Date.now()}.png`,
+				data: Array.from(bytes),
+			});
+			editor.chain().focus().setImage({ src: convertFileSrc(abs), alt: file.name }).run();
+		} catch (e) {
+			console.error('Failed to import image:', e);
+		}
+	}
+
+	function pickImage(ed: Editor) {
+		fileInput?.click();
+	}
 
 	const commands: Command[] = [
 		{
@@ -95,6 +119,27 @@
 			action: (ed) => ed.chain().focus().setDatabase().run(),
 		},
 		{
+			id: 'pageEmbed',
+			label: 'Embed Page',
+			icon: '🔗',
+			description: 'Embed a link to another page',
+			action: (ed) => ed.chain().focus().setPageEmbed().run(),
+		},
+		{
+			id: 'image',
+			label: 'Image',
+			icon: '🖼',
+			description: 'Insert an image from your device',
+			action: (ed) => pickImage(ed),
+		},
+		{
+			id: 'templates',
+			label: 'Template',
+			icon: '📄',
+			description: 'Insert a starter template',
+			action: () => { showingTemplates = !showingTemplates; },
+		},
+		{
 			id: 'codeBlock',
 			label: 'Code Block',
 			icon: '</>',
@@ -113,6 +158,7 @@
 	let query = $state('');
 	let selectedIndex = $state(0);
 	let visible = $state(false);
+	let showingTemplates = $state(false);
 	let position = $state({ x: 0, y: 0 });
 
 	let filtered = $derived(
@@ -125,21 +171,32 @@
 
 	function selectCommand(cmd: Command) {
 		if (!editor) return;
-		const { from } = editor.state.selection;
-
 		// Delete the "/" trigger text before executing
-		const pluginState = SlashCommandPluginKey.getState(editor.state);
+		deleteSlashTrigger(editor);
+		cmd.action(editor);
+		visible = false;
+		query = '';
+	}
+
+	function deleteSlashTrigger(ed: Editor) {
+		const { from } = ed.state.selection;
+		const pluginState = SlashCommandPluginKey.getState(ed.state);
 		if (pluginState) {
-			editor
+			ed
 				.chain()
 				.focus()
 				.deleteRange({ from: pluginState.range.from, to: pluginState.range.to })
 				.run();
 		}
+	}
 
-		cmd.action(editor);
+	function pickTemplate(t: Template) {
+		if (!editor) return;
+		deleteSlashTrigger(editor);
+		editor.chain().focus().insertContent(t.content).run();
 		visible = false;
 		query = '';
+		showingTemplates = false;
 	}
 
 	function updatePosition() {
@@ -171,6 +228,7 @@
 				updatePosition();
 			} else {
 				visible = false;
+				showingTemplates = false;
 			}
 		};
 
@@ -202,15 +260,38 @@
 			selectedIndex = Math.max(selectedIndex - 1, 0);
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
-			const cmd = filtered[selectedIndex];
-			if (cmd) selectCommand(cmd);
+			if (showingTemplates) {
+				const t = templates[selectedIndex];
+				if (t) pickTemplate(t);
+			} else {
+				const cmd = filtered[selectedIndex];
+				if (cmd) selectCommand(cmd);
+			}
 		} else if (e.key === 'Escape') {
 			visible = false;
+			showingTemplates = false;
 		}
 	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
+
+<input
+	bind:this={fileInput}
+	type="file"
+	accept="image/*"
+	class="hidden-file-input"
+	onchange={(e: Event) => {
+		const f = (e.currentTarget as HTMLInputElement).files?.[0];
+		(e.currentTarget as HTMLInputElement).value = '';
+		if (f && editor) {
+			deleteSlashTrigger(editor);
+			visible = false;
+			void importImage(f);
+		}
+	}}
+	aria-hidden="true"
+/>
 
 {#if visible && editor}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -218,20 +299,32 @@
 		class="slash-menu"
 		style="left: {position.x}px; top: {position.y}px;"
 	>
-		<div class="slash-menu-header">Basic Blocks</div>
-		{#each filtered as cmd, i}
-			<button
-				class="slash-item"
-				class:selected={i === selectedIndex}
-				onclick={() => selectCommand(cmd)}
-			>
-				<span class="slash-item-icon">{cmd.icon}</span>
-				<div class="slash-item-text">
-					<span class="slash-item-label">{cmd.label}</span>
-					<span class="slash-item-desc">{cmd.description}</span>
-				</div>
-			</button>
-		{/each}
+		{#if showingTemplates}
+			<div class="slash-menu-header">Templates</div>
+			{#each templates as t}
+				<button class="slash-item" onclick={() => pickTemplate(t)}>
+					<span class="slash-item-icon">{t.icon}</span>
+					<div class="slash-item-text">
+						<span class="slash-item-label">{t.name}</span>
+					</div>
+				</button>
+			{/each}
+		{:else}
+			<div class="slash-menu-header">Basic Blocks</div>
+			{#each filtered as cmd, i}
+				<button
+					class="slash-item"
+					class:selected={i === selectedIndex}
+					onclick={() => selectCommand(cmd)}
+				>
+					<span class="slash-item-icon">{cmd.icon}</span>
+					<div class="slash-item-text">
+						<span class="slash-item-label">{cmd.label}</span>
+						<span class="slash-item-desc">{cmd.description}</span>
+					</div>
+				</button>
+			{/each}
+		{/if}
 	</div>
 {/if}
 
@@ -305,5 +398,9 @@
 	.slash-item-desc {
 		font-size: 12px;
 		color: var(--color-text-muted);
+	}
+
+	.hidden-file-input {
+		display: none;
 	}
 </style>
