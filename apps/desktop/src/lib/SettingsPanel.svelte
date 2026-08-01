@@ -22,6 +22,22 @@
 		} catch { /* ignore */ }
 	}
 
+	let backingUp = $state(false);
+	let backupMsg = $state('');
+
+	async function backupVault() {
+		backingUp = true;
+		backupMsg = '';
+		try {
+			const path = await invoke<string>('backup_vault');
+			backupMsg = `Backup saved to ${path}`;
+		} catch (e: any) {
+			backupMsg = `Backup failed: ${e?.message || e}`;
+		} finally {
+			backingUp = false;
+		}
+	}
+
 	function handleBackdropKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') open = false;
 	}
@@ -83,6 +99,21 @@
 				<div class="setting-row">
 					<span>Lock vault</span>
 					<button class="danger-btn" onclick={lockVault}>Lock now</button>
+				</div>
+			</div>
+
+			<div class="settings-section">
+				<h3>Backup</h3>
+				<div class="setting-row">
+					<span>Export encrypted vault backup</span>
+					<Button onclick={backupVault} disabled={backingUp}>{backingUp ? 'Backing up…' : 'Back up'}</Button>
+				</div>
+				{#if backupMsg}
+					<div class="backup-msg" role="status">{backupMsg}</div>
+				{/if}
+				<div class="backup-hint">
+					Backups are saved to the exports folder. To restore, close Enclave and replace
+					<code>enclave.db</code> with the backup file.
 				</div>
 			</div>
 
@@ -177,6 +208,12 @@
 		cursor: pointer; font-family: inherit;
 	}
 	.danger-btn:hover { background: var(--color-danger); color: white; }
+	.backup-msg { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); word-break: break-all; }
+	.backup-hint { margin-top: 8px; font-size: 12px; color: var(--color-text-faint); line-height: 1.5; }
+	.backup-hint code {
+		background: var(--color-surface-hover); border: 1px solid var(--color-border);
+		border-radius: 3px; padding: 0 4px; font-size: 11px; font-family: var(--font-mono);
+	}
 	.shortcut-row {
 		display: flex; align-items: center; gap: 6px;
 		font-size: 13px; color: var(--color-text-muted); margin: 6px 0;

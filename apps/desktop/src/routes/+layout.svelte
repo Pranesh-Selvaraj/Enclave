@@ -252,7 +252,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if !vaultUnlocked}
+{#if currentPath.startsWith('/capture')}
+	{@render children?.()}
+{:else if !vaultUnlocked}
 	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
 {:else}
 <div class="app-shell">
@@ -539,9 +541,11 @@
 </div>
 {/if}
 
-<SettingsPanel bind:open={settingsOpen} onlock={() => (vaultUnlocked = false)} />
+{#if !currentPath.startsWith('/capture')}
+	<SettingsPanel bind:open={settingsOpen} onlock={() => (vaultUnlocked = false)} />
 
-<ShortcutsDialog bind:open={shortcutsOpen} />
+	<ShortcutsDialog bind:open={shortcutsOpen} />
+{/if}
 
 <style>
 	.app-shell {

@@ -225,6 +225,20 @@ fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
     std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
 }
 
+/// Consistent encrypted snapshot of the vault via VACUUM INTO (SQLCipher-safe;
+/// WAL-safe too, unlike a raw file copy). Restore = replace enclave.db while
+/// the app is closed.
+#[tauri::command(async)]
+fn backup_vault(state: tauri::State<AppState>) -> Result<String, String> {
+    let exports_dir = state.app_dir.join("exports");
+    std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let dest = exports_dir.join(format!("enclave-backup-{stamp}.db"));
+    let sql = format!("VACUUM INTO '{}'", dest.to_string_lossy().replace('\'', "''"));
+    with_db(&state, |db| db.execute(&sql, []).map(|_| ()).map_err(|e| e.to_string()))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 fn sanitize_filename(name: &str) -> String {
     // is_alphanumeric is unicode-aware so CJK/accents survive; only path
     // separators and control chars are replaced.
@@ -350,6 +364,62 @@ async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_networ
 
 // ── App Entry Point ─────────────────────────────────────────────────────────
 
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+
+    let show = MenuItem::with_id(app, "show", "Show Enclave", true, None::<&str>)?;
+    let capture = MenuItem::with_id(app, "capture", "Quick Capture", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &capture, &quit])?;
+
+    let icon = app
+        .default_window_icon()
+        .expect("bundle icons are configured")
+        .clone();
+
+    tauri::tray::TrayIconBuilder::with_id("enclave-tray")
+        .icon(icon)
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+            "capture" => open_capture_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)
+        .map(|_| ())
+        // ponytail: tray is best-effort — a DE without tray support must not
+        // block the app from starting.
+        .or_else(|e| {
+            eprintln!("tray setup failed (continuing without it): {e}");
+            Ok(())
+        })
+}
+
+fn open_capture_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("capture") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(
+        app,
+        "capture",
+        tauri::WebviewUrl::App("/capture".into()),
+    )
+    .title("Enclave — Quick Capture")
+    .inner_size(560.0, 300.0)
+    .resizable(true)
+    .build();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -369,6 +439,8 @@ pub fn run() {
                 db: Mutex::new(None),
                 network: core_network::NetworkState::new(),
             });
+
+            setup_tray(app)?;
 
             Ok(())
         })
@@ -410,6 +482,8 @@ pub fn run() {
             // favorites & duplicates
             toggle_favorite,
             duplicate_document,
+            // vault backup
+            backup_vault,
             // network
             start_network,
             stop_network,
