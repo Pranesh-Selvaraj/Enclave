@@ -27,6 +27,26 @@
 	let contextMenu = $state<{ doc: Document; x: number; y: number } | null>(null);
 
 	let searchTimer: ReturnType<typeof setTimeout>;
+	let searchResults = $state<{ doc_id: string; doc_title: string; snippet: string }[] | null>(null);
+	let tagsByDoc = $state<Map<string, string[]>>(new Map());
+	let selectedTag = $state<string | null>(null);
+
+	async function loadTags() {
+		try {
+			const rows = await invoke<{ doc_id: string; tags: string[] }[]>('get_all_tags');
+			tagsByDoc = new Map(rows.map(r => [r.doc_id, r.tags]));
+		} catch (e) {
+			console.error('Failed to load tags:', e);
+		}
+	}
+
+	let allTags = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const tags of tagsByDoc.values()) {
+			for (const t of tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+		}
+		return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+	});
 
 	async function loadDocuments() {
 		try {
@@ -40,6 +60,7 @@
 		try {
 			const doc = await invoke<Document>('create_document', { title: 'Untitled' });
 			await loadDocuments();
+			loadTags();
 			await goto(`/${doc.id}`);
 		} catch (e: any) {
 			console.error('Failed to create document:', e);
@@ -51,6 +72,7 @@
 		try {
 			await invoke('toggle_favorite', { id });
 			await loadDocuments();
+			loadTags();
 		} catch (e) {
 			console.error('Failed to toggle favorite:', e);
 		}
@@ -60,6 +82,7 @@
 		try {
 			await invoke('duplicate_document', { id });
 			await loadDocuments();
+			loadTags();
 		} catch (e) {
 			console.error('Failed to duplicate document:', e);
 		}
@@ -71,6 +94,7 @@
 		try {
 			await invoke('delete_document', { id });
 			await loadDocuments();
+			loadTags();
 		} catch (e) {
 			console.error('Failed to delete document:', e);
 		}
@@ -125,16 +149,56 @@
 		return () => clearTimeout(searchTimer);
 	});
 
-	let favorites = $derived(documents.filter(d => d.is_favorite));
-	let regularPages = $derived(documents.filter(d => !d.is_favorite));
-	let filteredDocs = $derived(
-		debouncedQuery
-			? documents.filter(d => d.title.toLowerCase().includes(debouncedQuery.toLowerCase()))
-			: documents
-	);
+	// Full-text search (titles + block content) via the backend
+	$effect(() => {
+		const q = debouncedQuery.trim();
+		if (!q) {
+			searchResults = null;
+			return;
+		}
+		invoke<{ doc_id: string; doc_title: string; block_content: string; type: string }[]>('search_all', { query: q })
+			.then((rows) => {
+				if (q !== debouncedQuery.trim()) return; // superseded by a newer keystroke
+				const byId = new Map<string, { doc_id: string; doc_title: string; snippet: string }>();
+				for (const r of rows) {
+					const existing = byId.get(r.doc_id);
+					if (existing && existing.snippet) continue; // keep the title match
+					byId.set(r.doc_id, {
+						doc_id: r.doc_id,
+						doc_title: r.doc_title,
+						snippet: r.type === 'title' ? '' : r.block_content.replace(/\s+/g, ' ').slice(0, 140),
+					});
+				}
+				searchResults = [...byId.values()].slice(0, 12);
+			})
+			.catch(() => { if (q === debouncedQuery.trim()) searchResults = null; });
+	});
+
+	let filteredDocs = $derived.by(() => {
+		let out = documents;
+		if (selectedTag) {
+			out = out.filter(d => tagsByDoc.get(d.id)?.includes(selectedTag!));
+		}
+		if (debouncedQuery) {
+			out = out.filter(d => d.title.toLowerCase().includes(debouncedQuery.toLowerCase()));
+		}
+		return out;
+	});
+
+	let favorites = $derived(filteredDocs.filter(d => d.is_favorite));
+	let regularPages = $derived(filteredDocs.filter(d => !d.is_favorite));
 
 	$effect(() => {
-		if (vaultUnlocked) loadDocuments();
+		if (vaultUnlocked) {
+			loadDocuments();
+			loadTags();
+		}
+	});
+
+	// Refresh tag counts after navigating (tags are edited on the page view)
+	$effect(() => {
+		const _id = $page.params.id;
+		if (vaultUnlocked) loadTags();
 	});
 </script>
 
@@ -175,7 +239,7 @@
 			<div class="pages-section">
 				<div class="section-head">
 					<span class="section-title">Pages</span>
-					<span class="page-count">{documents.length}</span>
+					<span class="page-count">{filteredDocs.length}</span>
 				</div>
 
 				<div class="page-tree">
@@ -226,6 +290,31 @@
 					{/if}
 				</div>
 			</div>
+
+			{#if allTags.length > 0}
+				<div class="pages-section tags-section">
+					<div class="section-head">
+						<span class="section-title">Tags</span>
+						{#if selectedTag}
+							<button class="link-btn" onclick={() => (selectedTag = null)}>Clear</button>
+						{/if}
+					</div>
+					<div class="tag-list">
+						{#each allTags as { name, count } (name)}
+							<button
+								class="tag-row"
+								class:active={selectedTag === name}
+								onclick={() => (selectedTag = selectedTag === name ? null : name)}
+								title={`Show pages tagged #${name}`}
+							>
+								<span class="tag-row-hash">#</span>
+								<span class="tag-row-label">{name}</span>
+								<span class="tag-row-count">{count}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
 
 			<div class="sidebar-footer">
 				<button class="new-page-btn" onclick={createDocument} title="New page (Ctrl+N)">
@@ -314,17 +403,35 @@
 					<kbd class="palette-kbd">esc</kbd>
 				</div>
 				<div class="palette-results">
-					<div class="palette-group-title">Pages</div>
-					{#each filteredDocs as doc (doc.id)}
-						<a href="/{doc.id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
-							<span class="palette-icon">
-								<Icon name={doc.is_favorite ? 'star' : 'page'} size={15} />
-							</span>
-							<span>{doc.title || 'Untitled'}</span>
-						</a>
-					{/each}
-					{#if filteredDocs.length === 0 && searchQuery}
-						<div class="palette-empty">No pages found</div>
+					<div class="palette-group-title">{searchQuery.trim() ? 'Results' : 'Pages'}</div>
+					{#if searchQuery.trim() && searchResults}
+						{#each searchResults as r (r.doc_id)}
+							<a href="/{r.doc_id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
+								<span class="palette-icon">
+									<Icon name="search" size={15} />
+								</span>
+								<span class="palette-item-text">
+									<span class="palette-item-title">{r.doc_title || 'Untitled'}</span>
+									{#if r.snippet}
+										<span class="palette-item-snippet">{r.snippet}</span>
+									{/if}
+								</span>
+							</a>
+						{/each}
+						{#if searchResults.length === 0}
+							<div class="palette-empty">No results found</div>
+						{/if}
+					{:else if !searchQuery.trim()}
+						{#each documents as doc (doc.id)}
+							<a href="/{doc.id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
+								<span class="palette-icon">
+									<Icon name={doc.is_favorite ? 'star' : 'page'} size={15} />
+								</span>
+								<span>{doc.title || 'Untitled'}</span>
+							</a>
+						{/each}
+					{:else}
+						<div class="palette-empty">Searching…</div>
 					{/if}
 					<div class="palette-group-title">Actions</div>
 					<button class="palette-item" onclick={() => { commandPaletteOpen = false; createDocument(); }}>
@@ -521,6 +628,52 @@
 		padding: 1px 4px;
 		font-size: 11px;
 		font-family: var(--font-mono);
+	}
+
+	.tag-list {
+		display: flex;
+		flex-direction: column;
+		padding: 0 6px 8px;
+	}
+
+	.tag-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		border: none;
+		background: none;
+		color: var(--color-text);
+		font-size: 13px;
+		padding: 4px 8px;
+		border-radius: 6px;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.tag-row:hover,
+	.tag-row.active {
+		background: rgba(124, 111, 240, 0.12);
+	}
+
+	.tag-row-hash {
+		color: #9d8cff;
+		font-weight: 600;
+	}
+
+	.tag-row-label {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.tag-row-count {
+		font-size: 11px;
+		color: var(--color-text-muted);
+		background: var(--color-surface-hover);
+		border-radius: 999px;
+		padding: 0 7px;
 	}
 	.link-btn {
 		background: none;
@@ -725,6 +878,24 @@
 	}
 	.palette-item:hover { background: var(--color-surface-hover); }
 	.palette-icon { display: flex; color: var(--color-text-faint); }
+	.palette-item-text {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.palette-item-title {
+		font-weight: 500;
+	}
+
+	.palette-item-snippet {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.palette-empty {
 		padding: 14px;
 		text-align: center;

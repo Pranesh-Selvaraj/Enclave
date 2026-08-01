@@ -9,17 +9,20 @@ import DatabaseView from '../blocks/DatabaseView.svelte';
 export interface DBColumn {
 	id: string;
 	name: string;
-	type: 'text' | 'number' | 'checkbox' | 'date';
+	type: 'text' | 'number' | 'checkbox' | 'date' | 'select' | 'multiSelect';
+	options?: string[];
 }
 
 export interface DBRow {
 	id: string;
-	cells: Record<string, string | boolean>;
+	cells: Record<string, string | boolean | string[]>;
 }
 
 export interface DBData {
 	columns: DBColumn[];
 	rows: DBRow[];
+	view?: 'table' | 'kanban';
+	groupBy?: string | null;
 }
 
 function uid(): string {

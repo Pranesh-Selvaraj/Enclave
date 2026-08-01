@@ -252,6 +252,36 @@ pub fn query_all_page_titles(db: &Connection) -> rusqlite::Result<Vec<PageInfo>>
     rows.collect()
 }
 
+// ── Tags ─────────────────────────────────────────────────────────────────────
+// Tags live in a per-document block (id "<docId>-tags", type "tags",
+// content {"tags":[...]}) so no schema migration is needed.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagInfo {
+    pub doc_id: String,
+    pub tags: Vec<String>,
+}
+
+pub fn query_all_tags(db: &Connection) -> rusqlite::Result<Vec<TagInfo>> {
+    let mut stmt = db.prepare(
+        "SELECT document_id, content FROM blocks WHERE type = 'tags'
+         AND document_id IN (SELECT id FROM documents WHERE is_archived = 0)",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let content: String = row.get(1)?;
+        let tags = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|v| {
+                v.get("tags")
+                    .and_then(|t| t.as_array())
+                    .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+            })
+            .unwrap_or_default();
+        Ok(TagInfo { doc_id: row.get(0)?, tags })
+    })?;
+    rows.collect()
+}
+
 // ── Full-text search ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -437,6 +467,43 @@ mod tests {
         assert!(none.is_empty(), "_ must not act as a single-char wildcard");
         let none = query_backlinks(&conn, "50%anything").unwrap();
         assert!(none.is_empty(), "% must not match everything");
+    }
+
+    #[test]
+    fn query_all_tags_parses_blocks_and_skips_archived() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let insert = |id: &str, archived: i64| {
+            conn.execute(
+                "INSERT INTO documents (id, title, created_at, updated_at, is_archived) VALUES (?1, ?2, 'c', 'u', ?3)",
+                rusqlite::params![id, id, archived],
+            )
+            .unwrap();
+        };
+        insert("d1", 0);
+        insert("d2", 0);
+        insert("d3", 1);
+        let block = |id: &str, doc: &str, tags: &str| {
+            conn.execute(
+                "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+                 VALUES (?1, ?2, 'tags', ?3, 2.0, 'c', 'u')",
+                rusqlite::params![id, doc, tags],
+            )
+            .unwrap();
+        };
+        block("d1-tags", "d1", r#"{"tags":["work","urgent"]}"#);
+        block("d2-tags", "d2", r#"{"tags":["work"]}"#);
+        block("d3-tags", "d3", r#"{"tags":["archived"]}"#);
+        // Malformed JSON must not fail the query
+        block("d1-bad", "d1", "not json");
+
+        let tags = query_all_tags(&conn).unwrap();
+        // d1-tags, d1-bad (malformed -> empty), d2-tags; d3 excluded (archived)
+        assert_eq!(tags.len(), 3);
+        let d1 = tags.iter().find(|t| t.doc_id == "d1" && !t.tags.is_empty()).unwrap();
+        assert_eq!(d1.tags, vec!["work", "urgent"]);
+        assert!(tags.iter().any(|t| t.doc_id == "d2" && t.tags == vec!["work"]));
+        assert!(tags.iter().all(|t| t.doc_id != "d3"), "archived doc's tags excluded");
     }
 
     #[test]

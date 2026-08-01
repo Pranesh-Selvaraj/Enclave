@@ -233,6 +233,11 @@ fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<core_db::PageInfo>
 }
 
 #[tauri::command]
+fn get_all_tags(state: tauri::State<AppState>) -> Result<Vec<core_db::TagInfo>, String> {
+    with_db(&state, |db| core_db::query_all_tags(db).map_err(|e| e.to_string()))
+}
+
+#[tauri::command]
 fn search_all(state: tauri::State<AppState>, query: String) -> Result<Vec<core_db::SearchResult>, String> {
     with_db(&state, |db| core_db::search_all(db, &query).map_err(|e| e.to_string()))
 }
@@ -344,6 +349,7 @@ pub fn run() {
             // backlinks
             get_backlinks,
             get_page_list,
+            get_all_tags,
             search_all,
             find_or_create_document,
             // favorites & duplicates

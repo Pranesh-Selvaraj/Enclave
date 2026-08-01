@@ -16,12 +16,43 @@
 	let editorContent = $state<object | undefined>(undefined);
 	let pageList = $state<{ id: string; title: string }[]>([]);
 	let mode = $state<'paper' | 'whiteboard'>('paper');
+	let tags = $state<string[]>([]);
+	let tagInput = $state('');
 
 	const docId = $derived($page.params.id);
 
 	// ── Debounce helpers ──
 	let titleSaveTimer: ReturnType<typeof setTimeout>;
 	let contentSaveTimer: ReturnType<typeof setTimeout>;
+	let tagSaveTimer: ReturnType<typeof setTimeout>;
+
+	function saveTags() {
+		try {
+			invoke('upsert_block', {
+				id: `${docId}-tags`,
+				documentId: docId,
+				blockType: 'tags',
+				content: { tags },
+				sortOrder: 2,
+			});
+		} catch (e) {
+			console.error('Failed to save tags:', e);
+		}
+	}
+
+	function addTag() {
+		const t = tagInput.trim().replace(/^#/, '');
+		if (t && !tags.includes(t)) tags = [...tags, t];
+		tagInput = '';
+		clearTimeout(tagSaveTimer);
+		tagSaveTimer = setTimeout(saveTags, 500);
+	}
+
+	function removeTag(t: string) {
+		tags = tags.filter((x) => x !== t);
+		clearTimeout(tagSaveTimer);
+		tagSaveTimer = setTimeout(saveTags, 500);
+	}
 
 	function setMode(m: 'paper' | 'whiteboard') {
 		mode = m;
@@ -40,6 +71,10 @@
 	async function loadBlocks() {
 		try {
 			const blocks = await invoke<Block[]>('get_blocks', { documentId: docId });
+			const tagsBlock = blocks.find(b => b.type === 'tags');
+			if (tagsBlock?.content && Array.isArray((tagsBlock.content as any).tags)) {
+				tags = ((tagsBlock.content as any).tags as unknown[]).filter(t => typeof t === 'string');
+			}
 			if (blocks.length > 0) {
 				const contentBlock = blocks.find(b => {
 					if (typeof b.content === 'object' && b.content !== null) {
@@ -161,6 +196,8 @@
 			// Reset stale content so a failed block load can't leak the
 			// previous document's content into this one.
 			editorContent = undefined;
+			tags = [];
+			tagInput = '';
 			loadDocument();
 			loadBlocks();
 			loadPageList();
@@ -200,11 +237,35 @@
 				<button class="icon-btn" onclick={exportMarkdown} title="Export as Markdown">
 					<Icon name="download" size={15} />
 				</button>
-				<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
-					<Icon name="trash" size={15} />
-				</button>
-			</div>
+			<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
+				<Icon name="trash" size={15} />
+			</button>
 		</div>
+	</div>
+
+	<div class="doc-tags">
+		{#each tags as t (t)}
+			<span class="tag-chip">
+				<span class="tag-hash">#</span>{t}
+				<button class="tag-x" aria-label={`Remove tag ${t}`} onclick={() => removeTag(t)}>✕</button>
+			</span>
+		{/each}
+		<input
+			class="tag-input"
+			placeholder={tags.length ? 'Add tag…' : 'Add tags…'}
+			bind:value={tagInput}
+			onkeydown={(e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ',') {
+					e.preventDefault();
+					addTag();
+				} else if (e.key === 'Backspace' && tagInput === '' && tags.length > 0) {
+					removeTag(tags[tags.length - 1]);
+				}
+			}}
+			onblur={() => { if (tagInput.trim()) addTag(); }}
+			aria-label="Add tag"
+		/>
+	</div>
 
 		{#if mode === 'paper'}
 			<div class="doc-body">
@@ -251,6 +312,52 @@
 		justify-content: center;
 		height: 100%;
 		color: var(--color-text-muted);
+	}
+
+	.doc-tags {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 0 40px 4px;
+	}
+
+	.tag-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		border-radius: 999px;
+		background: rgba(124, 111, 240, 0.12);
+		color: #9d8cff;
+		font-size: 12px;
+		padding: 2px 10px;
+	}
+
+	.tag-hash {
+		opacity: 0.7;
+	}
+
+	.tag-x {
+		border: none;
+		background: none;
+		color: inherit;
+		opacity: 0.6;
+		cursor: pointer;
+		font-size: 10px;
+		padding: 0;
+	}
+
+	.tag-x:hover {
+		opacity: 1;
+	}
+
+	.tag-input {
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		font-size: 12px;
+		outline: none;
+		width: 100px;
 	}
 
 	.document-page {
