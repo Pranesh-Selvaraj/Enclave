@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { invoke } from '@tauri-apps/api/core';
+	import { listen } from '@tauri-apps/api/event';
 	import type { Document } from '@enclave/ui';
 	import { theme } from '@enclave/ui';
 	import { ShortcutsDialog } from '@enclave/ui';
@@ -25,7 +26,14 @@
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
 	let networkRunning = $state(false);
-	let networkStatus = $state<{ local_peer_id: string; running: boolean; port: number; peers: any[] } | null>(null);
+	let networkStatus = $state<{
+		local_peer_id: string;
+		running: boolean;
+		port: number;
+		peers: { id: string; host: string; port: number; connected: boolean; name: string }[];
+	} | null>(null);
+	let lastSync = $state('');
+	let statusTimer: ReturnType<typeof setInterval>;
 	const currentDocId = $derived($page.params?.id);
 	const currentPath = $derived($page.url.pathname);
 	let contextMenu = $state<{ doc: Document; x: number; y: number } | null>(null);
@@ -141,15 +149,28 @@
 				await invoke('stop_network');
 				networkRunning = false;
 				networkStatus = null;
+				clearInterval(statusTimer);
 			} else {
-				await invoke('start_network');
+				await invoke('start_network', { name: null });
 				networkRunning = true;
 				networkStatus = await invoke<typeof networkStatus>('network_status');
+				// Poll so mDNS-discovered peers show up without an event bridge.
+				statusTimer = setInterval(async () => {
+					try {
+						networkStatus = await invoke<typeof networkStatus>('network_status');
+					} catch { /* ignore */ }
+				}, 3000);
 			}
 		} catch (e) {
 			console.error('Network toggle failed:', e);
 			networkRunning = false;
 		}
+	}
+
+	function handleSyncDone(e: { payload: { peer: string; docs_changed: number; blocks_changed: number } }) {
+		const d = e?.payload ?? {};
+		lastSync = `${new Date().toLocaleTimeString()} · +${d.docs_changed ?? 0} docs, +${d.blocks_changed ?? 0} blocks`;
+		setTimeout(() => (lastSync = ''), 8000);
 	}
 
 	function showContextMenu(e: MouseEvent, doc: Document) {
@@ -247,6 +268,13 @@
 	$effect(() => {
 		const _id = $page.params.id;
 		if (vaultUnlocked) loadTags();
+	});
+
+	// Listen for sync completions from the LAN sync task.
+	$effect(() => {
+		let unlisten: (() => void) | undefined;
+		listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
+		return () => unlisten?.();
 	});
 </script>
 
@@ -417,12 +445,15 @@
 				{#if networkStatus?.peers?.length}
 					<div class="peer-list">
 						{#each networkStatus.peers as peer}
-							<div class="peer-item">
-								<span class="peer-dot connected"></span>
-								<span class="peer-label">{peer.id.slice(0, 8)}…</span>
+							<div class="peer-item" title={peer.host}>
+								<span class="peer-dot" class:connected={peer.connected}></span>
+								<span class="peer-label">{peer.name || peer.id.slice(0, 8)}…</span>
 							</div>
 						{/each}
 					</div>
+				{/if}
+				{#if lastSync}
+					<div class="last-sync" role="status">Synced {lastSync}</div>
 				{/if}
 			</div>
 		{/if}
@@ -853,6 +884,7 @@
 	.peer-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-faint); }
 	.peer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-border-strong); }
 	.peer-dot.connected { background: var(--color-success); }
+	.last-sync { font-size: 11px; color: var(--color-text-faint); }
 
 	/* ── Context Menu ── */
 	.context-overlay {

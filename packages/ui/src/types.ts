@@ -6,6 +6,8 @@ export interface Document {
 	updated_at: string;
 	is_favorite: boolean;
 	is_archived: boolean;
+	rev?: number;
+	deleted_at?: string | null;
 }
 
 /** A content block within a document. */

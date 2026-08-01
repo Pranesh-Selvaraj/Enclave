@@ -4,7 +4,8 @@
 //! document CRUD, and block CRUD.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 use tauri::Manager;
 
 const DB_FILENAME: &str = "enclave.db";
@@ -15,7 +16,7 @@ pub struct AppState {
     pub app_dir: PathBuf,
     /// None when locked; Some when unlocked.
     pub db: Mutex<Option<rusqlite::Connection>>,
-    pub network: core_network::NetworkState,
+    pub network: Arc<core_network::NetworkState>,
 }
 
 fn db_path(app_dir: &std::path::Path) -> PathBuf {
@@ -104,6 +105,8 @@ fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_
             updated_at: now.clone(),
             is_favorite: false,
             is_archived: false,
+            rev: 0,
+            deleted_at: None,
         };
         core_db::insert_document(db, &doc).map_err(|e| e.to_string())?;
 
@@ -124,7 +127,10 @@ fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_
 
 #[tauri::command(async)]
 fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    with_db(&state, |db| core_db::delete_document(db, &id).map_err(|e| e.to_string()))
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::delete_document(db, &id, &now).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command(async)]
@@ -348,8 +354,9 @@ fn save_attachment(
 // ── Network Commands ────────────────────────────────────────────────────────
 
 #[tauri::command(async)]
-async fn start_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.network.start().await
+async fn start_network(state: tauri::State<'_, AppState>, name: Option<String>) -> Result<(), String> {
+    let name = name.unwrap_or_else(|| "Enclave".to_string());
+    state.network.start(&name).await
 }
 
 #[tauri::command(async)]
@@ -360,6 +367,74 @@ async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
 #[tauri::command(async)]
 async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_network::NetworkStatus, String> {
     Ok(state.network.status().await)
+}
+
+// ── Sync Message Handling (LAN v2) ──────────────────────────────────────────
+
+/// Wire protocol: both sides send hello on connect; each side responds to a
+/// hello with a full snapshot {kind:"snapshot", docs, blocks}; the receiver
+/// merges it (doc-level LWW) and replies with an ack for the UI.
+fn sync_snapshot(state: &AppState) -> Option<String> {
+    let payload = with_db(state, |db| {
+        let (docs, blocks) = core_db::query_sync_data(db).map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "kind": "snapshot", "docs": docs, "blocks": blocks }).to_string())
+    });
+    payload.ok()
+}
+
+async fn handle_sync_message(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    net: &core_network::NetworkState,
+    msg: core_network::PeerMessage,
+) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg.payload) else {
+        return;
+    };
+    match v["kind"].as_str() {
+        Some("hello") => {
+            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
+            if let Some(snapshot) = sync_snapshot(state) {
+                net.send_to(&peer_id, snapshot).await;
+            }
+        }
+        Some("snapshot") => {
+            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
+            let docs: Vec<core_db::Document> = serde_json::from_value(v["docs"].clone()).unwrap_or_default();
+            let blocks: Vec<core_db::Block> = serde_json::from_value(v["blocks"].clone()).unwrap_or_default();
+            match with_db(state, |db| core_db::sync_merge(db, &docs, &blocks).map_err(|e| e.to_string())) {
+                Ok(stats) => {
+                    let ack = serde_json::json!({
+                        "kind": "ack",
+                        "docs_changed": stats.docs_changed,
+                        "blocks_changed": stats.blocks_changed,
+                    })
+                    .to_string();
+                    net.send_to(&peer_id, ack).await;
+                    let _ = app.emit(
+                        "sync-done",
+                        serde_json::json!({
+                            "peer": &peer_id,
+                            "docs_changed": stats.docs_changed,
+                            "blocks_changed": stats.blocks_changed,
+                        }),
+                    );
+                }
+                Err(_) => { /* vault locked — ignore */ }
+            }
+        }
+        Some("ack") => {
+            let _ = app.emit(
+                "sync-done",
+                serde_json::json!({
+                    "peer": v["peer_id"].as_str().unwrap_or(&msg.from_peer),
+                    "docs_changed": v["docs_changed"].as_u64().unwrap_or(0),
+                    "blocks_changed": v["blocks_changed"].as_u64().unwrap_or(0),
+                }),
+            );
+        }
+        _ => {}
+    }
 }
 
 // ── App Entry Point ─────────────────────────────────────────────────────────
@@ -434,10 +509,30 @@ pub fn run() {
                 .expect("Failed to create app data directory");
 
             // DB starts locked — user must call init_vault or unlock_vault
-            app.manage(AppState {
+            let network = Arc::new(core_network::NetworkState::new());
+            let sync_rx = network
+                .message_rx
+                .try_lock()
+                .expect("network rx uncontended at setup")
+                .take()
+                .expect("sync receiver exists once");
+            let state_arc = Arc::new(AppState {
                 app_dir: app_dir.clone(),
                 db: Mutex::new(None),
-                network: core_network::NetworkState::new(),
+                network: network.clone(),
+            });
+            app.manage(state_arc.clone());
+
+            // Consume peer messages for the lifetime of the app: hello →
+            // send snapshot, snapshot → merge into vault, ack → notify UI.
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut rx = sync_rx;
+                while let Some(msg) = rx.recv().await {
+                    let st = state_arc.clone();
+                    let net = network.clone();
+                    handle_sync_message(&app_handle, &st, &net, msg).await;
+                }
             });
 
             setup_tray(app)?;

@@ -17,6 +17,12 @@ pub struct Document {
     pub updated_at: String,
     pub is_favorite: bool,
     pub is_archived: bool,
+    /// Monotonic per-document edit counter — the LWW clock for LAN sync.
+    #[serde(default)]
+    pub rev: i64,
+    /// Tombstone for permanent deletes; NULL while the doc is alive.
+    #[serde(default)]
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,7 +79,24 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
             title,
             content
         );",
-    )
+    )?;
+    // Migration for pre-sync vaults: CREATE TABLE IF NOT EXISTS won't add
+    // columns to an existing database.
+    ensure_column(conn, "documents", "rev", "ALTER TABLE documents ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")?;
+    ensure_column(conn, "documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TEXT")?;
+    Ok(())
+}
+
+fn ensure_column(db: &Connection, table: &str, col: &str, ddl: &str) -> rusqlite::Result<()> {
+    let mut stmt = db.prepare(&format!("PRAGMA table_info({table})"))?;
+    let names: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .collect();
+    if !names.iter().any(|n| n == col) {
+        db.execute_batch(ddl)?;
+    }
+    Ok(())
 }
 
 /// Pragmas that make the vault fast on modern hardware without weakening
@@ -201,6 +224,16 @@ pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
 
 // ── Document Queries ────────────────────────────────────────────────────────
 
+/// Monotonic per-document revision bump — the LWW clock used by LAN sync.
+/// updated_at is refreshed together with rev so sync can compare both.
+fn bump_rev(db: &Connection, id: &str, now: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET rev = rev + 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, id],
+    )
+    .map(|_| ())
+}
+
 fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<Document> {
     Ok(Document {
         id: row.get(0)?,
@@ -209,14 +242,17 @@ fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<Document> {
         updated_at: row.get(3)?,
         is_favorite: row.get::<_, i32>(4)? != 0,
         is_archived: row.get::<_, i32>(5)? != 0,
+        rev: row.get(6)?,
+        deleted_at: row.get(7)?,
     })
 }
 
-const DOC_COLS: &str = "SELECT id, title, created_at, updated_at, is_favorite, is_archived FROM documents";
+const DOC_COLS: &str =
+    "SELECT id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at FROM documents";
 
 pub fn query_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
     let mut stmt = db.prepare(&format!(
-        "{DOC_COLS} WHERE is_archived = 0 ORDER BY updated_at DESC"
+        "{DOC_COLS} WHERE is_archived = 0 AND deleted_at IS NULL ORDER BY updated_at DESC"
     ))?;
     let rows = stmt.query_map([], row_to_document)?;
     rows.collect()
@@ -239,6 +275,7 @@ pub fn insert_document(db: &Connection, doc: &Document) -> rusqlite::Result<()> 
             doc.is_favorite as i32, doc.is_archived as i32
         ],
     )?;
+    bump_rev(db, &doc.id, &doc.updated_at)?;
     fts_index_doc_title(db, &doc.id, &doc.title)
 }
 
@@ -247,6 +284,7 @@ pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at:
         "UPDATE documents SET title = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![title, updated_at, id],
     )?;
+    bump_rev(db, id, updated_at)?;
     db.execute(
         "UPDATE blocks_fts SET title = ?1 WHERE doc_id = ?2",
         rusqlite::params![title, id],
@@ -254,9 +292,14 @@ pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at:
     Ok(())
 }
 
-pub fn delete_document(db: &Connection, id: &str) -> rusqlite::Result<()> {
+/// Permanent delete becomes a tombstone (deleted_at) so sync peers can
+/// converge instead of resurrecting the doc. Blocks are removed immediately.
+pub fn delete_document(db: &Connection, id: &str, now: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET deleted_at = ?1, rev = rev + 1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![now, now, id],
+    )?;
     db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![id])?;
-    db.execute("DELETE FROM documents WHERE id = ?1", rusqlite::params![id])?;
     fts_remove_doc(db, id)
 }
 
@@ -318,6 +361,7 @@ pub fn upsert_block(db: &Connection, block: &Block) -> rusqlite::Result<Block> {
         ],
     )?;
     fts_index_block(db, block)?;
+    bump_rev(db, &block.document_id, &block.updated_at)?;
     db.query_row(
         "SELECT b.id, b.document_id, b.content, b.type, b.sort_order, b.created_at, b.updated_at FROM blocks b WHERE b.id = ?1",
         rusqlite::params![block.id],
@@ -326,8 +370,16 @@ pub fn upsert_block(db: &Connection, block: &Block) -> rusqlite::Result<Block> {
 }
 
 pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
+    let doc_id: Option<String> = db
+        .query_row("SELECT document_id FROM blocks WHERE id = ?1", rusqlite::params![id], |r| r.get(0))
+        .ok();
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
-    fts_remove_block(db, id)
+    fts_remove_block(db, id)?;
+    if let Some(doc_id) = doc_id {
+        let now = chrono::Utc::now().to_rfc3339();
+        bump_rev(db, &doc_id, &now)?;
+    }
+    Ok(())
 }
 
 // ── Backlinks ────────────────────────────────────────────────────────────────
@@ -547,7 +599,7 @@ pub fn archive_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite
         "UPDATE documents SET is_archived = 1, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![updated_at, id],
     )?;
-    Ok(())
+    bump_rev(db, id, updated_at)
 }
 
 pub fn restore_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
@@ -555,12 +607,12 @@ pub fn restore_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite
         "UPDATE documents SET is_archived = 0, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![updated_at, id],
     )?;
-    Ok(())
+    bump_rev(db, id, updated_at)
 }
 
 pub fn query_archived_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
     let mut stmt = db.prepare(&format!(
-        "{DOC_COLS} WHERE is_archived = 1 ORDER BY updated_at DESC"
+        "{DOC_COLS} WHERE is_archived = 1 AND deleted_at IS NULL ORDER BY updated_at DESC"
     ))?;
     let rows = stmt.query_map([], row_to_document)?;
     rows.collect()
@@ -578,6 +630,8 @@ pub fn find_or_create_document(db: &Connection, title: &str, now: &str) -> rusql
                 updated_at: now.to_string(),
                 is_favorite: false,
                 is_archived: false,
+                rev: 0,
+                deleted_at: None,
             };
             insert_document(db, &doc)?;
             let block = Block {
@@ -597,7 +651,7 @@ pub fn find_or_create_document(db: &Connection, title: &str, now: &str) -> rusql
 
 fn query_document_by_title(db: &Connection, title: &str) -> rusqlite::Result<Document> {
     db.query_row(
-        &format!("{DOC_COLS} WHERE title = ?1 AND is_archived = 0"),
+        &format!("{DOC_COLS} WHERE title = ?1 AND is_archived = 0 AND deleted_at IS NULL"),
         rusqlite::params![title],
         row_to_document,
     )
@@ -610,7 +664,7 @@ pub fn toggle_document_favorite(db: &Connection, id: &str, updated_at: &str) -> 
         "UPDATE documents SET is_favorite = CASE WHEN is_favorite = 0 THEN 1 ELSE 0 END, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![updated_at, id],
     )?;
-    Ok(())
+    bump_rev(db, id, updated_at)
 }
 
 // ── Duplicate ──────────────────────────────────────────────────────────────────
@@ -627,6 +681,8 @@ pub fn duplicate_document(db: &Connection, id: &str, now: &str) -> rusqlite::Res
         updated_at: now.to_string(),
         is_favorite: false,
         is_archived: false,
+        rev: 0,
+        deleted_at: None,
     };
     insert_document(db, &doc)?;
 
@@ -646,6 +702,97 @@ pub fn duplicate_document(db: &Connection, id: &str, now: &str) -> rusqlite::Res
     }
 
     Ok(doc)
+}
+
+// ── LAN Sync (doc-level last-write-wins) ─────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SyncStats {
+    pub docs_changed: usize,
+    pub blocks_changed: usize,
+}
+
+/// Everything a peer needs to converge: every document (tombstones included)
+/// and the blocks of all alive documents. Tombstoned docs carry no blocks.
+pub fn query_sync_data(db: &Connection) -> rusqlite::Result<(Vec<Document>, Vec<Block>)> {
+    let docs = {
+        let mut stmt = db.prepare(&format!("{DOC_COLS} ORDER BY id"))?;
+        let rows = stmt.query_map([], row_to_document)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let blocks = {
+        let mut stmt = db.prepare(&format!(
+            "{BLOCK_COLS} JOIN documents d ON d.id = b.document_id WHERE d.deleted_at IS NULL ORDER BY b.id"
+        ))?;
+        let rows = stmt.query_map([], row_to_block)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    Ok((docs, blocks))
+}
+
+/// Merge a peer snapshot. Winner per document = higher (rev, updated_at),
+/// exact ties broken by (title, deleted_at) so both devices pick the same
+/// winner. The winning side's blocks replace the local set wholesale.
+/// ponytail: doc-level LWW, not block CRDT — concurrent edits to the same doc
+/// on two devices can silently lose one side. Upgrade path: per-block LWW
+/// with tombstones, or a full CRDT (automerge/yjs) in a later tranche.
+pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusqlite::Result<SyncStats> {
+    let mut stats = SyncStats::default();
+    for doc in docs {
+        let local = query_document(db, &doc.id).ok();
+        let incoming_wins = match &local {
+            None => true,
+            Some(l) => {
+                let incoming_key = (doc.rev, doc.updated_at.as_str());
+                let local_key = (l.rev, l.updated_at.as_str());
+                match incoming_key.cmp(&local_key) {
+                    std::cmp::Ordering::Greater => true,
+                    std::cmp::Ordering::Less => false,
+                    std::cmp::Ordering::Equal => {
+                        (doc.title.as_str(), doc.deleted_at.as_deref()) > (l.title.as_str(), l.deleted_at.as_deref())
+                    }
+                }
+            }
+        };
+        if !incoming_wins {
+            continue;
+        }
+
+        let mut blocks_changed = 0;
+        if doc.deleted_at.is_none() {
+            // Swap the whole block set of this doc.
+            fts_remove_doc(db, &doc.id)?;
+            db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            for b in blocks.iter().filter(|b| b.document_id == doc.id) {
+                insert_block(db, b)?;
+                blocks_changed += 1;
+            }
+            fts_index_doc_title(db, &doc.id, &doc.title)?;
+        } else {
+            db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            fts_remove_doc(db, &doc.id)?;
+        }
+
+        db.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                 title = excluded.title,
+                 updated_at = excluded.updated_at,
+                 is_favorite = excluded.is_favorite,
+                 is_archived = excluded.is_archived,
+                 rev = excluded.rev,
+                 deleted_at = excluded.deleted_at",
+            rusqlite::params![
+                doc.id, doc.title, doc.created_at, doc.updated_at,
+                doc.is_favorite as i32, doc.is_archived as i32,
+                doc.rev, doc.deleted_at
+            ],
+        )?;
+        stats.docs_changed += 1;
+        stats.blocks_changed += blocks_changed;
+    }
+    Ok(stats)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -842,6 +989,8 @@ mod tests {
             updated_at: now.into(),
             is_favorite: false,
             is_archived: false,
+            rev: 0,
+            deleted_at: None,
         };
         insert_document(&conn, &doc).unwrap();
         let block = Block {
@@ -968,5 +1117,77 @@ mod tests {
         assert!(open_vault(&db_path, &[1u8; 32]).is_err());
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn sync_merge_lww_converges_and_honors_tombstones() {
+        // Two devices, same doc edited concurrently to different titles.
+        let a = Connection::open_in_memory().unwrap();
+        let b = Connection::open_in_memory().unwrap();
+        create_tables(&a).unwrap();
+        create_tables(&b).unwrap();
+
+        let mk = |id: &str, title: &str, rev: i64, ts: &str| Document {
+            id: id.into(),
+            title: title.into(),
+            created_at: "c".into(),
+            updated_at: ts.into(),
+            is_favorite: false,
+            is_archived: false,
+            rev,
+            deleted_at: None,
+        };
+
+        // Seed both sides with the same base doc.
+        for conn in [&a, &b] {
+            conn.execute(
+                "INSERT INTO documents (id, title, created_at, updated_at, rev)
+                 VALUES ('d1', 'base', 'c', 't0', 3)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Concurrent edits: same rev+ts → tie must resolve identically.
+        // Each device applies its own edit, then they exchange snapshots.
+        let edit_a = mk("d1", "title from A", 4, "t4");
+        let edit_b = mk("d1", "title from B", 4, "t4");
+        sync_merge(&a, &[edit_a.clone()], &[]).unwrap();
+        sync_merge(&b, &[edit_b.clone()], &[]).unwrap();
+        sync_merge(&a, &[edit_b.clone()], &[]).unwrap();
+        sync_merge(&b, &[edit_a.clone()], &[]).unwrap();
+        let (a_docs, _) = query_sync_data(&a).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert_eq!(a_docs[0].title, b_docs[0].title, "tie must converge");
+
+        // A newer edit on A (higher rev) wins on B.
+        let newer = mk("d1", "title from A v2", 5, "t5");
+        sync_merge(&a, &[newer.clone()], &[],).unwrap();
+        sync_merge(&b, &[newer.clone()], &[],).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert_eq!(b_docs[0].title, "title from A v2");
+
+        // Tombstone on A (rev 6) propagates to B; a stale resurrect (rev 4)
+        // must not bring the doc back.
+        let tomb = Document {
+            deleted_at: Some("t6".into()),
+            ..newer.clone()
+        };
+        sync_merge(&a, &[tomb.clone()], &[]).unwrap();
+        sync_merge(&b, &[tomb], &[]).unwrap();
+        let (a_docs, _) = query_sync_data(&a).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert!(a_docs[0].deleted_at.is_some());
+        assert!(b_docs[0].deleted_at.is_some());
+        sync_merge(&b, &[mk("d1", "stale", 4, "t4")], &[]).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert!(b_docs[0].deleted_at.is_some(), "stale edit must not resurrect");
+
+        // A higher-rev alive doc resurrects the tombstone.
+        let alive = mk("d1", "resurrected", 7, "t7");
+        sync_merge(&b, &[alive], &[],).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert!(b_docs[0].deleted_at.is_none());
+        assert_eq!(b_docs[0].title, "resurrected");
     }
 }
