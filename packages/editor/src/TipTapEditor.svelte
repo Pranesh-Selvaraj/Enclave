@@ -1,13 +1,7 @@
 <script lang="ts">
-	import { Editor } from '@tiptap/core';
-	import StarterKit from '@tiptap/starter-kit';
-	import Placeholder from '@tiptap/extension-placeholder';
-	import TaskList from '@tiptap/extension-task-list';
-	import TaskItem from '@tiptap/extension-task-item';
-	import { SlashCommand } from './extensions/slash-command.js';
-	import { Callout } from './extensions/callout.js';
-	import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
-	import { makeReactive } from './reactivity.js';
+import { Editor } from '@tiptap/core';
+import { editorExtensions } from './extensions.js';
+import { makeReactive } from './reactivity.js';
 
 	let {
 		content = undefined,
@@ -22,44 +16,47 @@
 		editable?: boolean;
 		autofocus?: boolean;
 		editor?: Editor | undefined;
-		onChange?: (json: object, html: string) => void;
+		onChange?: () => void;
 	} = $props();
 
 	let element: HTMLElement | undefined = $state();
 	let _editor: Editor | undefined = $state();
+	// Track whether we've applied async content to avoid infinite loop
+	let contentApplied = false;
 
 	$effect(() => {
 		if (!element || _editor) return;
 
 		const instance = new Editor({
 			element,
-			extensions: [
-				StarterKit.configure({
-					heading: { levels: [1, 2, 3] },
-				}),
-				Placeholder.configure({ placeholder }),
-				TaskList,
-				TaskItem.configure({ nested: true }),
-				Callout,
-				ToggleBlock,
-				ToggleSummary,
-				SlashCommand,
-			],
+			extensions: editorExtensions(),
 			content: content as string | undefined,
 			editable,
 			autofocus,
 			onUpdate: ({ editor: ed }) => {
-				onChange?.(ed.getJSON(), ed.getHTML());
+				// Signal-only: serializing (getJSON) here allocates a full doc
+				// tree per keystroke; the page serializes once at save time.
+				onChange?.();
 			},
 		});
 
 		_editor = makeReactive(instance);
 		boundEditor = _editor;
 
+		// If content wasn't available at init time, apply it now
+		if (content && !contentApplied) {
+			const contentStr = JSON.stringify(content);
+			if (contentStr !== '{"type":"doc","content":[]}') {
+				instance.commands.setContent(content as any);
+			}
+			contentApplied = true;
+		}
+
 		return () => {
 			instance.destroy();
 			_editor = undefined as unknown as typeof _editor;
 			boundEditor = undefined as unknown as typeof boundEditor;
+			contentApplied = false;
 		};
 	});
 </script>
@@ -83,6 +80,7 @@
 		outline: none;
 		min-height: 200px;
 		padding: 8px 0;
+		position: relative;
 	}
 
 	:global(.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before) {
@@ -204,5 +202,25 @@
 
 	:global(.tiptap-editor details[data-toggle] > summary::marker) {
 		color: var(--color-text-muted);
+	}
+
+	/* ── Mention chips ── */
+	:global(.tiptap-editor .mention-chip) {
+		display: inline;
+		background: var(--color-accent-subtle);
+		color: var(--color-accent);
+		border-radius: 999px;
+		padding: 1px 8px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+	:global(.tiptap-editor .mention-chip:hover) {
+		background: var(--color-accent);
+		color: #fff;
+	}
+	:global(.tiptap-editor .mention-chip.selected) {
+		background: var(--color-accent);
+		color: #fff;
 	}
 </style>

@@ -9,6 +9,8 @@
 
 	let visible = $state(false);
 	let position = $state({ x: 0, y: 0 });
+	let isMouseOverMenu = $state(false);
+	let active = $state({ bold: false, italic: false, strike: false, code: false });
 
 	function updateMenu() {
 		if (!editor) return;
@@ -17,6 +19,16 @@
 			visible = false;
 			return;
 		}
+
+		// Hoist isActive reads out of the template: with the reactive editor
+		// proxy they'd re-subscribe on every transaction and rerender on each
+		// keystroke.
+		active = {
+			bold: editor.isActive('bold'),
+			italic: editor.isActive('italic'),
+			strike: editor.isActive('strike'),
+			code: editor.isActive('code'),
+		};
 
 		const start = editor.view.coordsAtPos(from);
 		const end = editor.view.coordsAtPos(to);
@@ -47,15 +59,21 @@
 	}
 
 	$effect(() => {
-		if (!editor) return;
-		editor.on('selectionUpdate', updateMenu);
-		editor.on('blur', () => {
-			// Delay hide to allow button clicks
-			setTimeout(() => { visible = false; }, 200);
-		});
+		const ed = editor;
+		if (!ed) return;
+
+		function onBlur() {
+			if (!isMouseOverMenu) {
+				visible = false;
+			}
+		}
+
+		ed.on('selectionUpdate', updateMenu);
+		ed.on('blur', onBlur);
 
 		return () => {
-			editor.off('selectionUpdate', updateMenu);
+			ed.off('selectionUpdate', updateMenu);
+			ed.off('blur', onBlur);
 		};
 	});
 </script>
@@ -65,10 +83,15 @@
 	<div
 		class="bubble-menu"
 		style="left: {position.x}px; top: {position.y}px;"
+		onpointerdown={() => isMouseOverMenu = true}
+		onmouseenter={() => isMouseOverMenu = true}
+		onmouseleave={() => { isMouseOverMenu = false; visible = false; }}
+		role="toolbar"
+		aria-label="Text formatting"
 	>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('bold')}
+			class:active={active.bold}
 			onclick={toggleBold}
 			aria-label="Bold"
 		>
@@ -76,7 +99,7 @@
 		</button>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('italic')}
+			class:active={active.italic}
 			onclick={toggleItalic}
 			aria-label="Italic"
 		>
@@ -84,7 +107,7 @@
 		</button>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('strike')}
+			class:active={active.strike}
 			onclick={toggleStrike}
 			aria-label="Strikethrough"
 		>
@@ -93,7 +116,7 @@
 		<div class="bubble-divider"></div>
 		<button
 			class="bubble-btn"
-			class:active={editor.isActive('code')}
+			class:active={active.code}
 			onclick={toggleCode}
 			aria-label="Inline code"
 		>

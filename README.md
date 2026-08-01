@@ -1,6 +1,6 @@
 # Enclave
 
-> **Secure, local-first, zero-knowledge note-taking with P2P sync over local Wi-Fi.**
+> **Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi.**
 >
 > No cloud. No servers. No internet required.
 
@@ -9,13 +9,13 @@
 Enclave is built on three core principles:
 
 ### 1. Local-First
-All data lives on your device first. The application functions fully offline — create, edit, and organize notes without ever connecting to a network. Sync is an enhancement, not a requirement.
+All data lives on your device first. The application functions fully offline — create, edit, and organize pages without ever connecting to a network. Sync is an enhancement, not a requirement.
 
 ### 2. Zero-Knowledge Encryption
-Every note is encrypted with **AES-256-GCM** before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
+Every page is encrypted with **AES-256-GCM** before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
 
 ### 3. Peer-to-Peer Sync
-When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync encrypted notes directly over **WebSocket** data channels using **Yjs CRDTs**. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary.
+When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync encrypted pages directly over **WebSocket** data channels using **Yjs CRDTs**. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary.
 
 ## Tech Stack
 
@@ -28,7 +28,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Data Model** | Document + Block with fractional indexing |
 | **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
 | **Key Derivation** | Argon2id (`hash-wasm`) |
-| **Markdown I/O** | `turndown` + `markdown-it` bidirectional bridge |
+| **Markdown I/O** | `turndown` (HTML → Markdown export) |
 | **Network Discovery** | mDNS (`mdns-sd`) |
 | **Transport** | WebSocket (`tokio-tungstenite`) |
 | **Sync Engine** | Yjs CRDT with encrypted transport |
@@ -57,13 +57,15 @@ enclave/
 │       │   ├── app.html           # Root HTML shell
 │       │   ├── app.css            # Global styles + theme variables (light/dark)
 │       │   ├── lib/
-│       │   │   ├── VaultGuard.svelte     # Seed phrase unlock / vault creation
+│       │   │   ├── VaultGuard.svelte     # Vault creation / password + seed unlock
 │       │   │   └── SettingsPanel.svelte  # Theme toggle + keyboard shortcuts
 │       │   └── routes/
 │       │       ├── +layout.svelte  # App shell, sidebar, command palette, network toggle
 │       │       ├── +page.svelte    # Home / recent pages
+│       │       ├── graph/
+│       │       │   └── +page.svelte  # Backlink graph view (canvas)
 │       │       └── [id]/
-│       │           └── +page.svelte  # Editor + slash menu + markdown export
+│       │           └── +page.svelte  # Editor + slash/bubble/link menus + export
 │       ├── static/
 │       ├── package.json
 │       ├── svelte.config.js
@@ -77,14 +79,16 @@ enclave/
 │   │   ├── src/
 │   │   │   ├── TipTapEditor.svelte   # Core editor (task lists, callouts, toggles)
 │   │   │   ├── reactivity.ts         # Svelte 5 ↔ TipTap reactivity bridge
-│   │   │   ├── markdown.ts           # HTML ↔ Markdown serialization
+│   │   │   ├── markdown.ts           # HTML → Markdown serialization
 │   │   │   ├── extensions/
 │   │   │   │   ├── slash-command.ts  # "/" trigger detection
+│   │   │   │   ├── page-link.ts      # "[[..." trigger detection
 │   │   │   │   ├── callout.ts        # Colored info/warning blocks
 │   │   │   │   └── toggle-block.ts   # Collapsible sections
 │   │   │   ├── blocks/
 │   │   │   │   ├── SlashMenu.svelte  # Slash command palette
-│   │   │   │   └── BubbleMenu.svelte # Text selection formatting
+│   │   │   │   ├── BubbleMenu.svelte # Text selection formatting
+│   │   │   │   └── PageLinkMenu.svelte # Page picker for [[ links
 │   │   │   └── index.ts
 │   │   └── test.ts                # Markdown round-trip verification
 │   ├── sync-engine/               # Yjs CRDT + encrypted P2P sync
@@ -92,11 +96,10 @@ enclave/
 │   │   └── test.ts                # Two-peer sync convergence test
 │   └── ui/                        # Shared Svelte component library
 │       ├── src/
-│       │   ├── theme.ts           # Reactive theme store (dark/light, persisted)
-│       │   ├── types.ts           # Document, Block interfaces
+│       │   ├── theme.svelte.ts     # Reactive theme store (dark/light, persisted)
+│       │   ├── types.ts            # Document, Block interfaces
 │       │   ├── components/
-│       │   │   ├── Button.svelte
-│       │   │   └── Modal.svelte
+│       │   │   └── Button.svelte
 │       │   └── index.ts
 │       └── package.json
 ├── src-tauri/                     # Rust backend (Tauri v2)
@@ -183,6 +186,9 @@ npx tsx packages/sync-engine/test.ts
 # Rust type-check
 cargo check --manifest-path src-tauri/Cargo.toml
 
+# Rust unit tests (storage semantics: upsert, LIKE escaping)
+cargo test --manifest-path src-tauri/Cargo.toml -p core-db
+
 # Frontend type-check
 npm run check -w @enclave/desktop
 ```
@@ -190,14 +196,14 @@ npm run check -w @enclave/desktop
 ## Vault & Security
 
 ### First Launch
-1. App prompts you to **create a new vault**
+1. App prompts you to **create a new vault** with a password
 2. A 12-word BIP39 English seed phrase is generated client-side
-3. You must save this phrase — it's the **only** way to unlock your vault
-4. Re-enter the phrase to confirm, then your encrypted vault is created
+3. You must save this phrase — it's the **only** way to recover the vault if you forget your password
+4. The seed phrase is stored locally, encrypted with Argon2id + AES-256-GCM (`vault.key`), so later unlocks only need your password
 
 ### Returning User
-1. Enter your 12-word seed phrase to unlock
-2. The phrase is validated then run through **Argon2id** (64 MiB, 3 iterations, 4 parallelism) to derive the 256-bit master key
+1. Enter your **password** (or the 12-word seed phrase if you forgot it)
+2. Credentials are run through **Argon2id** (64 MiB, 3 iterations, 4 parallelism) to derive the 256-bit master key
 3. The master key decrypts the **SQLCipher** database
 
 ### Crypto Flow
@@ -209,15 +215,18 @@ npm run check -w @enclave/desktop
        │
        ▼
   256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB)
+                                │
+                                └── vault.key: seed phrase re-encrypted
+                                    with Argon2id(password + random salt) + AES-256-GCM
 ```
 
 ## Security Model
 
-- **At rest**: All notes encrypted via AES-256-GCM. Keys derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
+- **At rest**: All pages encrypted via AES-256-GCM. Keys derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
 - **In transit**: P2P connections use encrypted WebSocket channels within the local network perimeter. Messages are encrypted before leaving the device.
-- **Zero-trust sync**: Peers exchange only encrypted CRDT update blobs. The receiving device cannot read notes without the user's decryption key — even if they're on the same network.
+- **Zero-trust sync**: Peers exchange only encrypted CRDT update blobs. The receiving device cannot read pages without the user's decryption key — even if they're on the same network.
 - **No telemetry**: The application makes zero outbound network requests. All communication is strictly local-network-only.
-- **Key material**: The 12-word seed phrase and derived keys exist only in memory during the session. Never written to disk.
+- **Key material**: The seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
 
 ## Network Design
 
@@ -254,6 +263,7 @@ npm run check -w @enclave/desktop
 | Callouts (info/warning boxes) | `/callout` |
 | Toggle blocks (collapsible) | `/toggle` |
 | Horizontal divider | `/divider` |
+| Page links (backlinks) | Type `[[` + page title |
 | Text formatting | Select + bubble menu |
 | Command palette | `Ctrl+K` |
 | Markdown export | Button in editor toolbar |

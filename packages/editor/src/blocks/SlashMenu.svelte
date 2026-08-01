@@ -1,6 +1,11 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 	import { SlashCommandPluginKey } from '../extensions/slash-command.js';
+	import { templates } from '../templates.js';
+	import type { Template } from '../templates.js';
+	import { listDatabases } from '../dbLink.js';
+	import type { DatabaseRef } from '../dbLink.js';
 
 	interface Command {
 		id: string;
@@ -15,6 +20,27 @@
 	}: {
 		editor: Editor | undefined;
 	} = $props();
+
+	let fileInput: HTMLInputElement | undefined = $state();
+
+	async function importImage(file: File) {
+		if (!editor) return;
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const abs = await invoke<string>('save_attachment', {
+				documentId: editor.storage.image.docId,
+				filename: file.name || `image-${Date.now()}.png`,
+				data: Array.from(bytes),
+			});
+			editor.chain().focus().setImage({ src: convertFileSrc(abs), alt: file.name }).run();
+		} catch (e) {
+			console.error('Failed to import image:', e);
+		}
+	}
+
+	function pickImage(ed: Editor) {
+		fileInput?.click();
+	}
 
 	const commands: Command[] = [
 		{
@@ -88,6 +114,56 @@
 			action: (ed) => ed.chain().focus().setToggleBlock().run(),
 		},
 		{
+			id: 'database',
+			label: 'Database',
+			icon: '▦',
+			description: 'Insert a typed table database',
+			action: (ed) => ed.chain().focus().setDatabase().run(),
+		},
+		{
+			id: 'linkedDatabase',
+			label: 'Linked Database',
+			icon: '⧉',
+			description: 'Mirror another database on this page',
+			action: () => {
+				showingLinkedDb = !showingLinkedDb;
+				refreshLinked();
+			},
+		},
+		{
+			id: 'pageEmbed',
+			label: 'Embed Page',
+			icon: '🔗',
+			description: 'Embed a link to another page',
+			action: (ed) => ed.chain().focus().setPageEmbed().run(),
+		},
+		{
+			id: 'image',
+			label: 'Image',
+			icon: '🖼',
+			description: 'Insert an image from your device',
+			action: (ed) => pickImage(ed),
+		},
+		{
+			id: 'templates',
+			label: 'Template',
+			icon: '📄',
+			description: 'Insert a starter template',
+			action: () => { showingTemplates = !showingTemplates; },
+		},
+		{
+			id: 'bookmark',
+			label: 'Bookmark',
+			icon: '🔖',
+			description: 'Insert a link card',
+			// ponytail: window.prompt for the URL — a small inline form is
+			// nicer but costs a menu state; paste-URL already inserts directly.
+			action: (ed) => {
+				const url = window.prompt('Paste a URL:');
+				if (url) ed.chain().focus().setBookmark(url.trim()).run();
+			},
+		},
+		{
 			id: 'codeBlock',
 			label: 'Code Block',
 			icon: '</>',
@@ -106,6 +182,9 @@
 	let query = $state('');
 	let selectedIndex = $state(0);
 	let visible = $state(false);
+	let showingTemplates = $state(false);
+	let showingLinkedDb = $state(false);
+	let linkedDbs = $state<DatabaseRef[]>([]);
 	let position = $state({ x: 0, y: 0 });
 
 	let filtered = $derived(
@@ -118,21 +197,74 @@
 
 	function selectCommand(cmd: Command) {
 		if (!editor) return;
-		const { from } = editor.state.selection;
-
 		// Delete the "/" trigger text before executing
-		const pluginState = SlashCommandPluginKey.getState(editor.state);
+		deleteSlashTrigger(editor);
+		cmd.action(editor);
+		visible = false;
+		query = '';
+	}
+
+	function deleteSlashTrigger(ed: Editor) {
+		const { from } = ed.state.selection;
+		const pluginState = SlashCommandPluginKey.getState(ed.state);
 		if (pluginState) {
-			editor
+			ed
 				.chain()
 				.focus()
 				.deleteRange({ from: pluginState.range.from, to: pluginState.range.to })
 				.run();
 		}
+	}
 
-		cmd.action(editor);
+	function pickTemplate(t: Template) {
+		if (!editor) return;
+		deleteSlashTrigger(editor);
+		editor.chain().focus().insertContent(t.content).run();
 		visible = false;
 		query = '';
+		showingTemplates = false;
+	}
+
+	function refreshLinked() {
+		if (!editor) return;
+		linkedDbs = listDatabases(editor.state.doc.toJSON());
+	}
+
+	function genId(): string {
+		return Math.random().toString(36).slice(2, 10);
+	}
+
+	function pickLinkedDb(ref: DatabaseRef) {
+		if (!editor) return;
+		deleteSlashTrigger(editor);
+		// Re-resolve the node after the trigger deletion shifted positions.
+		const fresh =
+			(listDatabases(editor.state.doc.toJSON()).find(
+				(r) => (ref.id && r.id === ref.id) || (r.name === ref.name && r.rowCount === ref.rowCount)
+			) ?? ref);
+		let sourceId = fresh.id;
+		let data = fresh.data;
+		if (!sourceId) {
+			// Older databases have no id — stamp one so the link can resolve.
+			sourceId = genId();
+			data = { ...fresh.data, id: sourceId };
+			editor.view.dispatch(editor.state.tr.setNodeMarkup(fresh.pos, undefined, { data: JSON.stringify(data) }));
+		}
+		editor
+			.chain()
+			.focus()
+			.setLinkedDatabase(sourceId, {
+				columns: data.columns ?? [],
+				rows: data.rows ?? [],
+				view: data.view,
+				groupBy: data.groupBy ?? null,
+				sort: data.sort ?? null,
+				filters: data.filters ?? {},
+			})
+			.run();
+		visible = false;
+		query = '';
+		showingLinkedDb = false;
 	}
 
 	function updatePosition() {
@@ -148,28 +280,42 @@
 		};
 	}
 
-	// Listen for slash command state changes
+	// ── Scroll tracking ──
+	let scrollContainer: Element | null = null;
+
 	$effect(() => {
-		if (!editor) return;
+		const ed = editor;
+		if (!ed) return;
+
 		const checkState = () => {
-			const state = SlashCommandPluginKey.getState(editor.state);
+			const state = SlashCommandPluginKey.getState(ed.state);
 			if (state) {
 				query = state.query;
 				selectedIndex = 0;
 				visible = true;
 				updatePosition();
+				if (showingLinkedDb) refreshLinked();
 			} else {
 				visible = false;
+				showingTemplates = false;
+				showingLinkedDb = false;
 			}
 		};
 
-		editor.on('transaction', checkState);
-		editor.on('selectionUpdate', () => {
+		// Find scrollable ancestor
+		scrollContainer = ed.view.dom.closest('.main-pane') || ed.view.dom.parentElement;
+		const onScroll = () => { if (visible) updatePosition(); };
+		scrollContainer?.addEventListener('scroll', onScroll, { passive: true });
+
+		ed.on('transaction', checkState);
+		ed.on('selectionUpdate', () => {
 			if (visible) updatePosition();
 		});
 
 		return () => {
-			editor.off('transaction', checkState);
+			ed.off('transaction', checkState);
+			scrollContainer?.removeEventListener('scroll', onScroll);
+			scrollContainer = null;
 		};
 	});
 
@@ -184,15 +330,42 @@
 			selectedIndex = Math.max(selectedIndex - 1, 0);
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
-			const cmd = filtered[selectedIndex];
-			if (cmd) selectCommand(cmd);
+			if (showingTemplates) {
+				const t = templates[selectedIndex];
+				if (t) pickTemplate(t);
+			} else if (showingLinkedDb) {
+				const ref = linkedDbs[selectedIndex];
+				if (ref) pickLinkedDb(ref);
+			} else {
+				const cmd = filtered[selectedIndex];
+				if (cmd) selectCommand(cmd);
+			}
 		} else if (e.key === 'Escape') {
 			visible = false;
+			showingTemplates = false;
+			showingLinkedDb = false;
 		}
 	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
+
+<input
+	bind:this={fileInput}
+	type="file"
+	accept="image/*"
+	class="hidden-file-input"
+	onchange={(e: Event) => {
+		const f = (e.currentTarget as HTMLInputElement).files?.[0];
+		(e.currentTarget as HTMLInputElement).value = '';
+		if (f && editor) {
+			deleteSlashTrigger(editor);
+			visible = false;
+			void importImage(f);
+		}
+	}}
+	aria-hidden="true"
+/>
 
 {#if visible && editor}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -200,20 +373,47 @@
 		class="slash-menu"
 		style="left: {position.x}px; top: {position.y}px;"
 	>
-		<div class="slash-menu-header">Basic Blocks</div>
-		{#each filtered as cmd, i}
-			<button
-				class="slash-item"
-				class:selected={i === selectedIndex}
-				onclick={() => selectCommand(cmd)}
-			>
-				<span class="slash-item-icon">{cmd.icon}</span>
-				<div class="slash-item-text">
-					<span class="slash-item-label">{cmd.label}</span>
-					<span class="slash-item-desc">{cmd.description}</span>
-				</div>
-			</button>
-		{/each}
+		{#if showingTemplates}
+			<div class="slash-menu-header">Templates</div>
+			{#each templates as t}
+				<button class="slash-item" onclick={() => pickTemplate(t)}>
+					<span class="slash-item-icon">{t.icon}</span>
+					<div class="slash-item-text">
+						<span class="slash-item-label">{t.name}</span>
+					</div>
+				</button>
+			{/each}
+		{:else if showingLinkedDb}
+			<div class="slash-menu-header">Linked Database</div>
+			{#if linkedDbs.length === 0}
+				<div class="slash-empty">No databases on this page yet</div>
+			{:else}
+				{#each linkedDbs as ref}
+					<button class="slash-item" onclick={() => pickLinkedDb(ref)}>
+						<span class="slash-item-icon">⧉</span>
+						<div class="slash-item-text">
+							<span class="slash-item-label">{ref.name}</span>
+							<span class="slash-item-desc">{ref.rowCount} {ref.rowCount === 1 ? 'row' : 'rows'}</span>
+						</div>
+					</button>
+				{/each}
+			{/if}
+		{:else}
+			<div class="slash-menu-header">Basic Blocks</div>
+			{#each filtered as cmd, i}
+				<button
+					class="slash-item"
+					class:selected={i === selectedIndex}
+					onclick={() => selectCommand(cmd)}
+				>
+					<span class="slash-item-icon">{cmd.icon}</span>
+					<div class="slash-item-text">
+						<span class="slash-item-label">{cmd.label}</span>
+						<span class="slash-item-desc">{cmd.description}</span>
+					</div>
+				</button>
+			{/each}
+		{/if}
 	</div>
 {/if}
 
@@ -286,6 +486,16 @@
 
 	.slash-item-desc {
 		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+
+	.hidden-file-input {
+		display: none;
+	}
+
+	.slash-empty {
+		padding: 8px 10px;
+		font-size: 13px;
 		color: var(--color-text-muted);
 	}
 </style>

@@ -17,6 +17,12 @@ pub struct Document {
     pub updated_at: String,
     pub is_favorite: bool,
     pub is_archived: bool,
+    /// Monotonic per-document edit counter — the LWW clock for LAN sync.
+    #[serde(default)]
+    pub rev: i64,
+    /// Tombstone for permanent deletes; NULL while the doc is alive.
+    #[serde(default)]
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,8 +72,120 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
             updated_at   TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_blocks_document
-         ON blocks(document_id, sort_order);",
+         ON blocks(document_id, sort_order);
+        CREATE VIRTUAL TABLE IF NOT EXISTS blocks_fts USING fts5(
+            doc_id UNINDEXED,
+            block_id UNINDEXED,
+            title,
+            content
+        );",
+    )?;
+    // Migration for pre-sync vaults: CREATE TABLE IF NOT EXISTS won't add
+    // columns to an existing database.
+    ensure_column(conn, "documents", "rev", "ALTER TABLE documents ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")?;
+    ensure_column(conn, "documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TEXT")?;
+    Ok(())
+}
+
+fn ensure_column(db: &Connection, table: &str, col: &str, ddl: &str) -> rusqlite::Result<()> {
+    let mut stmt = db.prepare(&format!("PRAGMA table_info({table})"))?;
+    let names: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .collect();
+    if !names.iter().any(|n| n == col) {
+        db.execute_batch(ddl)?;
+    }
+    Ok(())
+}
+
+/// Pragmas that make the vault fast on modern hardware without weakening
+/// SQLCipher encryption (WAL is encrypted in SQLCipher 4+).
+/// ponytail: single connection behind a Mutex, so no busy_timeout pressure
+/// today; it only costs one line to be ready for the async sync engine.
+fn set_perf_pragmas(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA temp_store = MEMORY;
+         PRAGMA busy_timeout = 5000;",
     )
+}
+
+/// Plain-text extract of a doc block's JSON so the FTS index holds prose,
+/// not JSON keys or node-type names.
+fn extract_text(value: &serde_json::Value, out: &mut String) {
+    match value {
+        serde_json::Value::String(s) => out.push_str(s),
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                extract_text(v, out)
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                if k == "type" || k == "attrs" {
+                    continue;
+                }
+                extract_text(v, out)
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Build an FTS5 MATCH query: every token prefix-matched, AND-joined.
+/// Quotes inside the user input are escaped per the FTS5 string grammar.
+fn fts_match_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .map(|t| format!("\"{}\"*", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+// ── FTS sync (kept manual — 5 mutation sites, zero trigger cleverness) ──────
+
+fn fts_remove_doc(db: &Connection, doc_id: &str) -> rusqlite::Result<()> {
+    db.execute("DELETE FROM blocks_fts WHERE doc_id = ?1", rusqlite::params![doc_id])?;
+    Ok(())
+}
+
+fn fts_remove_block(db: &Connection, block_id: &str) -> rusqlite::Result<()> {
+    db.execute("DELETE FROM blocks_fts WHERE block_id = ?1", rusqlite::params![block_id])?;
+    Ok(())
+}
+
+fn fts_index_doc_title(db: &Connection, doc_id: &str, title: &str) -> rusqlite::Result<()> {
+    fts_remove_block(db, &format!("t:{doc_id}"))?;
+    db.execute(
+        "INSERT INTO blocks_fts (doc_id, block_id, title, content)
+         VALUES (?1, ?2, ?3, '')",
+        rusqlite::params![doc_id, format!("t:{doc_id}"), title],
+    )?;
+    Ok(())
+}
+
+fn fts_index_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
+    if block.block_type != "doc" {
+        return Ok(()); // only prose blocks are searchable
+    }
+    let mut text = String::new();
+    extract_text(&block.content, &mut text);
+    let title: String = db
+        .query_row(
+            "SELECT title FROM documents WHERE id = ?1",
+            rusqlite::params![block.document_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    fts_remove_block(db, &block.id)?;
+    db.execute(
+        "INSERT INTO blocks_fts (doc_id, block_id, title, content)
+         VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![block.document_id, block.id, title, text],
+    )?;
+    Ok(())
 }
 
 // ── Vault Lifecycle ─────────────────────────────────────────────────────────
@@ -83,10 +201,11 @@ pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to create database: {e}"))?;
     set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
     create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    set_perf_pragmas(&conn).map_err(|e| format!("Failed to set perf pragmas: {e}"))?;
     Ok(conn)
 }
 
-/// Open an existing vault: open the database, set the key, verify it works.
+/// Open an existing vault: open the database, set the key, ensure tables exist.
 /// Returns the open connection or an error if the key is wrong.
 pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
@@ -96,10 +215,24 @@ pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |_| Ok(()))
         .map_err(|_| "Invalid vault key".to_string())?;
 
+    // Ensure tables exist (idempotent — safe to call on every unlock)
+    create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    set_perf_pragmas(&conn).map_err(|e| format!("Failed to set perf pragmas: {e}"))?;
+
     Ok(conn)
 }
 
 // ── Document Queries ────────────────────────────────────────────────────────
+
+/// Monotonic per-document revision bump — the LWW clock used by LAN sync.
+/// updated_at is refreshed together with rev so sync can compare both.
+fn bump_rev(db: &Connection, id: &str, now: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET rev = rev + 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, id],
+    )
+    .map(|_| ())
+}
 
 fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<Document> {
     Ok(Document {
@@ -109,14 +242,17 @@ fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<Document> {
         updated_at: row.get(3)?,
         is_favorite: row.get::<_, i32>(4)? != 0,
         is_archived: row.get::<_, i32>(5)? != 0,
+        rev: row.get(6)?,
+        deleted_at: row.get(7)?,
     })
 }
 
-const DOC_COLS: &str = "SELECT id, title, created_at, updated_at, is_favorite, is_archived FROM documents";
+const DOC_COLS: &str =
+    "SELECT id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at FROM documents";
 
 pub fn query_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
     let mut stmt = db.prepare(&format!(
-        "{DOC_COLS} WHERE is_archived = 0 ORDER BY updated_at DESC"
+        "{DOC_COLS} WHERE is_archived = 0 AND deleted_at IS NULL ORDER BY updated_at DESC"
     ))?;
     let rows = stmt.query_map([], row_to_document)?;
     rows.collect()
@@ -139,7 +275,8 @@ pub fn insert_document(db: &Connection, doc: &Document) -> rusqlite::Result<()> 
             doc.is_favorite as i32, doc.is_archived as i32
         ],
     )?;
-    Ok(())
+    bump_rev(db, &doc.id, &doc.updated_at)?;
+    fts_index_doc_title(db, &doc.id, &doc.title)
 }
 
 pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at: &str) -> rusqlite::Result<()> {
@@ -147,27 +284,39 @@ pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at:
         "UPDATE documents SET title = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![title, updated_at, id],
     )?;
+    bump_rev(db, id, updated_at)?;
+    db.execute(
+        "UPDATE blocks_fts SET title = ?1 WHERE doc_id = ?2",
+        rusqlite::params![title, id],
+    )?;
     Ok(())
 }
 
-pub fn delete_document(db: &Connection, id: &str) -> rusqlite::Result<()> {
+/// Permanent delete becomes a tombstone (deleted_at) so sync peers can
+/// converge instead of resurrecting the doc. Blocks are removed immediately.
+pub fn delete_document(db: &Connection, id: &str, now: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET deleted_at = ?1, rev = rev + 1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![now, now, id],
+    )?;
     db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![id])?;
-    db.execute("DELETE FROM documents WHERE id = ?1", rusqlite::params![id])?;
-    Ok(())
+    fts_remove_doc(db, id)
 }
 
 // ── Block Queries ───────────────────────────────────────────────────────────
 
 pub fn row_to_block(row: &rusqlite::Row) -> rusqlite::Result<Block> {
-    let content_str: String = row.get(3)?;
     Ok(Block {
         id: row.get(0)?,
         document_id: row.get(1)?,
-        block_type: row.get(4)?,
-        content: serde_json::from_str(&content_str).unwrap_or(serde_json::json!({})),
-        sort_order: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
+        content: {
+            let s: String = row.get(2)?;
+            serde_json::from_str(&s).unwrap_or(serde_json::json!({}))
+        },
+        block_type: row.get(3)?,
+        sort_order: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
     })
 }
 
@@ -191,10 +340,854 @@ pub fn insert_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
             block.content.to_string(), block.sort_order, block.created_at, block.updated_at
         ],
     )?;
-    Ok(())
+    fts_index_block(db, block)
+}
+
+/// Upsert a block (the shape the Tauri command uses) and keep the FTS index
+/// in sync. created_at is preserved by not touching it in DO UPDATE.
+pub fn upsert_block(db: &Connection, block: &Block) -> rusqlite::Result<Block> {
+    db.execute(
+        "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+             document_id = excluded.document_id,
+             type = excluded.type,
+             content = excluded.content,
+             sort_order = excluded.sort_order,
+             updated_at = excluded.updated_at",
+        rusqlite::params![
+            block.id, block.document_id, block.block_type,
+            block.content.to_string(), block.sort_order, block.updated_at
+        ],
+    )?;
+    fts_index_block(db, block)?;
+    bump_rev(db, &block.document_id, &block.updated_at)?;
+    db.query_row(
+        "SELECT b.id, b.document_id, b.content, b.type, b.sort_order, b.created_at, b.updated_at FROM blocks b WHERE b.id = ?1",
+        rusqlite::params![block.id],
+        row_to_block,
+    )
 }
 
 pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
+    let doc_id: Option<String> = db
+        .query_row("SELECT document_id FROM blocks WHERE id = ?1", rusqlite::params![id], |r| r.get(0))
+        .ok();
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
+    fts_remove_block(db, id)?;
+    if let Some(doc_id) = doc_id {
+        let now = chrono::Utc::now().to_rfc3339();
+        bump_rev(db, &doc_id, &now)?;
+    }
     Ok(())
+}
+
+// ── Backlinks ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Backlink {
+    pub doc_id: String,
+    pub doc_title: String,
+    pub block_content: String,
+}
+
+/// Escape LIKE wildcards so `%`/`_`/`\` in titles and queries match literally.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
+pub fn query_backlinks(db: &Connection, page_title: &str) -> rusqlite::Result<Vec<Backlink>> {
+    let pattern = format!("%[[{}]]%", like_escape(page_title));
+    let mut stmt = db.prepare(
+        "SELECT d.id, d.title, b.content FROM blocks b
+         JOIN documents d ON d.id = b.document_id
+         WHERE b.content LIKE ?1 ESCAPE '\\'
+         ORDER BY d.updated_at DESC"
+    )?;
+    let rows = stmt.query_map(rusqlite::params![pattern], |row| {
+        Ok(Backlink {
+            doc_id: row.get(0)?,
+            doc_title: row.get(1)?,
+            block_content: row.get(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Collect database-block payloads (their `attrs.data`) found anywhere in a
+/// doc's JSON — top-level blocks or nested content.
+fn collect_databases<'a>(v: &'a serde_json::Value, out: &mut Vec<serde_json::Value>) {
+    if v.get("type").and_then(|t| t.as_str()) == Some("database") {
+        if let Some(data) = v
+            .pointer("/attrs/data")
+            .and_then(|d| d.as_str())
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        {
+            out.push(data);
+        }
+    }
+    if let Some(arr) = v.as_array() {
+        for c in arr {
+            collect_databases(c, out);
+        }
+    } else if let Some(obj) = v.as_object() {
+        for (k, val) in obj {
+            if k == "attrs" {
+                continue; // attrs.data is a string, nothing to descend into
+            }
+            collect_databases(val, out);
+        }
+    }
+}
+
+/// Databases whose `relation`-typed columns reference `doc_id` — the
+/// database-flavored backlink. `block_content` carries "db · column" context
+/// so the existing backlinks panel can render it.
+pub fn find_relation_backlinks(db: &Connection, doc_id: &str) -> rusqlite::Result<Vec<Backlink>> {
+    let mut stmt = db.prepare(
+        "SELECT d.id, d.title, b.content FROM blocks b
+         JOIN documents d ON d.id = b.document_id
+         WHERE d.is_archived = 0 AND d.id != ?1
+         ORDER BY d.updated_at DESC",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![doc_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, title, content) = row?;
+        if let Some(context) = relation_hit(&content, doc_id) {
+            out.push(Backlink {
+                doc_id: id,
+                doc_title: title,
+                block_content: context,
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn relation_hit(content: &str, doc_id: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(content).ok()?;
+    let mut dbs = Vec::new();
+    collect_databases(&json, &mut dbs);
+    for data in dbs {
+        let cols = data.get("columns")?.as_array()?;
+        let rel_cols: Vec<&serde_json::Value> = cols
+            .iter()
+            .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("relation"))
+            .collect();
+        if rel_cols.is_empty() {
+            continue;
+        }
+        let db_name = cols
+            .first()
+            .and_then(|c| c.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("Database");
+        let rows = data.get("rows").and_then(|r| r.as_array());
+        if let Some(rows) = rows {
+            for col in &rel_cols {
+                let col_id = col.get("id")?.as_str()?;
+                let col_name = col.get("name")?.as_str()?;
+                let hit = rows.iter().any(|row| {
+                    row.get("cells")
+                        .and_then(|c| c.get(col_id))
+                        .and_then(|v| v.as_str())
+                        == Some(doc_id)
+                });
+                if hit {
+                    return Some(format!("{db_name} · {col_name}"));
+                }
+            }
+        }
+    }
+    None
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageInfo {
+    pub id: String,
+    pub title: String,
+}
+
+// Returns objects, not tuples — tuples serialize to JSON arrays, which the
+// frontend would misread as { id, title }.
+pub fn query_all_page_titles(db: &Connection) -> rusqlite::Result<Vec<PageInfo>> {
+    let mut stmt = db.prepare("SELECT id, title FROM documents WHERE is_archived = 0 ORDER BY title ASC")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(PageInfo { id: row.get(0)?, title: row.get(1)? })
+    })?;
+    rows.collect()
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+// Tags live in a per-document block (id "<docId>-tags", type "tags",
+// content {"tags":[...]}) so no schema migration is needed.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagInfo {
+    pub doc_id: String,
+    pub tags: Vec<String>,
+}
+
+pub fn query_all_tags(db: &Connection) -> rusqlite::Result<Vec<TagInfo>> {
+    let mut stmt = db.prepare(
+        "SELECT document_id, content FROM blocks WHERE type = 'tags'
+         AND document_id IN (SELECT id FROM documents WHERE is_archived = 0)",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let content: String = row.get(1)?;
+        let tags = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|v| {
+                v.get("tags")
+                    .and_then(|t| t.as_array())
+                    .map(|arr| arr.iter().filter_map(|t| t.as_str().map(String::from)).collect())
+            })
+            .unwrap_or_default();
+        Ok(TagInfo { doc_id: row.get(0)?, tags })
+    })?;
+    rows.collect()
+}
+
+// ── Full-text search ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub doc_id: String,
+    pub doc_title: String,
+    pub block_content: String,
+    pub r#type: String, // "title" | "content"
+}
+
+pub fn search_all(db: &Connection, query: &str) -> rusqlite::Result<Vec<SearchResult>> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(vec![]);
+    }
+    let match_q = fts_match_query(trimmed);
+    let mut stmt = db.prepare(
+        "SELECT doc_id, title, content,
+                CASE WHEN block_id LIKE 't:%' THEN 'title' ELSE 'content' END AS type
+         FROM blocks_fts
+         WHERE blocks_fts MATCH ?1
+           AND doc_id IN (SELECT id FROM documents WHERE is_archived = 0)
+         ORDER BY rank
+         LIMIT 30",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![match_q], |row| {
+        Ok(SearchResult {
+            doc_id: row.get(0)?,
+            doc_title: row.get(1)?,
+            block_content: row.get(2)?,
+            r#type: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+// ── Trash (soft delete) ────────────────────────────────────────────────────────
+// is_archived has always existed; these make it usable as a trash can.
+
+pub fn archive_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET is_archived = 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![updated_at, id],
+    )?;
+    bump_rev(db, id, updated_at)
+}
+
+pub fn restore_document(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET is_archived = 0, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![updated_at, id],
+    )?;
+    bump_rev(db, id, updated_at)
+}
+
+pub fn query_archived_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
+    let mut stmt = db.prepare(&format!(
+        "{DOC_COLS} WHERE is_archived = 1 AND deleted_at IS NULL ORDER BY updated_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_document)?;
+    rows.collect()
+}
+
+pub fn find_or_create_document(db: &Connection, title: &str, now: &str) -> rusqlite::Result<Document> {
+    let doc = query_document_by_title(db, title);
+    match doc {
+        Ok(d) => Ok(d),
+        Err(_) => {
+            let doc = Document {
+                id: uuid::Uuid::new_v4().to_string(),
+                title: title.to_string(),
+                created_at: now.to_string(),
+                updated_at: now.to_string(),
+                is_favorite: false,
+                is_archived: false,
+                rev: 0,
+                deleted_at: None,
+            };
+            insert_document(db, &doc)?;
+            let block = Block {
+                id: uuid::Uuid::new_v4().to_string(),
+                document_id: doc.id.clone(),
+                block_type: "paragraph".into(),
+                content: serde_json::json!({}),
+                sort_order: 1.0,
+                created_at: now.to_string(),
+                updated_at: now.to_string(),
+            };
+            insert_block(db, &block)?;
+            Ok(doc)
+        }
+    }
+}
+
+fn query_document_by_title(db: &Connection, title: &str) -> rusqlite::Result<Document> {
+    db.query_row(
+        &format!("{DOC_COLS} WHERE title = ?1 AND is_archived = 0 AND deleted_at IS NULL"),
+        rusqlite::params![title],
+        row_to_document,
+    )
+}
+
+// ── Favorites ──────────────────────────────────────────────────────────────────
+
+pub fn toggle_document_favorite(db: &Connection, id: &str, updated_at: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET is_favorite = CASE WHEN is_favorite = 0 THEN 1 ELSE 0 END, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![updated_at, id],
+    )?;
+    bump_rev(db, id, updated_at)
+}
+
+// ── Duplicate ──────────────────────────────────────────────────────────────────
+
+pub fn duplicate_document(db: &Connection, id: &str, now: &str) -> rusqlite::Result<Document> {
+    let original = query_document(db, id)?;
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let new_title = format!("Copy of {}", original.title);
+
+    let doc = Document {
+        id: new_id.clone(),
+        title: new_title,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
+        is_favorite: false,
+        is_archived: false,
+        rev: 0,
+        deleted_at: None,
+    };
+    insert_document(db, &doc)?;
+
+    // Copy all blocks
+    let blocks = query_blocks(db, id)?;
+    for block in blocks {
+        let new_block = Block {
+            id: uuid::Uuid::new_v4().to_string(),
+            document_id: new_id.clone(),
+            block_type: block.block_type,
+            content: block.content,
+            sort_order: block.sort_order,
+            created_at: now.to_string(),
+            updated_at: now.to_string(),
+        };
+        insert_block(db, &new_block)?;
+    }
+
+    Ok(doc)
+}
+
+// ── LAN Sync (doc-level last-write-wins) ─────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SyncStats {
+    pub docs_changed: usize,
+    pub blocks_changed: usize,
+}
+
+/// Everything a peer needs to converge: every document (tombstones included)
+/// and the blocks of all alive documents. Tombstoned docs carry no blocks.
+pub fn query_sync_data(db: &Connection) -> rusqlite::Result<(Vec<Document>, Vec<Block>)> {
+    let docs = {
+        let mut stmt = db.prepare(&format!("{DOC_COLS} ORDER BY id"))?;
+        let rows = stmt.query_map([], row_to_document)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let blocks = {
+        let mut stmt = db.prepare(&format!(
+            "{BLOCK_COLS} JOIN documents d ON d.id = b.document_id WHERE d.deleted_at IS NULL ORDER BY b.id"
+        ))?;
+        let rows = stmt.query_map([], row_to_block)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    Ok((docs, blocks))
+}
+
+/// Merge a peer snapshot. Winner per document = higher (rev, updated_at),
+/// exact ties broken by (title, deleted_at) so both devices pick the same
+/// winner. The winning side's blocks replace the local set wholesale.
+/// ponytail: doc-level LWW, not block CRDT — concurrent edits to the same doc
+/// on two devices can silently lose one side. Upgrade path: per-block LWW
+/// with tombstones, or a full CRDT (automerge/yjs) in a later tranche.
+pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusqlite::Result<SyncStats> {
+    let mut stats = SyncStats::default();
+    for doc in docs {
+        let local = query_document(db, &doc.id).ok();
+        let incoming_wins = match &local {
+            None => true,
+            Some(l) => {
+                let incoming_key = (doc.rev, doc.updated_at.as_str());
+                let local_key = (l.rev, l.updated_at.as_str());
+                match incoming_key.cmp(&local_key) {
+                    std::cmp::Ordering::Greater => true,
+                    std::cmp::Ordering::Less => false,
+                    std::cmp::Ordering::Equal => {
+                        (doc.title.as_str(), doc.deleted_at.as_deref()) > (l.title.as_str(), l.deleted_at.as_deref())
+                    }
+                }
+            }
+        };
+        if !incoming_wins {
+            continue;
+        }
+
+        let mut blocks_changed = 0;
+        if doc.deleted_at.is_none() {
+            // Swap the whole block set of this doc.
+            fts_remove_doc(db, &doc.id)?;
+            db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            for b in blocks.iter().filter(|b| b.document_id == doc.id) {
+                insert_block(db, b)?;
+                blocks_changed += 1;
+            }
+            fts_index_doc_title(db, &doc.id, &doc.title)?;
+        } else {
+            db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            fts_remove_doc(db, &doc.id)?;
+        }
+
+        db.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                 title = excluded.title,
+                 updated_at = excluded.updated_at,
+                 is_favorite = excluded.is_favorite,
+                 is_archived = excluded.is_archived,
+                 rev = excluded.rev,
+                 deleted_at = excluded.deleted_at",
+            rusqlite::params![
+                doc.id, doc.title, doc.created_at, doc.updated_at,
+                doc.is_favorite as i32, doc.is_archived as i32,
+                doc.rev, doc.deleted_at
+            ],
+        )?;
+        stats.docs_changed += 1;
+        stats.blocks_changed += blocks_changed;
+    }
+    Ok(stats)
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn like_escape_escapes_wildcards() {
+        assert_eq!(like_escape("a%b_c\\d"), "a\\%b\\_c\\\\d");
+        assert_eq!(like_escape("plain"), "plain");
+    }
+
+    #[test]
+    fn upsert_preserves_created_at() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 't', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES ('b1', 'd1', 'paragraph', '{}', 1.0, 'old-created', 'old-updated')",
+            [],
+        )
+        .unwrap();
+        // Same shape as the tauri command's upsert (no OR REPLACE)
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(id) DO UPDATE SET
+                 document_id = excluded.document_id,
+                 type = excluded.type,
+                 content = excluded.content,
+                 sort_order = excluded.sort_order,
+                 updated_at = excluded.updated_at",
+            rusqlite::params!["b1", "d1", "paragraph", "{}", 1.0, "new-now"],
+        )
+        .unwrap();
+        let row: (String, String) = conn
+            .query_row("SELECT created_at, updated_at FROM blocks WHERE id = 'b1'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(row, ("old-created".to_string(), "new-now".to_string()));
+    }
+
+    #[test]
+    fn backlinks_escape_wildcards_in_titles() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 'd', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES ('b1', 'd1', 'paragraph', '{\"text\":\"see [[50%_off]]\"}', 1.0, 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        // Literal `%` in the title must only match the literal `%` in content
+        let links = query_backlinks(&conn, "50%_off").unwrap();
+        assert_eq!(links.len(), 1);
+        let none = query_backlinks(&conn, "50X_off").unwrap();
+        assert!(none.is_empty(), "_ must not act as a single-char wildcard");
+        let none = query_backlinks(&conn, "50%anything").unwrap();
+        assert!(none.is_empty(), "% must not match everything");
+    }
+
+    #[test]
+    fn find_relation_backlinks_scans_database_blocks() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let insert_doc = |id: &str, title: &str, archived: i64| {
+            conn.execute(
+                "INSERT INTO documents (id, title, created_at, updated_at, is_archived)
+                 VALUES (?1, ?2, 'c', 'u', ?3)",
+                rusqlite::params![id, title, archived],
+            )
+            .unwrap();
+        };
+        insert_doc("d1", "Tracker", 0);
+        insert_doc("d2", "Sprint", 0);
+        insert_doc("d3", "Backlog", 1);
+        let db_data = serde_json::json!({
+            "id": "db1",
+            "columns": [
+                {"id": "c1", "name": "Task", "type": "text"},
+                {"id": "c2", "name": "Related", "type": "relation"}
+            ],
+            "rows": [
+                {"id": "r1", "cells": {"c1": "Ship", "c2": "d2"}},
+                {"id": "r2", "cells": {"c1": "Other", "c2": "d3"}}
+            ]
+        });
+        let content = serde_json::json!({
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "hi"}]},
+                {"type": "database", "attrs": {"data": db_data.to_string()}}
+            ]
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES ('b1', 'd1', 'doc', ?1, 0.0, 'c', 'u')",
+            rusqlite::params![content],
+        )
+        .unwrap();
+
+        let hit_d2 = find_relation_backlinks(&conn, "d2").unwrap();
+        assert_eq!(hit_d2.len(), 1, "one doc references d2");
+        assert_eq!(hit_d2[0].doc_id, "d1");
+        assert_eq!(hit_d2[0].doc_title, "Tracker");
+        assert_eq!(hit_d2[0].block_content, "Task · Related");
+        // Referenced docs may be archived; the REFERENCING doc's status matters
+        let hit_d3 = find_relation_backlinks(&conn, "d3").unwrap();
+        assert_eq!(hit_d3.len(), 1, "d1 also references archived d3");
+        assert!(find_relation_backlinks(&conn, "missing").unwrap().is_empty());
+        // Archiving the referencing doc removes the backlink
+        conn.execute("UPDATE documents SET is_archived = 1 WHERE id = 'd1'", [])
+            .unwrap();
+        assert!(find_relation_backlinks(&conn, "d2").unwrap().is_empty());
+        // A database without relation columns never matches
+        let plain = serde_json::json!({
+            "type": "doc",
+            "content": [
+                {"type": "database", "attrs": {"data": serde_json::json!({
+                    "columns": [{"id": "c1", "name": "Task", "type": "text"}],
+                    "rows": [{"id": "r1", "cells": {"c1": "d2"}}]
+                }).to_string()}}
+            ]
+        })
+        .to_string();
+        conn.execute(
+            "UPDATE blocks SET content = ?1 WHERE id = 'b1'",
+            rusqlite::params![plain],
+        )
+        .unwrap();
+        assert!(find_relation_backlinks(&conn, "d2").unwrap().is_empty());
+    }
+
+    #[test]
+    fn query_all_tags_parses_blocks_and_skips_archived() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let insert = |id: &str, archived: i64| {
+            conn.execute(
+                "INSERT INTO documents (id, title, created_at, updated_at, is_archived) VALUES (?1, ?2, 'c', 'u', ?3)",
+                rusqlite::params![id, id, archived],
+            )
+            .unwrap();
+        };
+        insert("d1", 0);
+        insert("d2", 0);
+        insert("d3", 1);
+        let block = |id: &str, doc: &str, tags: &str| {
+            conn.execute(
+                "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+                 VALUES (?1, ?2, 'tags', ?3, 2.0, 'c', 'u')",
+                rusqlite::params![id, doc, tags],
+            )
+            .unwrap();
+        };
+        block("d1-tags", "d1", r#"{"tags":["work","urgent"]}"#);
+        block("d2-tags", "d2", r#"{"tags":["work"]}"#);
+        block("d3-tags", "d3", r#"{"tags":["archived"]}"#);
+        // Malformed JSON must not fail the query
+        block("d1-bad", "d1", "not json");
+
+        let tags = query_all_tags(&conn).unwrap();
+        // d1-tags, d1-bad (malformed -> empty), d2-tags; d3 excluded (archived)
+        assert_eq!(tags.len(), 3);
+        let d1 = tags.iter().find(|t| t.doc_id == "d1" && !t.tags.is_empty()).unwrap();
+        assert_eq!(d1.tags, vec!["work", "urgent"]);
+        assert!(tags.iter().any(|t| t.doc_id == "d2" && t.tags == vec!["work"]));
+        assert!(tags.iter().all(|t| t.doc_id != "d3"), "archived doc's tags excluded");
+    }
+
+    #[test]
+    fn fts_search_ranks_and_excludes_archived() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let now = "t";
+        let doc = Document {
+            id: "d1".into(),
+            title: "Meeting Notes".into(),
+            created_at: now.into(),
+            updated_at: now.into(),
+            is_favorite: false,
+            is_archived: false,
+            rev: 0,
+            deleted_at: None,
+        };
+        insert_document(&conn, &doc).unwrap();
+        let block = Block {
+            id: "b1".into(),
+            document_id: "d1".into(),
+            block_type: "doc".into(),
+            content: serde_json::json!({
+                "type": "doc",
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Quarterly review with the sales team"}]}]
+            }),
+            sort_order: 0.0,
+            created_at: now.into(),
+            updated_at: now.into(),
+        };
+        insert_block(&conn, &block).unwrap();
+        // Non-prose blocks (tags/meta/whiteboard) must not be indexed
+        insert_block(&conn, &Block {
+            id: "b2".into(),
+            document_id: "d1".into(),
+            block_type: "whiteboard".into(),
+            content: serde_json::json!({"type":"doc","content":[{"type":"text","text":"quarterly secret"}]}),
+            sort_order: 1.0,
+            created_at: now.into(),
+            updated_at: now.into(),
+        }).unwrap();
+
+        let hits = search_all(&conn, "quarterly").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].doc_id, "d1");
+        assert!(!hits[0].block_content.contains("secret"), "whiteboard JSON not indexed");
+        assert!(hits[0].block_content.contains("sales team"));
+
+        // Title search matches the title-only row
+        let by_title = search_all(&conn, "meeting").unwrap();
+        assert!(by_title.iter().any(|h| h.r#type == "title"));
+
+        // Renaming the doc must re-index the title
+        update_document_title(&conn, "d1", "Renamed Doc", now).unwrap();
+        assert!(search_all(&conn, "renamed").unwrap().len() >= 1);
+        assert!(search_all(&conn, "meeting").unwrap().is_empty());
+
+        // Updating block content refreshes the index
+        upsert_block(&conn, &Block {
+            id: "b1".into(),
+            document_id: "d1".into(),
+            block_type: "doc".into(),
+            content: serde_json::json!({"type":"doc","content":[]}),
+            sort_order: 0.0,
+            created_at: now.into(),
+            updated_at: now.into(),
+        }).unwrap();
+        assert!(search_all(&conn, "quarterly").unwrap().is_empty());
+
+        // Archived docs drop out of search but stay in the trash
+        archive_document(&conn, "d1", now).unwrap();
+        assert!(search_all(&conn, "renamed").unwrap().is_empty());
+        let trash = query_archived_documents(&conn).unwrap();
+        assert_eq!(trash.len(), 1);
+        restore_document(&conn, "d1", now).unwrap();
+        assert!(search_all(&conn, "renamed").unwrap().len() >= 1);
+    }
+
+    #[test]
+    fn fts_query_escapes_user_input() {
+        assert_eq!(fts_match_query("hello"), "\"hello\"*");
+        assert_eq!(fts_match_query("a b"), "\"a\"* AND \"b\"*");
+        // Double quotes become doubled (FTS5 string escaping), no injection
+        assert_eq!(fts_match_query("say \"hi\""), "\"say\"* AND \"\"\"hi\"\"\"*");
+    }
+
+    #[test]
+    fn extract_text_walks_doc_json() {
+        let v = serde_json::json!({"type":"doc","content":[
+            {"type":"paragraph","content":[{"type":"text","text":"alpha "}]},
+            {"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"beta"}]}
+        ]});
+        let mut out = String::new();
+        extract_text(&v, &mut out);
+        assert_eq!(out, "alpha beta");
+    }
+
+    #[test]
+    fn sqlcipher_encrypted_roundtrip() {
+        // Exercise the real production path: keyed (encrypted) on-disk DB,
+        // same statements the tauri commands run.
+        let dir = std::env::temp_dir().join(format!("enclave-db-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let key = [7u8; 32];
+
+        let conn = init_vault(&db_path, &key).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 'Doc', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+        // First insert (new block)
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            rusqlite::params!["b1", "d1", "doc", "{\"type\":\"doc\"}", 0.0, "t1"],
+        )
+        .unwrap();
+        // Second upsert (update path) — must preserve created_at
+        conn.execute(
+            "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            rusqlite::params!["b1", "d1", "doc", "{\"type\":\"doc\",\"edited\":true}", 0.0, "t2"],
+        )
+        .unwrap();
+        drop(conn);
+
+        // Reopen with the same key — data must survive
+        let conn = open_vault(&db_path, &key).unwrap();
+        let blocks = query_blocks(&conn, "d1").unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content["edited"], true);
+        assert_eq!(blocks[0].created_at, "t1");
+        drop(conn);
+
+        // Wrong key must be rejected
+        assert!(open_vault(&db_path, &[1u8; 32]).is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn sync_merge_lww_converges_and_honors_tombstones() {
+        // Two devices, same doc edited concurrently to different titles.
+        let a = Connection::open_in_memory().unwrap();
+        let b = Connection::open_in_memory().unwrap();
+        create_tables(&a).unwrap();
+        create_tables(&b).unwrap();
+
+        let mk = |id: &str, title: &str, rev: i64, ts: &str| Document {
+            id: id.into(),
+            title: title.into(),
+            created_at: "c".into(),
+            updated_at: ts.into(),
+            is_favorite: false,
+            is_archived: false,
+            rev,
+            deleted_at: None,
+        };
+
+        // Seed both sides with the same base doc.
+        for conn in [&a, &b] {
+            conn.execute(
+                "INSERT INTO documents (id, title, created_at, updated_at, rev)
+                 VALUES ('d1', 'base', 'c', 't0', 3)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Concurrent edits: same rev+ts → tie must resolve identically.
+        // Each device applies its own edit, then they exchange snapshots.
+        let edit_a = mk("d1", "title from A", 4, "t4");
+        let edit_b = mk("d1", "title from B", 4, "t4");
+        sync_merge(&a, &[edit_a.clone()], &[]).unwrap();
+        sync_merge(&b, &[edit_b.clone()], &[]).unwrap();
+        sync_merge(&a, &[edit_b.clone()], &[]).unwrap();
+        sync_merge(&b, &[edit_a.clone()], &[]).unwrap();
+        let (a_docs, _) = query_sync_data(&a).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert_eq!(a_docs[0].title, b_docs[0].title, "tie must converge");
+
+        // A newer edit on A (higher rev) wins on B.
+        let newer = mk("d1", "title from A v2", 5, "t5");
+        sync_merge(&a, &[newer.clone()], &[],).unwrap();
+        sync_merge(&b, &[newer.clone()], &[],).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert_eq!(b_docs[0].title, "title from A v2");
+
+        // Tombstone on A (rev 6) propagates to B; a stale resurrect (rev 4)
+        // must not bring the doc back.
+        let tomb = Document {
+            deleted_at: Some("t6".into()),
+            ..newer.clone()
+        };
+        sync_merge(&a, &[tomb.clone()], &[]).unwrap();
+        sync_merge(&b, &[tomb], &[]).unwrap();
+        let (a_docs, _) = query_sync_data(&a).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert!(a_docs[0].deleted_at.is_some());
+        assert!(b_docs[0].deleted_at.is_some());
+        sync_merge(&b, &[mk("d1", "stale", 4, "t4")], &[]).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert!(b_docs[0].deleted_at.is_some(), "stale edit must not resurrect");
+
+        // A higher-rev alive doc resurrects the tombstone.
+        let alive = mk("d1", "resurrected", 7, "t7");
+        sync_merge(&b, &[alive], &[],).unwrap();
+        let (b_docs, _) = query_sync_data(&b).unwrap();
+        assert!(b_docs[0].deleted_at.is_none());
+        assert_eq!(b_docs[0].title, "resurrected");
+    }
 }

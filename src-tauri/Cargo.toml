@@ -4,8 +4,8 @@ resolver = "2"
 
 [package]
 name = "enclave"
-version = "0.1.0"
-description = "Secure, local-first, zero-internet note-taking application"
+version = "0.2.0"
+description = "Secure, local-first, zero-internet knowledge base"
 edition = "2021"
 rust-version = "1.77"
 license = "MIT"
@@ -23,7 +23,7 @@ core-db = { path = "crates/core-db" }
 core-network = { path = "crates/core-network" }
 
 # ── Tauri v2 Core ──
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset", "devtools", "tray-icon"] }
 
 # ── Encrypted Local Database ──
 rusqlite = { version = "0.34", features = ["bundled-sqlcipher"] }
@@ -36,3 +36,7 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["rt", "sync"] }
+tauri-plugin-dialog = "2"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

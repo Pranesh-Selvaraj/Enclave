@@ -31,7 +31,11 @@ fn local_ip() -> Result<String, String> {
     Ok(ip)
 }
 
-pub async fn start(peer_id: String, port: u16) -> Result<MdnsHandle, String> {
+pub async fn start(
+    peer_id: String,
+    port: u16,
+    discovery_tx: tokio::sync::mpsc::UnboundedSender<(String, String, u16)>,
+) -> Result<MdnsHandle, String> {
     let daemon = ServiceDaemon::new().map_err(|e| format!("mDNS daemon: {e}"))?;
 
     let host_ip = local_ip()?;
@@ -55,26 +59,23 @@ pub async fn start(peer_id: String, port: u16) -> Result<MdnsHandle, String> {
         .register(service_info)
         .map_err(|e| format!("mDNS register: {e}"))?;
 
-    // Browse for other Enclave peers
+    // Browse for other Enclave peers; resolved events trigger connections.
     let receiver = daemon.browse(SERVICE_TYPE).map_err(|e| format!("mDNS browse: {e}"))?;
 
-    // Spawn a listener that logs discovered peers.
-    // In a real impl this would update the peer list via a channel.
     std::thread::spawn(move || {
         while let Ok(event) = receiver.recv() {
-            // ponytail: mDNS events are logged but peer list sync is deferred
-            // to a channel-based approach when we need real-time peer discovery.
-            match event {
-                ServiceEvent::ServiceResolved(info) => {
-                    let _id = info
-                        .get_property_val_str("id")
-                        .unwrap_or("unknown")
-                        .to_string();
-                    let _addr = info.get_addresses().iter().next().cloned();
-                    // ponytail: peer discovery logged; real-time peer list sync deferred
-                    let _ = (_id, _addr);
+            if let ServiceEvent::ServiceResolved(info) = event {
+                let Some(id) = info.get_property_val_str("id").map(str::to_string) else {
+                    continue;
+                };
+                let Some(host) = info.get_addresses().iter().next().map(|a| a.to_string()) else {
+                    continue;
+                };
+                let port = info.get_port();
+                // Ignore our own advertisement.
+                if id != peer_id {
+                    let _ = discovery_tx.send((id, host, port));
                 }
-                _ => {}
             }
         }
     });
