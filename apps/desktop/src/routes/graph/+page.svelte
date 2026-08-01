@@ -15,15 +15,11 @@
 
 			const pageList = await invoke<Array<{ id: string; title: string }>>('get_page_list');
 			const titleToId = new Map(pageList.map(p => [p.title, p.id]));
-			const allLinks: Array<{ source: string; target: string }> = [];
-
-			for (const doc of documents) {
+			const perDoc = await Promise.all(documents.map(async (doc) => {
 				const blocks = await invoke<Array<{ content: Record<string, unknown> }>>('get_blocks', { documentId: doc.id });
-				for (const block of blocks) {
-					allLinks.push(...extractLinks(block.content, titleToId, doc.id));
-				}
-			}
-			links = allLinks;
+				return blocks.flatMap((b) => extractLinks(b.content, titleToId, doc.id));
+			}));
+			links = perDoc.flat();
 		} catch (e) {
 			console.error('Failed to load graph:', e);
 		} finally {

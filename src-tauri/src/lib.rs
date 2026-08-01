@@ -36,12 +36,12 @@ fn with_db<T>(
 
 // ── Vault Lifecycle Commands ────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn is_vault_initialized(state: tauri::State<AppState>) -> bool {
     core_db::vault_exists(&db_path(&state.app_dir))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
     let path = db_path(&state.app_dir);
     if core_db::vault_exists(&path) {
@@ -53,7 +53,7 @@ fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn unlock_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
     let path = db_path(&state.app_dir);
     let conn = core_db::open_vault(&path, &key)?;
@@ -62,7 +62,7 @@ fn unlock_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), Strin
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn lock_vault(state: tauri::State<AppState>) -> Result<(), String> {
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = None;
@@ -71,7 +71,7 @@ fn lock_vault(state: tauri::State<AppState>) -> Result<(), String> {
 
 /// Delete vault + key file. Only safe when no user data exists (used when
 /// vault creation fails partway and would otherwise lock the user out).
-#[tauri::command]
+#[tauri::command(async)]
 fn reset_vault(state: tauri::State<AppState>) -> Result<(), String> {
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = None;
@@ -83,17 +83,17 @@ fn reset_vault(state: tauri::State<AppState>) -> Result<(), String> {
 
 // ── Document Commands ───────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_document_list(state: tauri::State<AppState>) -> Result<Vec<core_db::Document>, String> {
     with_db(&state, |db| core_db::query_documents(db).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
     with_db(&state, |db| core_db::query_document(db, &id).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_db::Document, String> {
     with_db(&state, |db| {
         let now = chrono::Utc::now().to_rfc3339();
@@ -122,12 +122,12 @@ fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), String> {
     with_db(&state, |db| core_db::delete_document(db, &id).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn update_document_title(
     state: tauri::State<AppState>,
     id: String,
@@ -142,7 +142,7 @@ fn update_document_title(
 
 // ── Block Commands ──────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_blocks(
     state: tauri::State<AppState>,
     document_id: String,
@@ -150,7 +150,7 @@ fn get_blocks(
     with_db(&state, |db| core_db::query_blocks(db, &document_id).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn upsert_block(
     state: tauri::State<AppState>,
     id: String,
@@ -187,7 +187,7 @@ fn upsert_block(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_block(state: tauri::State<AppState>, id: String) -> Result<(), String> {
     with_db(&state, |db| core_db::delete_block(db, &id).map_err(|e| e.to_string()))
 }
@@ -195,7 +195,7 @@ fn delete_block(state: tauri::State<AppState>, id: String) -> Result<(), String>
 // ── Markdown Import / Export ────────────────────────────────────────────────
 
 /// Write arbitrary bytes (markdown text or PNG) into the exports dir.
-#[tauri::command]
+#[tauri::command(async)]
 fn export_file(state: tauri::State<AppState>, filename: String, data: Vec<u8>) -> Result<String, String> {
     let exports_dir = state.app_dir.join("exports");
     std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
@@ -204,13 +204,13 @@ fn export_file(state: tauri::State<AppState>, filename: String, data: Vec<u8>) -
     Ok(path.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn import_markdown(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
 }
 
 /// Write bytes to a user-chosen path (markdown vault export, PNG saves).
-#[tauri::command]
+#[tauri::command(async)]
 fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
     std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
 }
@@ -228,27 +228,27 @@ fn sanitize_filename(name: &str) -> String {
 
 // ── Backlinks ────────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_backlinks(state: tauri::State<AppState>, title: String) -> Result<Vec<core_db::Backlink>, String> {
     with_db(&state, |db| core_db::query_backlinks(db, &title).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<core_db::PageInfo>, String> {
     with_db(&state, |db| core_db::query_all_page_titles(db).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_all_tags(state: tauri::State<AppState>) -> Result<Vec<core_db::TagInfo>, String> {
     with_db(&state, |db| core_db::query_all_tags(db).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_all(state: tauri::State<AppState>, query: String) -> Result<Vec<core_db::SearchResult>, String> {
     with_db(&state, |db| core_db::search_all(db, &query).map_err(|e| e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn find_or_create_document(state: tauri::State<AppState>, title: String) -> Result<core_db::Document, String> {
     with_db(&state, |db| {
         let now = chrono::Utc::now().to_rfc3339();
@@ -258,13 +258,13 @@ fn find_or_create_document(state: tauri::State<AppState>, title: String) -> Resu
 
 // ── Vault Key File (encrypted seed phrase for password-based login) ──────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn store_vault_key(state: tauri::State<AppState>, key_data: Vec<u8>) -> Result<(), String> {
     let path = state.app_dir.join("vault.key");
     std::fs::write(&path, &key_data).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn load_vault_key(state: tauri::State<AppState>) -> Result<Vec<u8>, String> {
     let path = state.app_dir.join("vault.key");
     std::fs::read(&path).map_err(|_| "No password set".to_string())
@@ -272,7 +272,7 @@ fn load_vault_key(state: tauri::State<AppState>) -> Result<Vec<u8>, String> {
 
 // ── Favorites ────────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn toggle_favorite(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
     with_db(&state, |db| {
         let now = chrono::Utc::now().to_rfc3339();
@@ -281,7 +281,7 @@ fn toggle_favorite(state: tauri::State<AppState>, id: String) -> Result<core_db:
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn duplicate_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
     with_db(&state, |db| {
         let now = chrono::Utc::now().to_rfc3339();
@@ -293,7 +293,7 @@ fn duplicate_document(state: tauri::State<AppState>, id: String) -> Result<core_
 
 /// Writes an attachment under <app_data>/attachments/<document_id>/ and
 /// returns the absolute path (frontend serves it via the asset protocol).
-#[tauri::command]
+#[tauri::command(async)]
 fn save_attachment(
     state: tauri::State<AppState>,
     document_id: String,
@@ -318,17 +318,17 @@ fn save_attachment(
 
 // ── Network Commands ────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 async fn start_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.network.start().await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.network.stop().await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_network::NetworkStatus, String> {
     Ok(state.network.status().await)
 }
