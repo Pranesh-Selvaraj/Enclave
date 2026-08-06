@@ -37,6 +37,20 @@ pub struct Block {
     pub updated_at: String,
 }
 
+/// A stored embedding vector for a block (RAG). The vector is JSON-serialized
+/// into the `embeddings.vector` column; it is plaintext-derived at runtime and
+/// lives in the same encrypted (sqlcipher) DB as everything else.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Embedding {
+    pub block_id: String,
+    pub document_id: String,
+    pub doc_title: String,
+    /// The plain text that was embedded, so retrieval can inject it verbatim.
+    pub text: String,
+    pub vector: Vec<f64>,
+    pub updated_at: String,
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn bytes_to_hex(bytes: &[u8]) -> String {
@@ -73,6 +87,15 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_blocks_document
          ON blocks(document_id, sort_order);
+        CREATE TABLE IF NOT EXISTS embeddings (
+            block_id    TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            vector      TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_embeddings_document
+         ON embeddings(document_id);
         CREATE VIRTUAL TABLE IF NOT EXISTS blocks_fts USING fts5(
             doc_id UNINDEXED,
             block_id UNINDEXED,
@@ -188,6 +211,60 @@ fn fts_index_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
     Ok(())
 }
 
+// ── Embeddings (RAG) — manual sync, mirrors FTS ─────────────────────────────
+// Stale vectors are cleaned at the same mutation sites FTS touches; a doc
+// never has an embedding whose text disagrees with its current content for
+// long, and retrieval falls back to FTS for anything missing.
+
+pub fn upsert_embedding(
+    db: &Connection,
+    block_id: &str,
+    document_id: &str,
+    text: &str,
+    vector: &[f64],
+    updated_at: &str,
+) -> rusqlite::Result<()> {
+    let vector_json = serde_json::to_string(vector).unwrap_or_default();
+    db.execute(
+        "INSERT INTO embeddings (block_id, document_id, text, vector, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(block_id) DO UPDATE SET
+             document_id = excluded.document_id,
+             text = excluded.text,
+             vector = excluded.vector,
+             updated_at = excluded.updated_at",
+        rusqlite::params![block_id, document_id, text, vector_json, updated_at],
+    )?;
+    Ok(())
+}
+
+/// All stored embeddings joined with their (live, non-archived) doc titles.
+/// The frontend fetches the whole set and does cosine top-k client-side.
+// ponytail: no vector index — a personal vault is a few hundred vectors max;
+// add a sqlite-vec or similar index if the vault grows beyond that.
+pub fn query_embeddings(db: &Connection) -> rusqlite::Result<Vec<Embedding>> {
+    let mut stmt = db.prepare(
+        "SELECT e.block_id, e.document_id, d.title, e.text, e.vector, e.updated_at
+         FROM embeddings e
+         JOIN documents d ON d.id = e.document_id
+         WHERE d.is_archived = 0 AND d.deleted_at IS NULL
+         ORDER BY e.updated_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let vector_json: String = row.get(4)?;
+        let vector = serde_json::from_str(&vector_json).unwrap_or_default();
+        Ok(Embedding {
+            block_id: row.get(0)?,
+            document_id: row.get(1)?,
+            doc_title: row.get(2)?,
+            text: row.get(3)?,
+            vector,
+            updated_at: row.get(5)?,
+        })
+    })?;
+    rows.collect()
+}
+
 // ── Vault Lifecycle ─────────────────────────────────────────────────────────
 
 /// Check whether a vault database file already exists on disk.
@@ -300,6 +377,7 @@ pub fn delete_document(db: &Connection, id: &str, now: &str) -> rusqlite::Result
         rusqlite::params![now, now, id],
     )?;
     db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![id])?;
+    db.execute("DELETE FROM embeddings WHERE document_id = ?1", rusqlite::params![id])?;
     fts_remove_doc(db, id)
 }
 
@@ -374,6 +452,7 @@ pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
         .query_row("SELECT document_id FROM blocks WHERE id = ?1", rusqlite::params![id], |r| r.get(0))
         .ok();
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
+    db.execute("DELETE FROM embeddings WHERE block_id = ?1", rusqlite::params![id])?;
     fts_remove_block(db, id)?;
     if let Some(doc_id) = doc_id {
         let now = chrono::Utc::now().to_rfc3339();
@@ -763,6 +842,7 @@ pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusql
             // Swap the whole block set of this doc.
             fts_remove_doc(db, &doc.id)?;
             db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            db.execute("DELETE FROM embeddings WHERE document_id = ?1", rusqlite::params![doc.id])?;
             for b in blocks.iter().filter(|b| b.document_id == doc.id) {
                 insert_block(db, b)?;
                 blocks_changed += 1;
@@ -770,6 +850,7 @@ pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusql
             fts_index_doc_title(db, &doc.id, &doc.title)?;
         } else {
             db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            db.execute("DELETE FROM embeddings WHERE document_id = ?1", rusqlite::params![doc.id])?;
             fts_remove_doc(db, &doc.id)?;
         }
 
@@ -1117,6 +1198,57 @@ mod tests {
         assert!(open_vault(&db_path, &[1u8; 32]).is_err());
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn embeddings_upsert_query_and_cleanup() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let now = "t";
+        insert_document(
+            &conn,
+            &Document {
+                id: "d1".into(),
+                title: "Notes".into(),
+                created_at: now.into(),
+                updated_at: now.into(),
+                is_favorite: false,
+                is_archived: false,
+                rev: 0,
+                deleted_at: None,
+            },
+        )
+        .unwrap();
+        insert_document(
+            &conn,
+            &Document {
+                id: "d2".into(),
+                title: "Archive".into(),
+                created_at: now.into(),
+                updated_at: now.into(),
+                is_favorite: false,
+                is_archived: true,
+                rev: 0,
+                deleted_at: None,
+            },
+        )
+        .unwrap();
+
+        upsert_embedding(&conn, "b1", "d1", "first text", &[1.0, 0.0], "t1").unwrap();
+        // Re-upsert the same block updates, does not duplicate
+        upsert_embedding(&conn, "b1", "d1", "updated text", &[0.0, 1.0], "t2").unwrap();
+        upsert_embedding(&conn, "b2", "d2", "archived text", &[0.5, 0.5], "t1").unwrap();
+
+        let rows = query_embeddings(&conn).unwrap();
+        assert_eq!(rows.len(), 1, "archived doc's embedding excluded");
+        assert_eq!(rows[0].block_id, "b1");
+        assert_eq!(rows[0].doc_title, "Notes");
+        assert_eq!(rows[0].text, "updated text", "upsert replaces text");
+        assert_eq!(rows[0].vector, vec![0.0, 1.0], "upsert replaces vector");
+
+        // Deleting the block cleans its embedding
+        delete_block(&conn, "b1").unwrap();
+        assert!(query_embeddings(&conn).unwrap().is_empty());
     }
 
     #[test]
