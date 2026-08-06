@@ -145,7 +145,7 @@ where
     }
 
     if let Some(pid) = registered {
-        net.forget_session(&pid).await;
+        net.forget_session(&pid, &out_tx);
     }
     let _ = write.close().await;
     Ok(())

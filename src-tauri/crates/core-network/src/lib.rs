@@ -29,6 +29,9 @@ pub struct NetworkStatus {
     pub running: bool,
     pub port: u16,
     pub peers: Vec<Peer>,
+    /// Epoch millis of the last successful sync (snapshot merge or ack).
+    /// None = never synced.
+    pub last_sync_at: Option<u64>,
 }
 
 // ── Internal State ──────────────────────────────────────────────────────────
@@ -42,6 +45,7 @@ struct Inner {
     sessions: HashMap<String, mpsc::UnboundedSender<String>>,
     mdns_handle: Option<mdns::MdnsHandle>,
     ws_shutdown: Option<tokio::sync::watch::Sender<bool>>,
+    last_sync_at: Option<u64>,
 }
 
 pub struct NetworkState {
@@ -71,6 +75,7 @@ impl NetworkState {
                 sessions: HashMap::new(),
                 mdns_handle: None,
                 ws_shutdown: None,
+                last_sync_at: None,
             })),
             message_rx: Mutex::new(Some(rx)),
             message_tx: tx,
@@ -84,7 +89,18 @@ impl NetworkState {
             running: inner.mdns_handle.is_some(),
             port: inner.port,
             peers: inner.peers.values().cloned().collect(),
+            last_sync_at: inner.last_sync_at,
         }
+    }
+
+    /// Record a successful sync (snapshot merge or ack) as "last synced" —
+    /// surfaced to the UI via network_status. Epoch millis.
+    pub async fn mark_synced(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.inner.write().await.last_sync_at = Some(now);
     }
 
     /// Start mDNS advertising + discovery, WebSocket listener on an
@@ -187,13 +203,53 @@ impl NetworkState {
         self.message_tx.clone()
     }
 
-    /// Drop a peer from the session map (called when its socket dies).
-    pub(crate) async fn forget_session(&self, peer_id: &str) {
-        let mut inner = self.inner.write().await;
-        inner.sessions.remove(peer_id);
-        if let Some(peer) = inner.peers.get_mut(peer_id) {
-            peer.connected = false;
-        }
+    /// Drop a peer from the session map (called when its socket dies) and
+    /// redial its last known host:port until a session re-registers. Without
+    /// this a transient blip would permanently orphan the peer (mDNS does not
+    /// reliably re-fire resolved events for a known service).
+    ///
+    /// Sync fn so the dying session's future doesn't form a type cycle with
+    /// the redial task (which spawns a new session that can itself die). The
+    /// dying sender is compared before removal so a re-registered session that
+    /// raced ahead of cleanup is never dropped.
+    /// ponytail: fixed 3s retry, no backoff — LAN only, peers are few and a
+    /// dial is cheap. Upgrade: capped exponential backoff if mDNS churn ever
+    /// floods the loop.
+    fn forget_session(self: &Arc<Self>, peer_id: &str, dead_tx: &mpsc::UnboundedSender<String>) {
+        let net = self.shared();
+        let pid = peer_id.to_string();
+        let dead_tx = dead_tx.clone();
+        tokio::spawn(async move {
+            {
+                let mut inner = net.inner().write().await;
+                let still_mine = inner
+                    .sessions
+                    .get(&pid)
+                    .map(|tx| tx.same_channel(&dead_tx))
+                    .unwrap_or(false);
+                if still_mine {
+                    inner.sessions.remove(&pid);
+                }
+                if let Some(peer) = inner.peers.get_mut(&pid) {
+                    peer.connected = false;
+                }
+            }
+            loop {
+                let dial = {
+                    let inner = net.inner().read().await;
+                    if inner.mdns_handle.is_none() {
+                        None
+                    } else if inner.sessions.contains_key(&pid) {
+                        None
+                    } else {
+                        inner.peers.get(&pid).map(|p| (p.host.clone(), p.port))
+                    }
+                };
+                let Some((host, port)) = dial else { break };
+                let _ = ws::connect(&pid, &host, port, net.clone()).await;
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+        });
     }
 
     /// Register an established session under the peer's id.
