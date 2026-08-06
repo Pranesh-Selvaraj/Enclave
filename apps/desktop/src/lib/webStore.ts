@@ -45,7 +45,7 @@ const K_MARKER = 'marker'; // encrypted constant used to verify the unlock key
 const K_EXISTS = 'vault_exists';
 const K_VAULT_KEY = 'vault_key'; // encrypted seed (frontend encrypts with password)
 
-type EncRecord = { iv: Uint8Array; ct: ArrayBuffer };
+type EncRecord = { iv: Uint8Array<ArrayBuffer>; ct: ArrayBuffer };
 
 // ── Store ────────────────────────────────────────────────────────────────────
 

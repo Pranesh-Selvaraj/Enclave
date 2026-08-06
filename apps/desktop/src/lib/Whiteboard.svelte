@@ -5,7 +5,7 @@
 	// demands it. Mindmap children don't follow a dragged parent; frames own
 	// elements by containment (center inside), not by grouping.
 	// Persistence: one 'whiteboard' block per doc (no schema change).
-	import { invoke } from '@tauri-apps/api/core';
+	import { invoke, isTauri } from '$lib/backend.js';
 	import Icon from '$lib/Icon.svelte';
 	import { mindmapChildPos, centerInside, orderFrames, fitCam, type Rect } from '$lib/wbLayout';
 
@@ -678,11 +678,21 @@
 		cam = saveCam;
 		const blob = await new Promise<Blob | null>(res => c.toBlob(res, 'image/png'));
 		if (!blob) return;
-		const data = Array.from(new Uint8Array(await blob.arrayBuffer()));
 		const safe = `${title.replace(/[^\p{L}\p{N}\-_ .]/gu, '_') || 'whiteboard'}-whiteboard.png`;
 		try {
-			const path = await invoke<string>('export_file', { filename: safe, data });
-			console.log('Whiteboard exported to', path);
+			if (isTauri()) {
+				const data = Array.from(new Uint8Array(await blob.arrayBuffer()));
+				const path = await invoke<string>('export_file', { filename: safe, data });
+				console.log('Whiteboard exported to', path);
+			} else {
+				// browser: download the PNG directly
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = safe;
+				a.click();
+				URL.revokeObjectURL(url);
+			}
 		} catch (err) {
 			console.error('Export failed:', err);
 		}

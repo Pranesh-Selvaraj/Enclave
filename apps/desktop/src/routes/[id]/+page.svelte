@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { invoke } from '@tauri-apps/api/core';
+	import { invoke } from '$lib/backend.js';
 	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
 	import { htmlToMarkdown } from '@enclave/editor';

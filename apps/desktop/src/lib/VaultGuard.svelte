@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
+	import { invoke } from '$lib/backend.js';
 	import { generateMnemonic, validateMnemonic, deriveMasterKey, selfCheck, encryptWithPassword, decryptWithPassword, type EncryptedNote } from '@enclave/crypto';
 	import { Button } from '@enclave/ui';
 

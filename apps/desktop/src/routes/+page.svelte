@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
+	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
