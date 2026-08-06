@@ -14,23 +14,21 @@ Enclave is a zero-knowledge, local-first knowledge base. The security model rest
 
 ### What We Protect
 
-- Page contents are encrypted at rest (AES-256-GCM via SQLCipher).
-- Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism).
-- Key material exists only in memory during a session.
-- The only on-disk copy of key material is `vault.key`: the seed phrase re-encrypted with Argon2id (fresh random salt) + AES-256-GCM under your password. It is unusable without the password and can be reset by deleting it (unlock with the seed phrase instead).
-- P2P sync messages are encrypted before leaving the device.
-- The app makes zero outbound network requests. All communication is LAN-only.
+- **At rest (desktop)**: page contents are stored in a SQLCipher-encrypted SQLite database — AES-256-CBC with HMAC-SHA512, the SQLCipher defaults. Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism), a memory-hard KDF resistant to GPU/ASIC attacks.
+- **At rest (web)**: the browser build stores every document and block record individually encrypted with AES-256-GCM via WebCrypto, under the same Argon2id-derived master key.
+- **Key material**: the master key exists only in memory during a session. The only on-disk copy of key material is `vault.key`: the seed phrase re-encrypted with Argon2id (fresh random 32-byte salt) + AES-256-GCM under your password. It is unusable without the password and can be reset by deleting it (unlock with the seed phrase instead).
 
 ### What We Don't Protect
 
 - The operating system or filesystem itself. If an attacker has root access to your machine, Enclave cannot protect your data.
 - Clipboard contents, screenshots, or other side channels.
-- Metadata (document titles, creation dates, block structure) — these are stored in the encrypted database but not individually encrypted.
 - The seed phrase display during vault creation. Someone looking at your screen at that moment can compromise the vault.
+- **Sync traffic on the wire.** P2P sync sends **plaintext** JSON snapshots over LAN WebSockets (see [P2P Sync Security](#p2p-sync-security)).
 
 ### Trust Boundaries
 
 ```
+Desktop:
 User input ──► SvelteKit frontend (trusted, same process)
                       │
                       ▼
@@ -44,15 +42,39 @@ User input ──► SvelteKit frontend (trusted, same process)
    core-db (SQLCipher)     core-network (mDNS + WebSocket)
         │                           │
         ▼                           ▼
-   Encrypted disk           LAN-only, encrypted transport
+   AES-256-CBC at rest     LAN-only, PLAINTEXT transport
 ```
 
-### P2P Sync Security
+```
+Web (static SPA):
+User input ──► SvelteKit frontend (trusted, same process)
+                      │
+                      ▼
+              backend.ts invoke bridge (routes to WebStore)
+                      │
+                      ▼
+   IndexedDB, every record AES-256-GCM (WebCrypto)
+```
 
-- Peers on the same LAN discover each other via mDNS (`_enclave._tcp.local`).
-- All sync data is encrypted with a transport key derived from the vault key before leaving the device.
-- Peers exchange only encrypted CRDT update blobs. A peer without the seed phrase cannot decrypt received data.
-- **No authentication.** Any device on the same LAN can connect — the encryption layer is the only access control. This is by design: the threat model assumes a trusted LAN.
+## P2P Sync Security
+
+- Peers on the same LAN discover each other via mDNS (`_enclave._tcp.local`) and connect over plaintext WebSocket (`ws://`).
+- Each side exchanges a full JSON snapshot (`{kind:"snapshot", docs, blocks}`), merged with doc-level last-write-wins. Dropped peers are redialed every 3 s.
+- **Sync data is not encrypted in transit.** Any device on the same network can connect and read synced content. **The threat model assumes a trusted LAN** — do not sync across an untrusted network (e.g. a public or hotel Wi-Fi).
+- There is no peer authentication or handshake secret. A LAN device that can reach the WebSocket port can join a sync session.
+
+## Local AI / LLM Data Boundary
+
+The AI assistant is **opt-in** and **off by default**. When enabled in **Settings → AI assistant**:
+
+- Page content is sent to the endpoint you configure — for embedding on save (`POST /v1/embeddings`) and as retrieval context for questions (`POST /v1/chat/completions`).
+- In the desktop shell, the CSP restricts AI network access to `localhost:*` and `ws://localhost:*` (plus the app's own origin), so content only leaves the machine if you run a local LLM server (Ollama, llama.cpp, LM Studio, vLLM).
+- In the **web build**, the CSP is not enforced — the SPA can reach any URL you enter. If you point it at a remote endpoint, page content is sent there.
+- Settings (URL, model, enabled, RAG) are stored in `localStorage` under the key `enclave-ai` **in plaintext**, on both builds. They contain no content, but a local attacker could read which LLM endpoint you use.
+
+## What This Means in Practice
+
+Enclave protects data **at rest** and keeps it **off the cloud** — there is no Enclave server, no telemetry, and no account. The remaining exposure is the LAN during sync, and whatever endpoint you choose to send content to if you enable the AI feature. Both are operator choices; keep sync on networks you control and keep AI pointed at endpoints you trust.
 
 ## Supported Versions
 

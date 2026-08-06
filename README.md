@@ -2,7 +2,7 @@
 
 > **Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi.**
 >
-> No cloud. No servers. No internet required.
+> No cloud. No servers. No internet required (the optional local-AI assistant talks only to an endpoint you configure).
 
 ## Architecture
 
@@ -11,11 +11,11 @@ Enclave is built on three core principles:
 ### 1. Local-First
 All data lives on your device first. The application functions fully offline — create, edit, and organize pages without ever connecting to a network. Sync is an enhancement, not a requirement.
 
-### 2. Zero-Knowledge Encryption
-Every page is encrypted with **AES-256-GCM** before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
+### 2. Encryption at Rest
+The vault database is encrypted with **SQLCipher** (AES-256-CBC with HMAC-SHA512) before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
 
 ### 3. Peer-to-Peer Sync
-When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync encrypted pages directly over **WebSocket** data channels using **Yjs CRDTs**. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary.
+When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync documents directly over **WebSocket**, merged with **doc-level last-write-wins** resolution. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary. Sync travels **unencrypted on the wire**, so run it on a network you trust (see [Security Model](#security-model)).
 
 ## Tech Stack
 
@@ -24,16 +24,17 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Desktop Shell** | Tauri v2 (Rust) |
 | **Frontend** | SvelteKit (static adapter) + Svelte 5 |
 | **Editor** | TipTap (ProseMirror) + custom Svelte 5 wrapper |
-| **Storage** | SQLite + sqlcipher (encrypted at rest) |
-| **Data Model** | Document + Block with fractional indexing |
+| **Storage** | SQLite + SQLCipher (desktop) · IndexedDB + WebCrypto AES-GCM (web) |
+| **Data Model** | Document + Block with a `sort_order` column |
 | **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
 | **Key Derivation** | Argon2id (`hash-wasm`) |
-| **Markdown I/O** | `turndown` (HTML → Markdown export) |
+| **Markdown I/O** | Hand-rolled HTML → Markdown serializer + `marked` (Markdown → HTML) |
 | **Network Discovery** | mDNS (`mdns-sd`) |
 | **Transport** | WebSocket (`tokio-tungstenite`) |
-| **Sync Engine** | Yjs CRDT with encrypted transport |
-| **Theming** | Light / dark with CSS custom properties |
-| **CI/CD** | GitHub Actions — Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) |
+| **Sync** | Full JSON snapshots + doc-level last-write-wins merge |
+| **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM |
+| **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
+| **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) |
 
 ## Supported Platforms
 
@@ -41,7 +42,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 |----------|--------|--------|
 | **Linux** (x86_64) | Supported | `.deb`, `.AppImage` |
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
-| **macOS** (ARM + Intel) | Supported | `.dmg` |
+| **macOS** (Apple Silicon) | Supported | `.dmg` |
 | **Android** | Planned | — |
 | **Web** | Supported | Static SPA (IndexedDB) |
 
@@ -50,77 +51,71 @@ When devices are on the same local network, they discover each other via **mDNS*
 ```
 enclave/
 ├── .github/
-│   └── workflows/build.yml        # CI: Windows + Linux builds
+│   └── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
 ├── apps/
-│   └── desktop/                   # Tauri desktop app (SvelteKit + static adapter)
+│   └── desktop/                   # Tauri desktop app + web SPA (SvelteKit static adapter)
 │       ├── src/
 │       │   ├── app.html           # Root HTML shell
 │       │   ├── app.css            # Global styles + theme variables (light/dark)
 │       │   ├── lib/
-│       │   │   ├── VaultGuard.svelte     # Vault creation / password + seed unlock
-│       │   │   └── SettingsPanel.svelte  # Theme toggle + keyboard shortcuts
+│       │   │   ├── backend.ts          # invoke bridge: routes to Tauri IPC or WebStore
+│       │   │   ├── webStore.ts         # IndexedDB + WebCrypto storage (web build)
+│       │   │   ├── ollama.ts           # OpenAI-compatible local-LLM client (chat/embeddings)
+│       │   │   ├── importExport.ts     # Markdown/HTML import + export, vault backup
+│       │   │   ├── graphLinks.ts       # Link extraction for graph view + backlinks
+│       │   │   ├── wbLayout.ts         # Whiteboard layout helpers
+│       │   │   ├── VaultGuard.svelte   # Vault creation / unlock flow
+│       │   │   ├── SettingsPanel.svelte# Appearance, AI assistant, backup, shortcuts
+│       │   │   ├── Whiteboard.svelte   # Infinite canvas editor
+│       │   │   └── Icon.svelte         # Inline SVG icon set
 │       │   └── routes/
-│       │       ├── +layout.svelte  # App shell, sidebar, command palette, network toggle
-│       │       ├── +page.svelte    # Home / recent pages
-│       │       ├── graph/
-│       │       │   └── +page.svelte  # Backlink graph view (canvas)
-│       │       └── [id]/
-│       │           └── +page.svelte  # Editor + slash/bubble/link menus + export
+│       │       ├── +layout.svelte  # App shell: sidebar, command palette, network, sync readout
+│       │       ├── +layout.ts      # prerender / SSR config
+│       │       ├── +page.svelte    # Home / recent pages + daily journal
+│       │       ├── [id]/+page.svelte # Editor + AI ask/RAG panel
+│       │       ├── capture/        # Quick Capture window
+│       │       └── graph/          # Backlink graph view
+│       ├── tests/                  # ollama, webStore, graphLinks, wbLayout
 │       ├── static/
 │       ├── package.json
 │       ├── svelte.config.js
 │       ├── vite.config.ts
 │       └── tsconfig.json
 ├── packages/
-│   ├── crypto/                    # BIP39 + Argon2id + AES-256-GCM
-│   │   ├── src/index.ts           # generateMnemonic, deriveMasterKey, encrypt, decrypt
-│   │   └── test.ts                # Full crypto pipeline verification
-│   ├── editor/                    # TipTap Svelte 5 wrapper + block chrome
+│   ├── crypto/                     # BIP39 + Argon2id + AES-256-GCM
+│   │   └── src/index.ts            # generateMnemonic, deriveMasterKey, encrypt/decrypt
+│   ├── editor/                     # TipTap Svelte 5 wrapper + extensions
 │   │   ├── src/
-│   │   │   ├── TipTapEditor.svelte   # Core editor (task lists, callouts, toggles)
-│   │   │   ├── reactivity.ts         # Svelte 5 ↔ TipTap reactivity bridge
-│   │   │   ├── markdown.ts           # HTML → Markdown serialization
-│   │   │   ├── extensions/
-│   │   │   │   ├── slash-command.ts  # "/" trigger detection
-│   │   │   │   ├── page-link.ts      # "[[..." trigger detection
-│   │   │   │   ├── callout.ts        # Colored info/warning blocks
-│   │   │   │   └── toggle-block.ts   # Collapsible sections
-│   │   │   ├── blocks/
-│   │   │   │   ├── SlashMenu.svelte  # Slash command palette
-│   │   │   │   ├── BubbleMenu.svelte # Text selection formatting
-│   │   │   │   └── PageLinkMenu.svelte # Page picker for [[ links
+│   │   │   ├── TipTapEditor.svelte # Core editor
+│   │   │   ├── markdown.ts         # Hand-rolled HTML → Markdown serializer
+│   │   │   ├── extensions/         # slash-command, page-link, mention, callout, toggle-block,
+│   │   │   │                       #   database, image, page-embed, bookmark, drag-handle
+│   │   │   ├── blocks/             # SlashMenu, BubbleMenu, DragHandleMenu, TocPanel,
+│   │   │   │                       #   DatabaseView, PageEmbedView, CodeBlockView, …
 │   │   │   └── index.ts
-│   │   └── test.ts                # Markdown round-trip verification
-│   ├── sync-engine/               # Yjs CRDT + encrypted P2P sync
-│   │   ├── src/index.ts           # SyncEngine class, per-doc Y.Doc management
-│   │   └── test.ts                # Two-peer sync convergence test
-│   └── ui/                        # Shared Svelte component library
-│       ├── src/
-│       │   ├── theme.svelte.ts     # Reactive theme store (dark/light, persisted)
-│       │   ├── types.ts            # Document, Block interfaces
-│       │   ├── components/
-│       │   │   └── Button.svelte
-│       │   └── index.ts
-│       └── package.json
-├── src-tauri/                     # Rust backend (Tauri v2)
+│   │   └── test.ts                 # Markdown round-trip verification
+│   ├── sync-engine/                # Yjs CRDT library (standalone; the desktop app syncs via
+│   │   │                           #   Rust snapshot merge, see Network Design)
+│   │   ├── src/index.ts            # SyncEngine class, per-doc Y.Doc management
+│   │   ├── test.ts                 # Two-peer convergence
+│   │   └── stress.test.ts          # 3+ peer convergence under lossy/slow links
+│   └── ui/                         # Shared Svelte components, theme store, types
+├── src-tauri/                      # Rust backend (Tauri v2)
 │   ├── crates/
-│   │   ├── core-db/               # Encrypted SQLite storage (dynamic key)
-│   │   │   ├── Cargo.toml         # rusqlite + sqlcipher
-│   │   │   └── src/lib.rs         # Document/Block CRUD, vault lifecycle
-│   │   └── core-network/          # mDNS + WebSocket P2P transport
-│   │       ├── Cargo.toml         # mdns-sd + tokio-tungstenite
-│   │       └── src/
-│   │           ├── lib.rs         # NetworkState, start/stop/status
-│   │           ├── mdns.rs        # _enclave._tcp.local. discovery
-│   │           └── ws.rs          # WebSocket accept loop + peer relay
+│   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + embeddings
+│   │   │   └── src/lib.rs          # Document/Block/embedding CRUD, vault lifecycle, sync merge
+│   │   └── core-network/           # mDNS + WebSocket P2P transport
+│   │       ├── src/lib.rs          # NetworkState, start/stop/status, peer redial
+│   │       ├── src/mdns.rs         # _enclave._tcp.local. discovery
+│   │       └── src/ws.rs           # WebSocket accept loop + session relay
 │   ├── src/
-│   │   ├── main.rs                # Binary entry point + windows subsystem config
-│   │   └── lib.rs                 # Tauri commands (vault, docs, blocks, network, export)
-│   ├── Cargo.toml                 # Rust workspace root
-│   ├── tauri.conf.json            # App config, CSP, NSIS installer, bundle targets
+│   │   ├── main.rs                 # Binary entry point
+│   │   └── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
+│   ├── Cargo.toml                  # Rust workspace root
+│   ├── tauri.conf.json             # App config, CSP, NSIS installer, bundle targets
 │   └── icons/
-├── package.json                   # npm workspace root
-└── README.md
+├── tsconfig.base.json              # Shared TypeScript base config
+└── package.json                    # npm workspace root
 ```
 
 ## Prerequisites
@@ -155,7 +150,7 @@ npx tauri dev
 # Compiles the Rust backend and opens the desktop window
 ```
 
-**Frontend only** (browser — some features require Tauri runtime):
+**Frontend only** (browser — Tauri-only features are stubbed):
 
 ```bash
 npm run dev -w @enclave/desktop
@@ -169,12 +164,13 @@ npx tauri build
 # Produces platform-specific binaries in src-tauri/target/release/bundle/
 ```
 
-Or let CI handle it — pushes to `v*` tags trigger GitHub Actions to build all platforms and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), and `.dmg` (macOS).
+Or let CI handle it — pushes to `v*` tags (and to `main`, and PRs to `main`) trigger GitHub Actions to build all platforms and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), and `.dmg` (macOS Apple Silicon).
 
 ### Web build (browser SPA)
 
 The same frontend runs as a static SPA with no Rust backend — storage falls back to
-IndexedDB with AES-GCM-at-rest encryption via the shared `@enclave/crypto` pipeline.
+IndexedDB with AES-256-GCM-at-rest encryption via WebCrypto, routed through the shared
+`backend.ts` bridge.
 
 ```bash
 npm run build -w @enclave/desktop   # outputs apps/desktop/build/
@@ -186,10 +182,35 @@ Serve `apps/desktop/build/` over HTTP(S) on a trusted origin — `crypto.subtle`
 Deep links to `/`+UUID pages need a server that falls back to `index.html` (the
 preview server and any SPA host do; a bare `python -m http.server` does not).
 
-Tauri-only features are deferred on web and fail with a clear message instead of
-crashing: P2P LAN sync (network toggle), whole-vault folder export/backup, native
-file dialogs (per-page Markdown/HTML export uses a browser download instead),
-image attachment upload, and database-block relation backlinks.
+Tauri-only features fail with a clear "not available in the web build" message instead of
+crashing: P2P LAN sync (network toggle), whole-vault encrypted backup, native file dialogs
+(Markdown import; per-page Markdown/HTML export falls back to a browser download), and image
+attachment upload. Relation backlinks return empty on web (database blocks are Tauri-gated).
+
+## Local AI Assistant (opt-in)
+
+Enclave ships a zero-dependency AI client that talks to any **OpenAI-compatible** local
+endpoint over `/v1` — **Ollama** (default `http://localhost:11434`), **llama.cpp /
+llama-server**, **LM Studio**, or **vLLM**.
+
+Enable it in **Settings → AI assistant**:
+
+- **Enable local AI** — turns on the Ask-AI panel.
+- **Endpoint URL** — where the server lives (default `http://localhost:11434`).
+- **Model** — any model the endpoint exposes (fetched from `GET /v1/models`).
+- **Vault-wide answers (RAG)** — on by default (see below).
+
+Behavior:
+
+- **Chat**: `POST /v1/chat/completions` (SSE) streams answers into the Ask-AI panel, with
+  **Stop** support.
+- **Retrieval (RAG)**: pages are embedded (`POST /v1/embeddings`) into an `embeddings` table
+  on save. Questions are answered with the most similar pages injected as context — retrieved
+  by client-side cosine similarity with an FTS5 (desktop) or substring (web) fallback. Answers
+  list their **Sources** with links to the pages used.
+- **Privacy**: when AI is enabled, page content (for embedding + context injection) is sent to
+  the configured endpoint. In the desktop shell the CSP restricts it to `localhost:*`; the web
+  build can reach any URL you enter. See [SECURITY.md](SECURITY.md).
 
 ## Running Tests
 
@@ -197,23 +218,28 @@ image attachment upload, and database-block relation backlinks.
 # Crypto pipeline (BIP39, Argon2id, AES-GCM)
 npx tsx packages/crypto/test.ts
 
-# Markdown round-trip (MD → HTML → MD)
+# Markdown round-trip (HTML → MD)
 npx tsx packages/editor/test.ts
 
-# Sync engine (two-peer Yjs convergence)
+# Sync engine — two-peer convergence + 3+ peer lossy/slow stress
 npx tsx packages/sync-engine/test.ts
+npx tsx packages/sync-engine/stress.test.ts
+
+# Frontend unit tests (AI client, web store, graph links, whiteboard layout)
+npx tsx apps/desktop/tests/ollama.test.ts
+npx tsx apps/desktop/tests/webStore.test.ts
+npx tsx apps/desktop/tests/graphLinks.test.ts
+npx tsx apps/desktop/tests/wbLayout.test.ts
 
 # Rust type-check
 cargo check --manifest-path src-tauri/Cargo.toml
 
-# Rust unit tests (storage semantics: upsert, LIKE escaping)
-cargo test --manifest-path src-tauri/Cargo.toml -p core-db
+# Rust unit tests (per crate — the root manifest only tests the root package)
+cargo test --manifest-path src-tauri/crates/core-db/Cargo.toml
+cargo test --manifest-path src-tauri/crates/core-network/Cargo.toml
 
 # Frontend type-check
 npm run check -w @enclave/desktop
-
-# Web storage backend (IndexedDB + WebCrypto command surface)
-npx tsx apps/desktop/tests/webStore.test.ts
 ```
 
 ## Vault & Security
@@ -237,7 +263,8 @@ npx tsx apps/desktop/tests/webStore.test.ts
   Argon2id(password=mnemonic, salt="enclave-vault-master-key-v1")
        │
        ▼
-  256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB)
+  256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB,
+                          AES-256-CBC + HMAC-SHA512)
                                 │
                                 └── vault.key: seed phrase re-encrypted
                                     with Argon2id(password + random salt) + AES-256-GCM
@@ -245,51 +272,76 @@ npx tsx apps/desktop/tests/webStore.test.ts
 
 ## Security Model
 
-- **At rest**: All pages encrypted via AES-256-GCM. Keys derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
-- **In transit**: P2P connections use encrypted WebSocket channels within the local network perimeter. Messages are encrypted before leaving the device.
-- **Zero-trust sync**: Peers exchange only encrypted CRDT update blobs. The receiving device cannot read pages without the user's decryption key — even if they're on the same network.
-- **No telemetry**: The application makes zero outbound network requests. All communication is strictly local-network-only.
-- **Key material**: The seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
+- **At rest**: the SQLCipher database is encrypted (default AES-256-CBC, HMAC-SHA512). Keys are derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
+- **In transit**: LAN WebSockets carry **plaintext** JSON snapshots of documents and blocks, merged with doc-level last-write-wins. Enclave treats the LAN as trusted — a device on the same network can connect and read synced content. Do not sync across an untrusted network.
+- **No cloud**: the app makes no requests to Enclave infrastructure. The only optional outbound traffic is the local-AI feature, which sends content to an endpoint you configure (desktop restricted to localhost by CSP).
+- **Key material**: the seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
 
 ## Network Design
 
 ```
-┌──────────────┐         mDNS (_enclave._tcp.local)    ┌──────────────┐
-│  Laptop       │◄─────────────────────────────────────►│  Desktop       │
-│  (Tauri)     │         WebSocket (encrypted)          │  (Tauri)     │
-│              │◄─────────────────────────────────────►│              │
-│  SQLite      │    Encrypted Yjs CRDT update blobs     │  SQLite      │
-│  +sqlcipher  │                                        │  +sqlcipher  │
-└──────────────┘                                        └──────────────┘
-        │                                                      │
-        │              No internet. No cloud.                   │
-        │              Wi-Fi LAN only.                          │
-        └──────────────────────────────────────────────────────┘
+┌──────────────┐        mDNS (_enclave._tcp.local)       ┌──────────────┐
+│  Laptop      │◄───────────────────────────────────────►│  Desktop     │
+│  (Tauri)     │    WebSocket (plaintext, LAN-only)       │  (Tauri)     │
+│              │◄───────────────────────────────────────►│              │
+│  SQLite      │    full JSON snapshots {docs, blocks}    │  SQLite      │
+│  +sqlcipher  │    doc-level last-write-wins merge       │  +sqlcipher  │
+└──────────────┘                                          └──────────────┘
+        │                                                        │
+        │              No internet. No cloud.                     │
+        │              Wi-Fi LAN only.                            │
+        └────────────────────────────────────────────────────────┘
 ```
 
-### Network Lifecycle
+### Sync Protocol
 1. **Start Sync** — begins mDNS advertising + WebSocket listener on an OS-assigned LAN port
 2. **Discovery** — peers on the same Wi-Fi discover each other via `_enclave._tcp.local.`
-3. **Connect** — WebSocket handshake establishes encrypted channel between peers
-4. **Sync** — Yjs CRDT update blobs flow bidirectionally, encrypted with the transport key
-5. **Stop Sync** — shuts down mDNS + WebSocket, clears peer list
+3. **Connect** — WebSocket handshake; each side sends a `hello`
+4. **Snapshot** — each peer replies with a full snapshot of documents + blocks
+5. **Merge** — the receiver merges doc-level (last-write-wins by revision + timestamp; tombstones survive) and replies with an `ack`
+6. **Resilience** — a peer that drops is redialed every 3 s; the UI footer shows `peers online · last sync … ago`
+7. **Stop Sync** — shuts down mDNS + WebSocket and clears the peer list
 
 ## Editor Features
 
-| Feature | Key |
+Every page toggles between **Paper** (documents) and **Whiteboard** (infinite canvas).
+
+### Paper mode — slash commands
+
+| Feature | How |
 |---------|-----|
-| Headings 1–3 | `/h1`, `/h2`, `/h3` |
-| Bullet / Numbered lists | `/bullet`, `/numbered` |
-| Task lists (checkboxes) | `/task` |
-| Block quotes | `/quote` |
-| Code blocks | `/code` |
-| Callouts (info/warning boxes) | `/callout` |
-| Toggle blocks (collapsible) | `/toggle` |
-| Horizontal divider | `/divider` |
-| Page links (backlinks) | Type `[[` + page title |
-| Text formatting | Select + bubble menu |
-| Command palette | `Ctrl+K` |
-| Markdown export | Button in editor toolbar |
+| Headings 1–3, Text | `/text`, `/h1`, `/h2`, `/h3` |
+| Bullet / Numbered / Task lists | `/bullet`, `/numbered`, `/task` |
+| Quote, Callout, Toggle, Divider | `/quote`, `/callout`, `/toggle`, `/divider` |
+| Code block (language selector) | `/code` |
+| **Database** | `/database` — typed tables, 12 column types, 5 views (table/kanban/list/gallery/timeline), grouping/sort/filters |
+| **Linked Database** | `/linked database` — mirror another database on this page |
+| **Page embed** | `/embed page` — inline page card |
+| **Image** | `/image`, or paste/drop (desktop) |
+| **Bookmark** | `/bookmark`, or paste a URL |
+| **Template** | `/template` — Meeting Notes, Project Plan, Daily Journal, Book Notes |
+| Page links / backlinks | type `[[` + page title |
+| Mentions | type `@` + page title |
+| Formatting | select text → bubble menu (bold/italic/strike/code) |
+| Block menu | hover the drag handle → duplicate/remove/cut/copy |
+| Table of contents | outline panel with scroll-spy; click to jump |
+
+### Editor chrome
+
+- **Command palette** — `Ctrl+K` (search pages, run actions)
+- **Shortcuts** — `Ctrl+N` new page, `Ctrl+B` toggle sidebar
+- **Page metadata** — emoji icon, gradient cover, tags, comments, favorites
+- **Info & safety** — created/modified/word counts, delete-to-trash with Undo toast
+- **Export** — per-page Markdown or HTML (desktop dialog, web download); whole-vault encrypted backup (desktop)
+- **Import** — Markdown files (desktop)
+- **AI** — Ask-AI panel with RAG retrieval and sources (see [Local AI Assistant](#local-ai-assistant-opt-in))
+
+### Whiteboard mode
+
+Infinite canvas with **select, pan, sticky notes, rectangles, ellipses, arrows, text,
+frames, page embeds, and mind maps** (Tab adds a child node). **Presentation mode** steps
+through frames; **PNG export** downloads a capture. Layout is persisted per page as a
+`whiteboard` block.
 
 ## Documentation
 
