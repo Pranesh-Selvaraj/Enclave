@@ -2,8 +2,7 @@
 	import '../app.css';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { invoke } from '@tauri-apps/api/core';
-	import { listen } from '@tauri-apps/api/event';
+	import { invoke, listen } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
 	import { theme } from '@enclave/ui';
 	import { ShortcutsDialog } from '@enclave/ui';
