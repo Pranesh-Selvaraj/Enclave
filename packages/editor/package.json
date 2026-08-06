@@ -1,6 +1,6 @@
 {
   "name": "@enclave/editor",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
@@ -16,13 +16,9 @@
     "@tiptap/html": "^2.27.2",
     "@tiptap/pm": "^2.20.0",
     "@tiptap/starter-kit": "^2.20.0",
-    "marked": "^18.0.7",
-    "turndown": "^7.2.4"
+    "marked": "^18.0.7"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"
-  },
-  "devDependencies": {
-    "@types/turndown": "^5.0.6"
   }
 }

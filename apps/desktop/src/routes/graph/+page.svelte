@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { invoke } from '@tauri-apps/api/core';
+	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
 	import { extractLinks } from '$lib/graphLinks.js';
 

@@ -90,6 +90,45 @@ assert.ok(cbMd.includes('```js'), 'code fence keeps language');
 assert.ok(cbMd.includes('const a = 1;'), 'code content preserved');
 console.log('Code block export: PASS\n');
 
+// Plain links, ordered lists, task items (hand-rolled serializer)
+const linkMd = htmlToMarkdown('<p>See <a href="https://example.com">docs</a>.</p>');
+assert.ok(linkMd.includes('[docs](https://example.com)'), 'plain link');
+const olMd = htmlToMarkdown('<ol><li>First</li><li>Second</li></ol>');
+assert.ok(olMd.includes('1. First') && olMd.includes('2. Second'), 'ordered list');
+const taskMd = htmlToMarkdown('<ul><li data-type="taskItem" data-checked="true">done</li><li data-type="taskItem" data-checked="false">todo</li></ul>');
+assert.ok(taskMd.includes('- [x] done') && taskMd.includes('- [ ] todo'), 'task item checkboxes');
+const nestedMd = htmlToMarkdown('<ul><li>one<ul><li>nested</li></ul></li></ul>');
+assert.ok(nestedMd.includes('- one\n  - nested'), 'nested list indentation');
+console.log('Links/lists/tasks export: PASS\n');
+
+// Round-trip through marked (mirrors the app's import→export HTML shapes)
+const rtMd = `# RT
+
+- [ ] task
+
+1. one
+
+**bold** *em* \`code\` [link](https://x.com)
+
+> quote
+
+\`\`\`js
+const a = 1;
+\`\`\``;
+const rt = htmlToMarkdown(rewriteTaskItems(marked.parse(rtMd, { async: false }) as string));
+for (const [frag, label] of [
+	['# RT', 'heading'],
+	['- [ ] task', 'task item'],
+	['1. one', 'ordered item'],
+	['**bold** *em* `code` [link](https://x.com)', 'inline'],
+	['> quote', 'blockquote'],
+	['```js', 'fenced code'],
+	['const a = 1;', 'code body'],
+] as const) {
+	assert.ok(rt.includes(frag), `round-trip keeps ${label}`);
+}
+console.log('Round-trip through marked: PASS\n');
+
 // Linked database doc-walk: positions must be real PM positions
 const linkedDoc = {
 	type: 'doc',

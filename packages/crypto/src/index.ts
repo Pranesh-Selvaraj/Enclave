@@ -156,21 +156,19 @@ export async function selfCheck(): Promise<void> {
 	// 3. Master key derivation is deterministic
 	const key1 = await deriveMasterKey(mnemonic);
 	const key2 = await deriveMasterKey(mnemonic);
-	if (bytesToHex(key1) !== bytesToHex(key2)) {
+	// ponytail: byte compare, not Buffer/hex — selfCheck runs in the browser webview
+	// (VaultGuard) where Buffer is undefined, and the hex was only for comparison anyway.
+	if (key1.length !== key2.length || key1.some((v, i) => v !== key2[i])) {
 		throw new Error('Crypto self-check failed: master key not deterministic');
 	}
 
 	// 4. Different mnemonic → different key
 	const otherMnemonic = generateMnemonic();
 	const otherKey = await deriveMasterKey(otherMnemonic);
-	if (bytesToHex(key1) === bytesToHex(otherKey)) {
+	if (key1.length === otherKey.length && key1.every((v, i) => v === otherKey[i])) {
 		throw new Error('Crypto self-check failed: different mnemonics produced same key');
 	}
 
 	// 5. Master key is 32 bytes
 	if (key1.length !== 32) throw new Error('Crypto self-check failed: master key wrong length');
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-	return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }

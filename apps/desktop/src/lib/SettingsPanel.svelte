@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
+	import { invoke } from '$lib/backend.js';
 	import { Button } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ollama.js';
@@ -48,11 +48,11 @@
 		aiStatus = '';
 		try {
 			installedModels = await listModels(ai.url);
-			if (installedModels.length === 0) aiStatus = 'Connected — no models pulled (run `ollama pull`).';
-			else if (!installedModels.includes(ai.model)) aiStatus = `Tip: model "${ai.model}" not installed.`;
+			if (installedModels.length === 0) aiStatus = 'Connected — no models available on this endpoint.';
+			else if (!installedModels.includes(ai.model)) aiStatus = `Tip: model "${ai.model}" not available here.`;
 		} catch (e: any) {
 			installedModels = [];
-			aiStatus = `Ollama not reachable at ${ai.url} — start it and retry. (${e?.message || e})`;
+			aiStatus = `LLM not reachable at ${ai.url} — start it and retry. (${e?.message || e})`;
 		}
 	}
 
@@ -136,8 +136,15 @@
 				</div>
 				{#if ai.enabled}
 					<div class="setting-row">
-						<span>Ollama URL</span>
-						<input class="ai-input" bind:value={ai.url} onchange={onAiChange} aria-label="Ollama URL" />
+						<span>Endpoint URL</span>
+						<input class="ai-input" bind:value={ai.url} onchange={onAiChange} aria-label="Endpoint URL" placeholder="http://localhost:11434" />
+					</div>
+					<div class="setting-row">
+						<span>Vault-wide answers (RAG)</span>
+						<label class="switch">
+							<input type="checkbox" bind:checked={ai.rag} onchange={onAiChange} />
+							<span class="switch-slider"></span>
+						</label>
 					</div>
 					<div class="setting-row">
 						<span>Model</span>
@@ -158,7 +165,7 @@
 						<Button onclick={refreshModels}>Check connection</Button>
 						{#if aiStatus}<span class="ai-status" role="status">{aiStatus}</span>{/if}
 					</div>
-					<div class="backup-hint">Requires Ollama running on this machine. Conversations stay on your device.</div>
+					<div class="backup-hint">Requires a local OpenAI-compatible endpoint (Ollama, llama.cpp, LM Studio, vllm…) on this machine. Content never leaves your device.</div>
 				{/if}
 			</div>
 

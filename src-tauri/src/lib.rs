@@ -208,6 +208,28 @@ fn delete_block(state: tauri::State<AppState>, id: String) -> Result<(), String>
     with_db(&state, |db| core_db::delete_block(db, &id).map_err(|e| e.to_string()))
 }
 
+// ── Embeddings (RAG) ─────────────────────────────────────────────────────────
+
+#[tauri::command(async)]
+fn upsert_embedding(
+    state: tauri::State<AppState>,
+    block_id: String,
+    document_id: String,
+    text: String,
+    vector: Vec<f64>,
+) -> Result<(), String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::upsert_embedding(db, &block_id, &document_id, &text, &vector, &now)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command(async)]
+fn get_embeddings(state: tauri::State<AppState>) -> Result<Vec<core_db::Embedding>, String> {
+    with_db(&state, |db| core_db::query_embeddings(db).map_err(|e| e.to_string()))
+}
+
 // ── Markdown Import / Export ────────────────────────────────────────────────
 
 /// Write arbitrary bytes (markdown text or PNG) into the exports dir.
@@ -404,6 +426,7 @@ async fn handle_sync_message(
             let blocks: Vec<core_db::Block> = serde_json::from_value(v["blocks"].clone()).unwrap_or_default();
             match with_db(state, |db| core_db::sync_merge(db, &docs, &blocks).map_err(|e| e.to_string())) {
                 Ok(stats) => {
+                    net.mark_synced().await;
                     let ack = serde_json::json!({
                         "kind": "ack",
                         "docs_changed": stats.docs_changed,
@@ -424,6 +447,7 @@ async fn handle_sync_message(
             }
         }
         Some("ack") => {
+            net.mark_synced().await;
             let _ = app.emit(
                 "sync-done",
                 serde_json::json!({
@@ -560,6 +584,9 @@ pub fn run() {
             get_blocks,
             upsert_block,
             delete_block,
+            // embeddings (RAG)
+            upsert_embedding,
+            get_embeddings,
             // markdown import/export
             export_file,
             write_file,
