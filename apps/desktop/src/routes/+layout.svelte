@@ -31,8 +31,18 @@
 		running: boolean;
 		port: number;
 		peers: { id: string; host: string; port: number; connected: boolean; name: string }[];
+		last_sync_at: number | null;
 	} | null>(null);
 	let lastSync = $state('');
+	const connectedCount = $derived(networkStatus?.peers.filter(p => p.connected).length ?? 0);
+
+	function timeAgo(ts: number): string {
+		const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+		if (s < 60) return `${s}s`;
+		const m = Math.floor(s / 60);
+		if (m < 60) return `${m}m`;
+		return `${Math.floor(m / 60)}h`;
+	}
 	let statusTimer: ReturnType<typeof setInterval>;
 	const currentDocId = $derived($page.params?.id);
 	const currentPath = $derived($page.url.pathname);
@@ -454,6 +464,11 @@
 				{/if}
 				{#if lastSync}
 					<div class="last-sync" role="status">Synced {lastSync}</div>
+				{/if}
+				{#if networkRunning && networkStatus?.last_sync_at}
+					<div class="last-sync" role="status">
+						{connectedCount}/{networkStatus.peers.length} peers online · last sync {timeAgo(networkStatus.last_sync_at)} ago
+					</div>
 				{/if}
 			</div>
 		{/if}

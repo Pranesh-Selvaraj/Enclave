@@ -60,6 +60,14 @@ export class SyncEngine {
 		return doc;
 	}
 
+	/** Full encrypted state snapshot — the transport sends this after a
+	 * reconnect so a peer that lost incremental updates heals any gaps. */
+	async snapshot(docId: string): Promise<string> {
+		const doc = this.getDoc(docId);
+		const encrypted = await this.encrypt(Y.encodeStateAsUpdate(doc));
+		return btoa(String.fromCharCode(...encrypted));
+	}
+
 	/** Handle an incoming encrypted sync message from a peer. */
 	async handleIncoming(docId: string, encryptedPayload: string): Promise<void> {
 		try {
