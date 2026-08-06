@@ -43,7 +43,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
 | **macOS** (ARM + Intel) | Supported | `.dmg` |
 | **Android** | Planned | — |
-| **Web** | Planned | Static SPA (IndexedDB) |
+| **Web** | Supported | Static SPA (IndexedDB) |
 
 ## Monorepo Structure
 
@@ -171,6 +171,26 @@ npx tauri build
 
 Or let CI handle it — pushes to `v*` tags trigger GitHub Actions to build all platforms and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), and `.dmg` (macOS).
 
+### Web build (browser SPA)
+
+The same frontend runs as a static SPA with no Rust backend — storage falls back to
+IndexedDB with AES-GCM-at-rest encryption via the shared `@enclave/crypto` pipeline.
+
+```bash
+npm run build -w @enclave/desktop   # outputs apps/desktop/build/
+npm run preview -w @enclave/desktop # serve locally (handles SPA fallback)
+```
+
+Serve `apps/desktop/build/` over HTTP(S) on a trusted origin — `crypto.subtle` and
+`indexedDB` require a secure context (`localhost` or HTTPS; `file://` is partial).
+Deep links to `/`+UUID pages need a server that falls back to `index.html` (the
+preview server and any SPA host do; a bare `python -m http.server` does not).
+
+Tauri-only features are deferred on web and fail with a clear message instead of
+crashing: P2P LAN sync (network toggle), whole-vault folder export/backup, native
+file dialogs (per-page Markdown/HTML export uses a browser download instead),
+image attachment upload, and database-block relation backlinks.
+
 ## Running Tests
 
 ```bash
@@ -191,6 +211,9 @@ cargo test --manifest-path src-tauri/Cargo.toml -p core-db
 
 # Frontend type-check
 npm run check -w @enclave/desktop
+
+# Web storage backend (IndexedDB + WebCrypto command surface)
+npx tsx apps/desktop/tests/webStore.test.ts
 ```
 
 ## Vault & Security
