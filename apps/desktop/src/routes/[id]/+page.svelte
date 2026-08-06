@@ -8,7 +8,7 @@
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
-	import { loadAISettings, chatStream, type ChatMessage } from '$lib/ollama.js';
+	import { loadAISettings, chatStream, embedText, cosineSimilarity, type ChatMessage, type AISettings } from '$lib/ollama.js';
 
 	const COVERS = ['grad-0', 'grad-1', 'grad-2', 'grad-3', 'grad-4', 'grad-5'];
 
@@ -31,6 +31,8 @@
 	let aiBusy = $state(false);
 	let aiError = $state('');
 	let aiAbort: (() => void) | undefined;
+	let aiSources = $state<{ id: string; title: string }[]>([]);
+	let lastEmbeddedText = '';
 	let icon = $state('');
 	let cover = $state('');
 	let fullWidth = $state(false);
@@ -278,8 +280,24 @@
 				content: json,
 				sortOrder: 0,
 			});
+			rebuildEmbedding();
 		} catch (e) {
 			console.error('Failed to save content:', e);
+		}
+	}
+
+	// ── RAG: keep this page's embedding fresh on save ──
+	async function rebuildEmbedding() {
+		const s = loadAISettings();
+		if (!s.enabled || !s.rag || !editor) return;
+		const text = htmlToMarkdown(editor.getHTML()).slice(0, 20000);
+		if (!text.trim() || text === lastEmbeddedText) return;
+		lastEmbeddedText = text;
+		try {
+			const vector = await embedText(s.url, s.model, text);
+			await invoke('upsert_embedding', { blockId: `${docId}-content`, documentId: docId, text, vector });
+		} catch (e) {
+			console.error('Embedding failed:', e);
 		}
 	}
 
@@ -301,37 +319,82 @@
 		contentSaveTimer = setTimeout(saveContent, 1000);
 	}
 
-	// ── Local AI (Ollama, off unless enabled in Settings) ──
+	// ── Local AI (off unless enabled in Settings) ──
 	$effect(() => {
-		aiEnabled = loadAISettings().enabled;
+		const s = loadAISettings();
+		aiEnabled = s.enabled;
 	});
+
+	interface EmbeddingRow {
+		block_id: string;
+		document_id: string;
+		doc_title: string;
+		text: string;
+		vector: number[];
+		updated_at: string;
+	}
+
+	/** Retrieve relevant chunks across the vault: embedding top-k (client-side
+	 *  cosine) + FTS fallback for pages without an embedding yet. Excludes the
+	 *  open page — its full content is already in the prompt. Returns [] if
+	 *  the embeddings endpoint is unreachable (page-only chat still works). */
+	async function retrieveContext(s: AISettings, q: string) {
+		const fts = await invoke<{ doc_id: string; doc_title: string; block_content: string; type: string }[]>('search_all', { query: q }).catch(() => []);
+		const ftsById = new Map<string, { title: string; text: string }>();
+		for (const f of fts) {
+			if (f.type !== 'content' || f.doc_id === docId) continue;
+			if (!ftsById.has(f.doc_id)) ftsById.set(f.doc_id, { title: f.doc_title, text: f.block_content });
+		}
+		let chunks: { docId: string; title: string; text: string; score: number }[] = [];
+		try {
+			const qVec = await embedText(s.url, s.model, q);
+			const rows = await invoke<EmbeddingRow[]>('get_embeddings').catch(() => []);
+			chunks = rows
+				.filter((r) => r.document_id !== docId)
+				.map((r) => ({ docId: r.document_id, title: r.doc_title, text: r.text, score: cosineSimilarity(qVec, r.vector) }));
+			const embedded = new Set(chunks.map((c) => c.docId));
+			for (const [id, c] of ftsById) if (!embedded.has(id)) chunks.push({ docId: id, title: c.title, text: c.text, score: 0 });
+		} catch {
+			// embeddings unavailable → FTS-only retrieval
+			chunks = [...ftsById.entries()].map(([id, c]) => ({ docId: id, title: c.title, text: c.text, score: 0 }));
+		}
+		return chunks.sort((a, b) => b.score - a.score).slice(0, 6);
+	}
 
 	async function askAi() {
 		const q = aiQuestion.trim();
 		if (!q || aiBusy) return;
 		const s = loadAISettings();
-		const pageMd = editor ? htmlToMarkdown(editor.getHTML()) : '';
-		const system: ChatMessage = {
-			role: 'system',
-			content: `You are a helpful assistant inside the user's personal knowledge base. Answer using the page content below when relevant, and say so when the page does not contain the answer.\n\nPage title: ${documentTitle}\n\nPage content:\n${pageMd.slice(0, 20000)}`,
-		};
-		const messages = [
-			...aiMessages.filter((m) => m.role !== 'system'),
-			{ role: 'user' as const, content: q },
-		];
-		aiMessages = [...aiMessages, { role: 'user', content: q }, { role: 'assistant', content: '' }];
 		aiQuestion = '';
 		aiBusy = true;
 		aiError = '';
-		const { promise, abort } = chatStream(s.url, s.model, [system, ...messages], (d) => {
-			const last = aiMessages[aiMessages.length - 1];
-			aiMessages = [...aiMessages.slice(0, -1), { role: 'assistant', content: last.content + d }];
-		});
-		aiAbort = abort;
+		aiSources = [];
 		try {
+			const pageMd = editor ? htmlToMarkdown(editor.getHTML()) : '';
+			let systemContent = `You are a helpful assistant inside the user's personal knowledge base. Answer using the page content below when relevant, and say so when the page does not contain the answer.\n\nPage title: ${documentTitle}\n\nPage content:\n${pageMd.slice(0, 20000)}`;
+			if (s.rag) {
+				const ctx = await retrieveContext(s, q);
+				if (ctx.length) {
+					systemContent +=
+						'\n\nRelevant pages from the vault (cite their page titles when you use them):\n' +
+						ctx.map((c) => `[${c.title}]: ${c.text.slice(0, 1500)}`).join('\n');
+					aiSources = ctx.map((c) => ({ id: c.docId, title: c.title }));
+				}
+			}
+			const system: ChatMessage = { role: 'system', content: systemContent };
+			const messages = [
+				...aiMessages.filter((m) => m.role !== 'system'),
+				{ role: 'user' as const, content: q },
+			];
+			aiMessages = [...aiMessages, { role: 'user', content: q }, { role: 'assistant', content: '' }];
+			const { promise, abort } = chatStream(s.url, s.model, [system, ...messages], (d) => {
+				const last = aiMessages[aiMessages.length - 1];
+				aiMessages = [...aiMessages.slice(0, -1), { role: 'assistant', content: last.content + d }];
+			});
+			aiAbort = abort;
 			await promise;
 		} catch (e: any) {
-			aiError = `Ollama error: ${e?.message || e}`;
+			aiError = `LLM error: ${e?.message || e}`;
 		} finally {
 			aiBusy = false;
 			aiAbort = undefined;
@@ -553,12 +616,20 @@
 			<div class="ai-thread">
 				{#each aiMessages as m (m)}
 					<div class="ai-msg {m.role}">{m.content || (aiBusy ? '…' : '')}</div>
+					{#if m.role === 'assistant' && m === aiMessages[aiMessages.length - 1] && aiSources.length}
+						<div class="ai-sources">
+							<span class="ai-sources-label">Sources:</span>
+							{#each aiSources as src (src.id)}
+								<a class="ai-source" href="/{src.id}" onclick={() => (aiOpen = false)}>{src.title}</a>
+							{/each}
+						</div>
+					{/if}
 				{/each}
 				{#if aiError}
 					<div class="ai-err" role="alert">{aiError}</div>
 				{/if}
 				{#if aiMessages.length === 0}
-					<div class="ai-empty">Ask a question about this page. Runs on your device via Ollama.</div>
+					<div class="ai-empty">Ask a question about this page — or, with RAG on, across your whole vault. Runs on your device.</div>
 				{/if}
 			</div>
 			<div class="ai-compose">
@@ -1118,6 +1189,9 @@
 	.ai-msg.user { align-self: flex-end; background: var(--color-accent-subtle); }
 	.ai-msg.assistant { align-self: flex-start; background: var(--color-surface-hover); }
 	.ai-err { font-size: 12px; color: var(--color-danger); }
+	.ai-sources { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; color: var(--color-text-faint); }
+	.ai-source { color: var(--color-accent); text-decoration: none; }
+	.ai-source:hover { text-decoration: underline; }
 	.ai-empty { font-size: 12px; color: var(--color-text-faint); text-align: center; padding: 20px 0; }
 	.ai-compose {
 		display: flex; gap: 8px; padding: 12px 16px;
