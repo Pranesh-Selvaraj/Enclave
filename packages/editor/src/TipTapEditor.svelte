@@ -19,21 +19,22 @@ import { makeReactive } from './reactivity.js';
 		onChange?: () => void;
 	} = $props();
 
-	let element: HTMLElement | undefined = $state();
-	let _editor: Editor | undefined = $state();
-	// Track whether we've applied async content to avoid infinite loop
+	// Plain (non-reactive) handle to the tiptap instance. The editor is
+	// created from a use:action, not a reactive $effect — an effect that reads
+	// and writes bound state re-created the Editor endlessly
+	// (effect_update_depth_exceeded in prod; a 50/s remount storm in dev).
+	let _editor: Editor | undefined;
 	let contentApplied = false;
 
-	$effect(() => {
-		if (!element || _editor) return;
-
+	/** use:action — runs imperatively when the element mounts, destroy() on removal. */
+	function mountEditor(node: HTMLElement) {
 		const instance = new Editor({
-			element,
+			element: node,
 			extensions: editorExtensions(),
 			content: content as string | undefined,
 			editable,
 			autofocus,
-			onUpdate: ({ editor: ed }) => {
+			onUpdate: () => {
 				// Signal-only: serializing (getJSON) here allocates a full doc
 				// tree per keystroke; the page serializes once at save time.
 				onChange?.();
@@ -52,17 +53,31 @@ import { makeReactive } from './reactivity.js';
 			contentApplied = true;
 		}
 
-		return () => {
-			instance.destroy();
-			_editor = undefined as unknown as typeof _editor;
-			boundEditor = undefined as unknown as typeof boundEditor;
-			contentApplied = false;
+		return {
+			destroy() {
+				instance.destroy();
+				_editor = undefined;
+				boundEditor = undefined as unknown as typeof boundEditor;
+				contentApplied = false;
+			},
 		};
+	}
+
+	// Apply async content that arrives after the editor has mounted. This
+	// effect only reads `content` — it never writes reactive state it reads,
+	// so it cannot self-invalidate.
+	$effect(() => {
+		if (!_editor || !content || contentApplied) return;
+		const contentStr = JSON.stringify(content);
+		if (contentStr !== '{"type":"doc","content":[]}') {
+			_editor.commands.setContent(content as any);
+		}
+		contentApplied = true;
 	});
 </script>
 
 <div class="editor-container">
-	<div bind:this={element} class="tiptap-editor"></div>
+	<div use:mountEditor class="tiptap-editor"></div>
 </div>
 
 <style>

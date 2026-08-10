@@ -24,7 +24,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Desktop Shell** | Tauri v2 (Rust) |
 | **Frontend** | SvelteKit (static adapter) + Svelte 5 |
 | **Editor** | TipTap (ProseMirror) + custom Svelte 5 wrapper |
-| **Storage** | SQLite + SQLCipher (desktop) · IndexedDB + WebCrypto AES-GCM (web) |
+| **Storage** | SQLite + SQLCipher (AES-256-CBC with HMAC-SHA512) |
 | **Data Model** | Document + Block with a `sort_order` column |
 | **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
 | **Key Derivation** | Argon2id (`hash-wasm`) |
@@ -32,7 +32,9 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Network Discovery** | mDNS (`mdns-sd`) |
 | **Transport** | WebSocket (`tokio-tungstenite`) |
 | **Sync** | Full JSON snapshots + doc-level last-write-wins merge |
-| **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM |
+| **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM, or frontier APIs with a key |
+| **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
+| **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
 | **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) |
 
@@ -44,7 +46,6 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
 | **macOS** (Apple Silicon) | Supported | `.dmg` |
 | **Android** | Planned | — |
-| **Web** | Supported | Static SPA (IndexedDB) |
 
 ## Monorepo Structure
 
@@ -53,14 +54,13 @@ enclave/
 ├── .github/
 │   └── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
 ├── apps/
-│   └── desktop/                   # Tauri desktop app + web SPA (SvelteKit static adapter)
+│   └── desktop/                   # Tauri desktop app (SvelteKit static adapter)
 │       ├── src/
 │       │   ├── app.html           # Root HTML shell
 │       │   ├── app.css            # Global styles + theme variables (light/dark)
 │       │   ├── lib/
-│       │   │   ├── backend.ts          # invoke bridge: routes to Tauri IPC or WebStore
-│       │   │   ├── webStore.ts         # IndexedDB + WebCrypto storage (web build)
-│       │   │   ├── ollama.ts           # OpenAI-compatible local-LLM client (chat/embeddings)
+│       │   │   ├── backend.ts          # Tauri IPC bridge (invoke/listen)
+│       │   │   ├── ai.ts               # OpenAI-compatible client (chat/embeddings/SSE) + settings
 │       │   │   ├── importExport.ts     # Markdown/HTML import + export, vault backup
 │       │   │   ├── graphLinks.ts       # Link extraction for graph view + backlinks
 │       │   │   ├── wbLayout.ts         # Whiteboard layout helpers
@@ -75,7 +75,7 @@ enclave/
 │       │       ├── [id]/+page.svelte # Editor + AI ask/RAG panel
 │       │       ├── capture/        # Quick Capture window
 │       │       └── graph/          # Backlink graph view
-│       ├── tests/                  # ollama, webStore, graphLinks, wbLayout
+│       ├── tests/                  # ai, graphLinks, wbLayout
 │       ├── static/
 │       ├── package.json
 │       ├── svelte.config.js
@@ -102,7 +102,8 @@ enclave/
 │   └── ui/                         # Shared Svelte components, theme store, types
 ├── src-tauri/                      # Rust backend (Tauri v2)
 │   ├── crates/
-│   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + embeddings
+│   ├── crates/
+│   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
 │   │   │   └── src/lib.rs          # Document/Block/embedding CRUD, vault lifecycle, sync merge
 │   │   └── core-network/           # mDNS + WebSocket P2P transport
 │   │       ├── src/lib.rs          # NetworkState, start/stop/status, peer redial
@@ -110,7 +111,8 @@ enclave/
 │   │       └── src/ws.rs           # WebSocket accept loop + session relay
 │   ├── src/
 │   │   ├── main.rs                 # Binary entry point
-│   │   └── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
+│   │   ├── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
+│   │   └── embed.rs                # Built-in offline embeddings (fastembed/ONNX)
 │   ├── Cargo.toml                  # Rust workspace root
 │   ├── tauri.conf.json             # App config, CSP, NSIS installer, bundle targets
 │   └── icons/
@@ -150,13 +152,6 @@ npx tauri dev
 # Compiles the Rust backend and opens the desktop window
 ```
 
-**Frontend only** (browser — Tauri-only features are stubbed):
-
-```bash
-npm run dev -w @enclave/desktop
-# Opens at http://127.0.0.1:5173
-```
-
 ### 3. Production Build
 
 ```bash
@@ -166,51 +161,37 @@ npx tauri build
 
 Or let CI handle it — pushes to `v*` tags (and to `main`, and PRs to `main`) trigger GitHub Actions to build all platforms and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), and `.dmg` (macOS Apple Silicon).
 
-### Web build (browser SPA)
-
-The same frontend runs as a static SPA with no Rust backend — storage falls back to
-IndexedDB with AES-256-GCM-at-rest encryption via WebCrypto, routed through the shared
-`backend.ts` bridge.
-
-```bash
-npm run build -w @enclave/desktop   # outputs apps/desktop/build/
-npm run preview -w @enclave/desktop # serve locally (handles SPA fallback)
-```
-
-Serve `apps/desktop/build/` over HTTP(S) on a trusted origin — `crypto.subtle` and
-`indexedDB` require a secure context (`localhost` or HTTPS; `file://` is partial).
-Deep links to `/`+UUID pages need a server that falls back to `index.html` (the
-preview server and any SPA host do; a bare `python -m http.server` does not).
-
-Tauri-only features fail with a clear "not available in the web build" message instead of
-crashing: P2P LAN sync (network toggle), whole-vault encrypted backup, native file dialogs
-(Markdown import; per-page Markdown/HTML export falls back to a browser download), and image
-attachment upload. Relation backlinks return empty on web (database blocks are Tauri-gated).
-
 ## Local AI Assistant (opt-in)
 
-Enclave ships a zero-dependency AI client that talks to any **OpenAI-compatible** local
-endpoint over `/v1` — **Ollama** (default `http://localhost:11434`), **llama.cpp /
-llama-server**, **LM Studio**, or **vLLM**.
+Enclave ships a zero-dependency AI client that talks to any **OpenAI-compatible** endpoint
+over `/v1` — a local server (**Ollama** default `http://localhost:11434`, **llama.cpp /
+llama-server**, **LM Studio**, **vLLM**) or a **frontier API** (add its key in Settings;
+settings incl. the key are stored encrypted in the vault).
 
 Enable it in **Settings → AI assistant**:
 
-- **Enable local AI** — turns on the Ask-AI panel.
-- **Endpoint URL** — where the server lives (default `http://localhost:11434`).
+- **Enable AI** — turns on the Ask-AI panel.
+- **Endpoint URL** — where the chat/embedding server lives (default `http://localhost:11434`).
+- **API key (optional)** — Bearer key for frontier APIs (OpenAI & co.); stored encrypted in the vault.
 - **Model** — any model the endpoint exposes (fetched from `GET /v1/models`).
 - **Vault-wide answers (RAG)** — on by default (see below).
+- **Offline embeddings** — embed with the built-in ONNX model instead of the endpoint, so RAG
+  retrieval needs no external service at all. The model (~25 MB, `all-MiniLM-L6-v2`) downloads
+  once into the app data dir on first use; after that embeddings work fully offline. Chat still
+  needs an endpoint.
 
 Behavior:
 
 - **Chat**: `POST /v1/chat/completions` (SSE) streams answers into the Ask-AI panel, with
   **Stop** support.
-- **Retrieval (RAG)**: pages are embedded (`POST /v1/embeddings`) into an `embeddings` table
-  on save. Questions are answered with the most similar pages injected as context — retrieved
-  by client-side cosine similarity with an FTS5 (desktop) or substring (web) fallback. Answers
-  list their **Sources** with links to the pages used.
+- **Retrieval (RAG)**: pages are embedded into an `embeddings` table (plus a per-dimension
+  `vec0` ANN index) in the encrypted vault on save. Questions are answered with the most similar
+  pages injected as context — retrieved by the backend's ANN top-k (exact-cosine re-ranked in
+  Rust) with an FTS5 fallback. Answers list their **Sources** with links to the pages used.
 - **Privacy**: when AI is enabled, page content (for embedding + context injection) is sent to
-  the configured endpoint. In the desktop shell the CSP restricts it to `localhost:*`; the web
-  build can reach any URL you enter. See [SECURITY.md](SECURITY.md).
+  the configured endpoint — any https endpoint with **offline embeddings** off. With offline
+  embeddings on, retrieval content never leaves the device; only chat does.
+  See [SECURITY.md](SECURITY.md).
 
 ## Running Tests
 
@@ -225,9 +206,8 @@ npx tsx packages/editor/test.ts
 npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
-# Frontend unit tests (AI client, web store, graph links, whiteboard layout)
-npx tsx apps/desktop/tests/ollama.test.ts
-npx tsx apps/desktop/tests/webStore.test.ts
+# Frontend unit tests (AI client, graph links, whiteboard layout)
+npx tsx apps/desktop/tests/ai.test.ts
 npx tsx apps/desktop/tests/graphLinks.test.ts
 npx tsx apps/desktop/tests/wbLayout.test.ts
 
@@ -274,7 +254,7 @@ npm run check -w @enclave/desktop
 
 - **At rest**: the SQLCipher database is encrypted (default AES-256-CBC, HMAC-SHA512). Keys are derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
 - **In transit**: LAN WebSockets carry **plaintext** JSON snapshots of documents and blocks, merged with doc-level last-write-wins. Enclave treats the LAN as trusted — a device on the same network can connect and read synced content. Do not sync across an untrusted network.
-- **No cloud**: the app makes no requests to Enclave infrastructure. The only optional outbound traffic is the local-AI feature, which sends content to an endpoint you configure (desktop restricted to localhost by CSP).
+- **No cloud**: the app makes no requests to Enclave infrastructure. The only optional outbound traffic is the local-AI feature, which sends content to an endpoint you configure (local servers, or any https endpoint when you add an API key).
 - **Key material**: the seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
 
 ## Network Design
@@ -317,7 +297,7 @@ Every page toggles between **Paper** (documents) and **Whiteboard** (infinite ca
 | **Database** | `/database` — typed tables, 12 column types, 5 views (table/kanban/list/gallery/timeline), grouping/sort/filters |
 | **Linked Database** | `/linked database` — mirror another database on this page |
 | **Page embed** | `/embed page` — inline page card |
-| **Image** | `/image`, or paste/drop (desktop) |
+| **Image** | `/image`, or paste/drop |
 | **Bookmark** | `/bookmark`, or paste a URL |
 | **Template** | `/template` — Meeting Notes, Project Plan, Daily Journal, Book Notes |
 | Page links / backlinks | type `[[` + page title |
@@ -332,8 +312,8 @@ Every page toggles between **Paper** (documents) and **Whiteboard** (infinite ca
 - **Shortcuts** — `Ctrl+N` new page, `Ctrl+B` toggle sidebar
 - **Page metadata** — emoji icon, gradient cover, tags, comments, favorites
 - **Info & safety** — created/modified/word counts, delete-to-trash with Undo toast
-- **Export** — per-page Markdown or HTML (desktop dialog, web download); whole-vault encrypted backup (desktop)
-- **Import** — Markdown files (desktop)
+- **Export** — per-page Markdown or HTML (native dialog); whole-vault encrypted backup
+- **Import** — Markdown files
 - **AI** — Ask-AI panel with RAG retrieval and sources (see [Local AI Assistant](#local-ai-assistant-opt-in))
 
 ### Whiteboard mode

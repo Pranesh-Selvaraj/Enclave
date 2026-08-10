@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { invoke, isTauri } from '$lib/backend.js';
+	import { invoke } from '$lib/backend.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 
 	let note = $state('');
@@ -30,8 +29,7 @@
 	});
 
 	function close() {
-		if (isTauri()) getCurrentWindow().close();
-		else goto('/'); // no separate window in the browser — go home
+		getCurrentWindow().close();
 	}
 
 	async function save() {

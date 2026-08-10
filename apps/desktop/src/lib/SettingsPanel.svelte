@@ -2,7 +2,7 @@
 	import { invoke } from '$lib/backend.js';
 	import { Button } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES } from '@enclave/ui';
-	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ollama.js';
+	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
 
 	let {
 		open = $bindable(false),
@@ -39,15 +39,26 @@
 		}
 	}
 
-	// ── Local AI (Ollama) ──
-	let ai = $state<AISettings>(loadAISettings());
+	// ── Local AI (any OpenAI-compatible endpoint, optional offline embeddings) ──
+	let ai = $state<AISettings>(defaultAiSettings());
 	let installedModels = $state<string[]>([]);
 	let aiStatus = $state('');
+
+	function defaultAiSettings(): AISettings {
+		return { enabled: false, url: 'http://localhost:11434', model: 'llama3.2', apiKey: '', rag: true, builtinEmbeddings: false };
+	}
+
+	$effect(() => {
+		loadAISettings().then((s) => {
+			ai = s;
+			if (s.enabled) refreshModels();
+		});
+	});
 
 	async function refreshModels() {
 		aiStatus = '';
 		try {
-			installedModels = await listModels(ai.url);
+			installedModels = await listModels(ai.url, ai.apiKey);
 			if (installedModels.length === 0) aiStatus = 'Connected — no models available on this endpoint.';
 			else if (!installedModels.includes(ai.model)) aiStatus = `Tip: model "${ai.model}" not available here.`;
 		} catch (e: any) {
@@ -57,7 +68,7 @@
 	}
 
 	function onAiChange() {
-		saveAISettings(ai);
+		void saveAISettings(ai);
 		if (ai.enabled) refreshModels();
 	}
 
@@ -126,9 +137,9 @@
 			</div>
 
 			<div class="settings-section">
-				<h3>AI assistant (local)</h3>
+				<h3>AI assistant</h3>
 				<div class="setting-row">
-					<span>Enable local AI</span>
+					<span>Enable AI</span>
 					<label class="switch">
 						<input type="checkbox" bind:checked={ai.enabled} onchange={onAiChange} />
 						<span class="switch-slider"></span>
@@ -140,9 +151,20 @@
 						<input class="ai-input" bind:value={ai.url} onchange={onAiChange} aria-label="Endpoint URL" placeholder="http://localhost:11434" />
 					</div>
 					<div class="setting-row">
+						<span>API key (optional)</span>
+						<input class="ai-input" type="password" bind:value={ai.apiKey} onchange={onAiChange} aria-label="API key" placeholder="sk-… (frontier APIs only)" />
+					</div>
+					<div class="setting-row">
 						<span>Vault-wide answers (RAG)</span>
 						<label class="switch">
 							<input type="checkbox" bind:checked={ai.rag} onchange={onAiChange} />
+							<span class="switch-slider"></span>
+						</label>
+					</div>
+					<div class="setting-row">
+						<span>Offline embeddings</span>
+						<label class="switch" title="Embed with the built-in model — no endpoint needed for RAG (downloads ~25 MB once)">
+							<input type="checkbox" bind:checked={ai.builtinEmbeddings} onchange={onAiChange} />
 							<span class="switch-slider"></span>
 						</label>
 					</div>
@@ -165,7 +187,7 @@
 						<Button onclick={refreshModels}>Check connection</Button>
 						{#if aiStatus}<span class="ai-status" role="status">{aiStatus}</span>{/if}
 					</div>
-					<div class="backup-hint">Requires a local OpenAI-compatible endpoint (Ollama, llama.cpp, LM Studio, vllm…) on this machine. Content never leaves your device.</div>
+					<div class="backup-hint">Point this at any OpenAI-compatible server — Ollama, llama.cpp, LM Studio, vLLM on this machine, or a frontier API (add its key above). With <b>offline embeddings</b> on, RAG retrieval needs no endpoint at all; chat still does.</div>
 				{/if}
 			</div>
 

@@ -14,8 +14,7 @@ Enclave is a zero-knowledge, local-first knowledge base. The security model rest
 
 ### What We Protect
 
-- **At rest (desktop)**: page contents are stored in a SQLCipher-encrypted SQLite database — AES-256-CBC with HMAC-SHA512, the SQLCipher defaults. Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism), a memory-hard KDF resistant to GPU/ASIC attacks.
-- **At rest (web)**: the browser build stores every document and block record individually encrypted with AES-256-GCM via WebCrypto, under the same Argon2id-derived master key.
+- **At rest**: page contents are stored in a SQLCipher-encrypted SQLite database — AES-256-CBC with HMAC-SHA512, the SQLCipher defaults. Embeddings, the vec0 ANN index, and AI settings (incl. API keys) live in the same encrypted file. Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism), a memory-hard KDF resistant to GPU/ASIC attacks.
 - **Key material**: the master key exists only in memory during a session. The only on-disk copy of key material is `vault.key`: the seed phrase re-encrypted with Argon2id (fresh random 32-byte salt) + AES-256-GCM under your password. It is unusable without the password and can be reset by deleting it (unlock with the seed phrase instead).
 
 ### What We Don't Protect
@@ -28,7 +27,6 @@ Enclave is a zero-knowledge, local-first knowledge base. The security model rest
 ### Trust Boundaries
 
 ```
-Desktop:
 User input ──► SvelteKit frontend (trusted, same process)
                       │
                       ▼
@@ -45,17 +43,6 @@ User input ──► SvelteKit frontend (trusted, same process)
    AES-256-CBC at rest     LAN-only, PLAINTEXT transport
 ```
 
-```
-Web (static SPA):
-User input ──► SvelteKit frontend (trusted, same process)
-                      │
-                      ▼
-              backend.ts invoke bridge (routes to WebStore)
-                      │
-                      ▼
-   IndexedDB, every record AES-256-GCM (WebCrypto)
-```
-
 ## P2P Sync Security
 
 - Peers on the same LAN discover each other via mDNS (`_enclave._tcp.local`) and connect over plaintext WebSocket (`ws://`).
@@ -68,9 +55,9 @@ User input ──► SvelteKit frontend (trusted, same process)
 The AI assistant is **opt-in** and **off by default**. When enabled in **Settings → AI assistant**:
 
 - Page content is sent to the endpoint you configure — for embedding on save (`POST /v1/embeddings`) and as retrieval context for questions (`POST /v1/chat/completions`).
-- In the desktop shell, the CSP restricts AI network access to `localhost:*` and `ws://localhost:*` (plus the app's own origin), so content only leaves the machine if you run a local LLM server (Ollama, llama.cpp, LM Studio, vLLM).
-- In the **web build**, the CSP is not enforced — the SPA can reach any URL you enter. If you point it at a remote endpoint, page content is sent there.
-- Settings (URL, model, enabled, RAG) are stored in `localStorage` under the key `enclave-ai` **in plaintext**, on both builds. They contain no content, but a local attacker could read which LLM endpoint you use.
+- The CSP allows `https:` plus `localhost:*` (and the app's own origin). Content only leaves the machine if you run a local LLM server (Ollama, llama.cpp, LM Studio, vLLM) or point the AI feature at a remote https endpoint with an API key.
+- **Offline embeddings** (built-in ONNX model, on by default when enabled): retrieval vectors are computed on-device and the embedding step makes no network request at all — only chat still talks to the endpoint.
+- Settings (URL, model, enabled, RAG, **API key**) are stored **encrypted at rest** in the vault's `settings` table (SQLCipher), not in localStorage. A pre-1.1 localStorage copy is migrated once on first load and then removed.
 
 ## What This Means in Practice
 
