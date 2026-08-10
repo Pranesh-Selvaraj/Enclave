@@ -101,6 +101,10 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
             block_id UNINDEXED,
             title,
             content
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );",
     )?;
     // Migration for pre-sync vaults: CREATE TABLE IF NOT EXISTS won't add
@@ -216,6 +220,199 @@ fn fts_index_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
 // never has an embedding whose text disagrees with its current content for
 // long, and retrieval falls back to FTS for anything missing.
 
+// ── Vector index (sqlite-vec) ───────────────────────────────────────────────
+// vec0 virtual tables live INSIDE the encrypted SQLCipher file — the same
+// encryption boundary as the embeddings rows. One table per vector dimension
+// (models vary: MiniLM=384, nomic-embed=768, text-embedding-3-small=1536, …),
+// created lazily on first upsert. Queries use the table matching the query
+// vector's dimension and fall back to an exact scan when none exists
+// (e.g. vaults created before the index, or a dimension never seen before).
+
+static VEC_EXT: std::sync::Once = std::sync::Once::new();
+
+/// Register the sqlite-vec extension for every future connection. Must run
+/// before the first Connection is opened; safe to call repeatedly.
+pub fn ensure_vec_extension() {
+    VEC_EXT.call_once(|| {
+        // The crate declares the init fn as `fn()`; its real ABI is the
+        // standard sqlite extension entry point, so transmute the same way
+        // the crate's own tests do.
+        unsafe {
+            rusqlite::auto_extension::register_auto_extension(std::mem::transmute::<
+                *const (),
+                rusqlite::auto_extension::RawAutoExtension,
+            >(sqlite_vec::sqlite3_vec_init as *const ()))
+            .expect("failed to register sqlite-vec auto-extension");
+        }
+    });
+}
+
+fn vec_table(dim: usize) -> String {
+    format!("embeddings_vec_{dim}")
+}
+
+fn ensure_vec_table(db: &Connection, dim: usize) -> rusqlite::Result<()> {
+    db.execute_batch(&format!(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS \"{}\" USING vec0(
+             block_id TEXT PRIMARY KEY,
+             vector float[{}]
+         )",
+        vec_table(dim),
+        dim
+    ))
+}
+
+/// Names of existing vec0 tables (any dimension) — shadows tables carry a
+/// `_chunks`/`_rowids`/… suffix and are filtered out by the digit check.
+fn vec_table_names(db: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'embeddings_vec_%'",
+    )?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for name in rows {
+        let name = name?;
+        let Some(dim) = name.strip_prefix("embeddings_vec_") else {
+            continue;
+        };
+        if !dim.is_empty() && dim.chars().all(|c| c.is_ascii_digit()) {
+            out.push(name);
+        }
+    }
+    Ok(out)
+}
+
+/// Write one vector into the ANN index (upsert by block_id).
+fn vec_upsert(db: &Connection, block_id: &str, vector: &[f64]) -> rusqlite::Result<()> {
+    if vector.is_empty() {
+        return Ok(());
+    }
+    ensure_vec_table(db, vector.len())?;
+    let table = vec_table(vector.len());
+    let json = serde_json::to_string(vector).unwrap_or_default();
+    db.execute(
+        &format!("DELETE FROM \"{table}\" WHERE block_id = ?1"),
+        rusqlite::params![block_id],
+    )?;
+    db.execute(
+        &format!("INSERT INTO \"{table}\" (block_id, vector) VALUES (?1, ?2)"),
+        rusqlite::params![block_id, json],
+    )?;
+    Ok(())
+}
+
+/// Remove one block's vectors from every dimension's index.
+fn vec_remove_block(db: &Connection, block_id: &str) -> rusqlite::Result<()> {
+    for table in vec_table_names(db)? {
+        db.execute(
+            &format!("DELETE FROM \"{table}\" WHERE block_id = ?1"),
+            rusqlite::params![block_id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Remove every vector belonging to a document from every dimension's index.
+fn vec_remove_doc(db: &Connection, doc_id: &str) -> rusqlite::Result<()> {
+    let tables = vec_table_names(db)?;
+    if tables.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = db.prepare("SELECT block_id FROM embeddings WHERE document_id = ?1")?;
+    let ids: Vec<String> = stmt
+        .query_map(rusqlite::params![doc_id], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for table in &tables {
+        for id in &ids {
+            db.execute(
+                &format!("DELETE FROM \"{table}\" WHERE block_id = ?1"),
+                rusqlite::params![id],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Cosine similarity; 0 for empty or dimension-mismatched vectors (the same
+/// contract the frontend used before ranking moved into Rust).
+pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
+    if a.is_empty() || a.len() != b.len() {
+        return 0.0;
+    }
+    let mut dot = 0.0;
+    let mut na = 0.0;
+    let mut nb = 0.0;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    let denom = na.sqrt() * nb.sqrt();
+    if denom == 0.0 {
+        0.0
+    } else {
+        dot / denom
+    }
+}
+
+/// Nearest-neighbour retrieval: ANN candidates from the vec0 index (with a
+/// 4× recall buffer) re-ranked by exact cosine, or a full exact scan when no
+/// index exists for the query dimension. Archived/deleted docs are excluded.
+pub fn query_embeddings_topk(
+    db: &Connection,
+    query: &[f64],
+    limit: usize,
+) -> rusqlite::Result<Vec<Embedding>> {
+    if query.is_empty() || limit == 0 {
+        return Ok(vec![]);
+    }
+    let indexed = vec_table_names(db)?.iter().any(|t| *t == vec_table(query.len()));
+    let mut scored: Vec<(f64, Embedding)> = if indexed {
+        let want = (limit.saturating_mul(4)).max(limit) as i64;
+        let table = vec_table(query.len());
+        let json = serde_json::to_string(query).unwrap_or_default();
+        let mut stmt = db.prepare(&format!(
+            "SELECT block_id FROM \"{table}\" WHERE vector MATCH ?1 AND k = ?2"
+        ))?;
+        let ids: Vec<String> = stmt
+            .query_map(rusqlite::params![json, want], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let placeholders = vec!["?"; ids.len()].join(",");
+        let mut stmt = db.prepare(&format!(
+            "SELECT e.block_id, e.document_id, d.title, e.text, e.vector, e.updated_at
+             FROM embeddings e JOIN documents d ON d.id = e.document_id
+             WHERE e.block_id IN ({placeholders})
+               AND d.is_archived = 0 AND d.deleted_at IS NULL"
+        ))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                let vector_json: String = row.get(4)?;
+                Ok(Embedding {
+                    block_id: row.get(0)?,
+                    document_id: row.get(1)?,
+                    doc_title: row.get(2)?,
+                    text: row.get(3)?,
+                    vector: serde_json::from_str(&vector_json).unwrap_or_default(),
+                    updated_at: row.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter()
+            .map(|e| (cosine_similarity(query, &e.vector), e))
+            .collect()
+    } else {
+        query_embeddings(db)?
+            .into_iter()
+            .map(|e| (cosine_similarity(query, &e.vector), e))
+            .collect()
+    };
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+    Ok(scored.into_iter().take(limit).map(|(_, e)| e).collect())
+}
+
 pub fn upsert_embedding(
     db: &Connection,
     block_id: &str,
@@ -235,7 +432,7 @@ pub fn upsert_embedding(
              updated_at = excluded.updated_at",
         rusqlite::params![block_id, document_id, text, vector_json, updated_at],
     )?;
-    Ok(())
+    vec_upsert(db, block_id, vector)
 }
 
 /// All stored embeddings joined with their (live, non-archived) doc titles.
@@ -265,6 +462,32 @@ pub fn query_embeddings(db: &Connection) -> rusqlite::Result<Vec<Embedding>> {
     rows.collect()
 }
 
+// ── Settings (vault-scoped KV) ──────────────────────────────────────────────
+// AI settings (endpoint, model, API key) live here — encrypted at rest by
+// SQLCipher like everything else, instead of localStorage plaintext.
+
+pub fn get_setting(db: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    db.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        rusqlite::params![key],
+        |r| r.get(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
+pub fn set_setting(db: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    )?;
+    Ok(())
+}
+
 // ── Vault Lifecycle ─────────────────────────────────────────────────────────
 
 /// Check whether a vault database file already exists on disk.
@@ -275,6 +498,7 @@ pub fn vault_exists(db_path: &std::path::Path) -> bool {
 /// Create a new vault: open the database, set the key, create tables.
 /// Returns the open connection.
 pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, String> {
+    ensure_vec_extension();
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to create database: {e}"))?;
     set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
     create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
@@ -285,6 +509,7 @@ pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
 /// Open an existing vault: open the database, set the key, ensure tables exist.
 /// Returns the open connection or an error if the key is wrong.
 pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, String> {
+    ensure_vec_extension();
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
     set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
 
@@ -378,6 +603,7 @@ pub fn delete_document(db: &Connection, id: &str, now: &str) -> rusqlite::Result
     )?;
     db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![id])?;
     db.execute("DELETE FROM embeddings WHERE document_id = ?1", rusqlite::params![id])?;
+    vec_remove_doc(db, id)?;
     fts_remove_doc(db, id)
 }
 
@@ -453,6 +679,7 @@ pub fn delete_block(db: &Connection, id: &str) -> rusqlite::Result<()> {
         .ok();
     db.execute("DELETE FROM blocks WHERE id = ?1", rusqlite::params![id])?;
     db.execute("DELETE FROM embeddings WHERE block_id = ?1", rusqlite::params![id])?;
+    vec_remove_block(db, id)?;
     fts_remove_block(db, id)?;
     if let Some(doc_id) = doc_id {
         let now = chrono::Utc::now().to_rfc3339();
@@ -843,6 +1070,7 @@ pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusql
             fts_remove_doc(db, &doc.id)?;
             db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
             db.execute("DELETE FROM embeddings WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            vec_remove_doc(db, &doc.id)?;
             for b in blocks.iter().filter(|b| b.document_id == doc.id) {
                 insert_block(db, b)?;
                 blocks_changed += 1;
@@ -851,6 +1079,7 @@ pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusql
         } else {
             db.execute("DELETE FROM blocks WHERE document_id = ?1", rusqlite::params![doc.id])?;
             db.execute("DELETE FROM embeddings WHERE document_id = ?1", rusqlite::params![doc.id])?;
+            vec_remove_doc(db, &doc.id)?;
             fts_remove_doc(db, &doc.id)?;
         }
 
@@ -1249,6 +1478,76 @@ mod tests {
         // Deleting the block cleans its embedding
         delete_block(&conn, "b1").unwrap();
         assert!(query_embeddings(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn embeddings_topk_uses_vec_index_and_reranks() {
+        ensure_vec_extension(); // must run before the first connection opens
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let now = "t";
+        for (id, archived) in [("d1", false), ("d2", false), ("d3", true)] {
+            insert_document(
+                &conn,
+                &Document {
+                    id: id.into(),
+                    title: id.into(),
+                    created_at: now.into(),
+                    updated_at: now.into(),
+                    is_favorite: false,
+                    is_archived: archived,
+                    rev: 0,
+                    deleted_at: None,
+                },
+            )
+            .unwrap();
+        }
+        upsert_embedding(&conn, "b1", "d1", "alpha", &[1.0, 0.0, 0.0], "t1").unwrap();
+        upsert_embedding(&conn, "b2", "d2", "beta", &[0.0, 1.0, 0.0], "t1").unwrap();
+        upsert_embedding(&conn, "b3", "d3", "archived", &[0.9, 0.1, 0.0], "t1").unwrap();
+
+        // Nearest first; archived doc's vector excluded from results.
+        let top = query_embeddings_topk(&conn, &[1.0, 0.0, 0.0], 5).unwrap();
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0].block_id, "b1", "exact match ranks first");
+        assert_eq!(top[1].block_id, "b2");
+
+        // limit is honored
+        let one = query_embeddings_topk(&conn, &[1.0, 0.0, 0.0], 1).unwrap();
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].block_id, "b1");
+
+        // Re-upsert replaces the vector in the index (b1 now anti-correlated)
+        upsert_embedding(&conn, "b1", "d1", "alpha v2", &[-1.0, 0.0, 0.0], "t2").unwrap();
+        let top = query_embeddings_topk(&conn, &[1.0, 0.0, 0.0], 1).unwrap();
+        assert_eq!(top[0].block_id, "b2");
+
+        // Deleting a block removes it from the vector index too
+        delete_block(&conn, "b2").unwrap();
+        let top = query_embeddings_topk(&conn, &[1.0, 0.0, 0.0], 5).unwrap();
+        assert!(top.iter().all(|e| e.block_id != "b2"));
+
+        // Deleting a document cleans all of its vectors
+        delete_document(&conn, "d1", "t3").unwrap();
+        let top = query_embeddings_topk(&conn, &[1.0, 0.0, 0.0], 5).unwrap();
+        assert!(top.iter().all(|e| e.block_id != "b1"));
+
+        // Unknown dimension (no vec0 table) falls back to an exact scan
+        upsert_embedding(&conn, "b4", "d2", "wide", &[1.0, 0.0], "t1").unwrap();
+        let top = query_embeddings_topk(&conn, &[1.0, 0.0], 5).unwrap();
+        assert_eq!(top[0].block_id, "b4");
+    }
+
+    #[test]
+    fn settings_roundtrip_and_missing() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        assert_eq!(get_setting(&conn, "ai").unwrap(), None);
+        set_setting(&conn, "ai", "{\"enabled\":true}").unwrap();
+        assert_eq!(get_setting(&conn, "ai").unwrap().as_deref(), Some("{\"enabled\":true}"));
+        set_setting(&conn, "ai", "{\"enabled\":false}").unwrap();
+        assert_eq!(get_setting(&conn, "ai").unwrap().as_deref(), Some("{\"enabled\":false}"));
+        assert_eq!(get_setting(&conn, "nope").unwrap(), None);
     }
 
     #[test]

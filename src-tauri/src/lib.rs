@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tauri::Manager;
 
+mod embed;
+
 const DB_FILENAME: &str = "enclave.db";
 
 // ── App State ───────────────────────────────────────────────────────────────
@@ -225,9 +227,40 @@ fn upsert_embedding(
     })
 }
 
+/// Ranked retrieval: ANN top-k via the in-DB vec0 index (exact-cosine
+/// re-ranked), with an exact-scan fallback for unknown dimensions.
 #[tauri::command(async)]
-fn get_embeddings(state: tauri::State<AppState>) -> Result<Vec<core_db::Embedding>, String> {
-    with_db(&state, |db| core_db::query_embeddings(db).map_err(|e| e.to_string()))
+fn search_embeddings(
+    state: tauri::State<AppState>,
+    query: Vec<f64>,
+    limit: usize,
+) -> Result<Vec<core_db::Embedding>, String> {
+    with_db(&state, |db| {
+        core_db::query_embeddings_topk(db, &query, limit).map_err(|e| e.to_string())
+    })
+}
+
+/// Offline embedding via the built-in ONNX model (fastembed). Inference is
+/// CPU-bound, so it runs on the blocking pool; the first call downloads the
+/// model into the app data dir (needs internet once).
+#[tauri::command]
+async fn embed_text(state: tauri::State<'_, AppState>, text: String) -> Result<Vec<f64>, String> {
+    let cache_dir = state.app_dir.join("models");
+    tauri::async_runtime::spawn_blocking(move || crate::embed::embed_text_blocking(&cache_dir, &text))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// ── Vault-scoped settings (encrypted at rest; holds AI config + API keys) ───
+
+#[tauri::command(async)]
+fn get_setting(state: tauri::State<AppState>, key: String) -> Result<Option<String>, String> {
+    with_db(&state, |db| core_db::get_setting(db, &key).map_err(|e| e.to_string()))
+}
+
+#[tauri::command(async)]
+fn set_setting(state: tauri::State<AppState>, key: String, value: String) -> Result<(), String> {
+    with_db(&state, |db| core_db::set_setting(db, &key, &value).map_err(|e| e.to_string()))
 }
 
 // ── Markdown Import / Export ────────────────────────────────────────────────
@@ -586,7 +619,11 @@ pub fn run() {
             delete_block,
             // embeddings (RAG)
             upsert_embedding,
-            get_embeddings,
+            search_embeddings,
+            embed_text,
+            // vault-scoped settings (AI config, API keys)
+            get_setting,
+            set_setting,
             // markdown import/export
             export_file,
             write_file,

@@ -47,7 +47,7 @@ npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
 # Frontend unit tests (AI client, graph links, whiteboard layout)
-npx tsx apps/desktop/tests/ollama.test.ts
+npx tsx apps/desktop/tests/ai.test.ts
 npx tsx apps/desktop/tests/graphLinks.test.ts
 npx tsx apps/desktop/tests/wbLayout.test.ts
 
@@ -71,11 +71,11 @@ enclave/
 ├── .github/workflows/build.yml   # CI: tests + Windows/Linux/macOS builds + releases
 ├── apps/desktop/                 # Tauri desktop app (SvelteKit static adapter)
 │   ├── src/
-│   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ollama.ts (local-LLM
-│   │   │                         #   client), importExport.ts, graphLinks.ts, wbLayout.ts,
-│   │   │                         #   VaultGuard, Settings, Whiteboard
+│   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ai.ts (OpenAI-compatible
+│   │   │                         #   client + vault settings), importExport.ts, graphLinks.ts,
+│   │   │                         #   wbLayout.ts, VaultGuard, Settings, Whiteboard
 │   │   └── routes/               # +layout, home, [id] editor, capture, graph
-│   └── tests/                    # ollama, graphLinks, wbLayout unit tests
+│   └── tests/                    # ai, graphLinks, wbLayout unit tests
 ├── packages/
 │   ├── crypto/                   # BIP39, Argon2id, AES-256-GCM (TypeScript)
 │   ├── editor/                   # TipTap Svelte 5 wrapper + extensions + markdown serializer
@@ -118,12 +118,13 @@ Changes to these files need extra scrutiny — tag them clearly in the PR descri
 - `src-tauri/crates/core-network/` — peer discovery, plaintext WebSocket transport, redial
 - `apps/desktop/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
 - `apps/desktop/src/lib/backend.ts` — the Tauri IPC bridge; the single place the frontend invokes Rust commands
-- `apps/desktop/src/lib/ollama.ts` — sends page content to the configured LLM endpoint when AI is enabled
+- `apps/desktop/src/lib/ai.ts` — sends page content to the configured LLM endpoint when AI is enabled; reads/writes vault settings incl. the API key
+- `src-tauri/src/embed.rs` — built-in offline embedding model (fastembed/ONNX)
 - `apps/desktop/src/routes/[id]/+page.svelte` — editor UI; rebuilds embeddings from page content on save
 
 Notes on trust boundaries:
 
-- **AI content handling**: when the AI assistant is enabled, page content is sent to the endpoint in `enclave-ai` (localStorage, plaintext) — the desktop CSP restricts that to `localhost:*`.
+- **AI content handling**: when the AI assistant is enabled, page content is sent to the endpoint in `enclave-ai` (vault settings, encrypted at rest) — local servers by default; any https endpoint once an API key is added. With **offline embeddings** on, retrieval content never leaves the device.
 
 Rules for crypto/non-trivial changes: leave one runnable check behind. For security code, show the test passing in the PR description.
 

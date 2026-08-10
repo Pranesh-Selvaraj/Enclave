@@ -8,7 +8,7 @@
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
-	import { loadAISettings, chatStream, embedText, cosineSimilarity, type ChatMessage, type AISettings } from '$lib/ollama.js';
+	import { loadAISettings, chatStream, embedText, embedLocal, type ChatMessage, type AISettings } from '$lib/ai.js';
 
 	const COVERS = ['grad-0', 'grad-1', 'grad-2', 'grad-3', 'grad-4', 'grad-5'];
 
@@ -288,13 +288,15 @@
 
 	// ── RAG: keep this page's embedding fresh on save ──
 	async function rebuildEmbedding() {
-		const s = loadAISettings();
+		const s = await loadAISettings();
 		if (!s.enabled || !s.rag || !editor) return;
 		const text = htmlToMarkdown(editor.getHTML()).slice(0, 20000);
 		if (!text.trim() || text === lastEmbeddedText) return;
 		lastEmbeddedText = text;
 		try {
-			const vector = await embedText(s.url, s.model, text);
+			const vector = s.builtinEmbeddings
+				? await embedLocal(text)
+				: await embedText(s.url, s.model, text, s.apiKey);
 			await invoke('upsert_embedding', { blockId: `${docId}-content`, documentId: docId, text, vector });
 		} catch (e) {
 			console.error('Embedding failed:', e);
@@ -321,8 +323,7 @@
 
 	// ── Local AI (off unless enabled in Settings) ──
 	$effect(() => {
-		const s = loadAISettings();
-		aiEnabled = s.enabled;
+		loadAISettings().then((s) => (aiEnabled = s.enabled));
 	});
 
 	interface EmbeddingRow {
@@ -334,10 +335,10 @@
 		updated_at: string;
 	}
 
-	/** Retrieve relevant chunks across the vault: embedding top-k (client-side
-	 *  cosine) + FTS fallback for pages without an embedding yet. Excludes the
-	 *  open page — its full content is already in the prompt. Returns [] if
-	 *  the embeddings endpoint is unreachable (page-only chat still works). */
+	/** Retrieve relevant chunks across the vault: ANN top-k from the in-DB
+	 *  vector index (Rust) + FTS fallback for pages without an embedding yet.
+	 *  Excludes the open page — its full content is already in the prompt.
+	 *  Returns [] if embeddings are unavailable (page-only chat still works). */
 	async function retrieveContext(s: AISettings, q: string) {
 		const fts = await invoke<{ doc_id: string; doc_title: string; block_content: string; type: string }[]>('search_all', { query: q }).catch(() => []);
 		const ftsById = new Map<string, { title: string; text: string }>();
@@ -347,11 +348,14 @@
 		}
 		let chunks: { docId: string; title: string; text: string; score: number }[] = [];
 		try {
-			const qVec = await embedText(s.url, s.model, q);
-			const rows = await invoke<EmbeddingRow[]>('get_embeddings').catch(() => []);
+			const qVec = s.builtinEmbeddings
+				? await embedLocal(q)
+				: await embedText(s.url, s.model, q, s.apiKey);
+			// Rust returns exact-cosine re-ranked top-k — order is the rank.
+			const rows = await invoke<EmbeddingRow[]>('search_embeddings', { query: qVec, limit: 6 }).catch(() => []);
 			chunks = rows
 				.filter((r) => r.document_id !== docId)
-				.map((r) => ({ docId: r.document_id, title: r.doc_title, text: r.text, score: cosineSimilarity(qVec, r.vector) }));
+				.map((r) => ({ docId: r.document_id, title: r.doc_title, text: r.text, score: 1 }));
 			const embedded = new Set(chunks.map((c) => c.docId));
 			for (const [id, c] of ftsById) if (!embedded.has(id)) chunks.push({ docId: id, title: c.title, text: c.text, score: 0 });
 		} catch {
@@ -364,7 +368,7 @@
 	async function askAi() {
 		const q = aiQuestion.trim();
 		if (!q || aiBusy) return;
-		const s = loadAISettings();
+		const s = await loadAISettings();
 		aiQuestion = '';
 		aiBusy = true;
 		aiError = '';
@@ -390,7 +394,7 @@
 			const { promise, abort } = chatStream(s.url, s.model, [system, ...messages], (d) => {
 				const last = aiMessages[aiMessages.length - 1];
 				aiMessages = [...aiMessages.slice(0, -1), { role: 'assistant', content: last.content + d }];
-			});
+			}, s.apiKey);
 			aiAbort = abort;
 			await promise;
 		} catch (e: any) {
