@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "core-db"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "core-network"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "futures-util",
  "mdns-sd",
@@ -735,7 +735,7 @@ checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
 name = "enclave"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "core-db",

@@ -21,6 +21,8 @@ export function editorExtensions() {
 	return [
 		StarterKit.configure({
 			heading: { levels: [1, 2, 3] },
+			// The toolbar node view below extends codeBlock — drop starter-kit's.
+			codeBlock: false,
 		}),
 		Placeholder,
 		TaskList,

@@ -31,9 +31,6 @@ npm install
 ```bash
 # Full Tauri desktop app
 npx tauri dev
-
-# Frontend-only (browser SPA — Tauri-only features are stubbed, see backend.ts)
-npm run dev -w @enclave/desktop
 ```
 
 ### Running Tests
@@ -49,9 +46,8 @@ npx tsx packages/editor/test.ts
 npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
-# Frontend unit tests (AI client, IndexedDB web store, graph links, whiteboard layout)
+# Frontend unit tests (AI client, graph links, whiteboard layout)
 npx tsx apps/desktop/tests/ollama.test.ts
-npx tsx apps/desktop/tests/webStore.test.ts
 npx tsx apps/desktop/tests/graphLinks.test.ts
 npx tsx apps/desktop/tests/wbLayout.test.ts
 
@@ -73,13 +69,13 @@ CI runs all of the above plus the platform builds; a PR that fails any check won
 ```
 enclave/
 ├── .github/workflows/build.yml   # CI: tests + Windows/Linux/macOS builds + releases
-├── apps/desktop/                 # Tauri desktop app + web SPA (SvelteKit static adapter)
+├── apps/desktop/                 # Tauri desktop app (SvelteKit static adapter)
 │   ├── src/
-│   │   ├── lib/                  # backend.ts (invoke bridge), webStore.ts (IndexedDB),
-│   │   │                         #   ollama.ts (local-LLM client), importExport.ts,
-│   │   │                         #   graphLinks.ts, wbLayout.ts, VaultGuard, Settings, Whiteboard
+│   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ollama.ts (local-LLM
+│   │   │                         #   client), importExport.ts, graphLinks.ts, wbLayout.ts,
+│   │   │                         #   VaultGuard, Settings, Whiteboard
 │   │   └── routes/               # +layout, home, [id] editor, capture, graph
-│   └── tests/                    # ollama, webStore, graphLinks, wbLayout unit tests
+│   └── tests/                    # ollama, graphLinks, wbLayout unit tests
 ├── packages/
 │   ├── crypto/                   # BIP39, Argon2id, AES-256-GCM (TypeScript)
 │   ├── editor/                   # TipTap Svelte 5 wrapper + extensions + markdown serializer
@@ -121,15 +117,13 @@ Changes to these files need extra scrutiny — tag them clearly in the PR descri
 - `src-tauri/crates/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling, sync merge, FTS/embedding queries
 - `src-tauri/crates/core-network/` — peer discovery, plaintext WebSocket transport, redial
 - `apps/desktop/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
-- `apps/desktop/src/lib/backend.ts` — the invoke bridge; decides which commands reach Tauri vs. the web store
-- `apps/desktop/src/lib/webStore.ts` — IndexedDB + WebCrypto storage (the web build's encryption boundary)
+- `apps/desktop/src/lib/backend.ts` — the Tauri IPC bridge; the single place the frontend invokes Rust commands
 - `apps/desktop/src/lib/ollama.ts` — sends page content to the configured LLM endpoint when AI is enabled
 - `apps/desktop/src/routes/[id]/+page.svelte` — editor UI; rebuilds embeddings from page content on save
 
 Notes on trust boundaries:
 
-- **AI content handling**: when the AI assistant is enabled, page content is sent to the endpoint in `enclave-ai` (localStorage, plaintext) — the desktop CSP restricts that to `localhost:*`; the web build can reach any URL.
-- **Web build**: the SPA stores encrypted records in IndexedDB with WebCrypto AES-256-GCM. It has no Rust backend — P2P sync and native file dialogs are unavailable there.
+- **AI content handling**: when the AI assistant is enabled, page content is sent to the endpoint in `enclave-ai` (localStorage, plaintext) — the desktop CSP restricts that to `localhost:*`.
 
 Rules for crypto/non-trivial changes: leave one runnable check behind. For security code, show the test passing in the PR description.
 
