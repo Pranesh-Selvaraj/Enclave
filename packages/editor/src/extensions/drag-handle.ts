@@ -72,7 +72,14 @@ export const DragHandle = Extension.create({
 								grip.className = 'drag-grip';
 								grip.type = 'button';
 								grip.setAttribute('aria-label', 'Block menu');
-								grip.textContent = '⠿';
+								// Inline SVG, not a text glyph — the old '⠿' Braille pattern
+								// renders as two dot columns that read as "::" at small sizes.
+								grip.innerHTML =
+									'<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true">' +
+									[3, 8, 13]
+										.map((y) => [4, 8, 12].map((x) => `<circle cx="${x}" cy="${y}" r="1.5"/>`).join(''))
+										.join('') +
+									'</svg>';
 								grip.addEventListener('mousedown', (e) => {
 									e.preventDefault();
 									const st = DragHandlePluginKey.getState(ext.editor.state);

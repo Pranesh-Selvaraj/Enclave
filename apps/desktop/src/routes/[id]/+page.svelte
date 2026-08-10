@@ -20,6 +20,8 @@
 	let editorContent = $state<object | undefined>(undefined);
 	let pageList = $state<{ id: string; title: string }[]>([]);
 	let mode = $state<'paper' | 'whiteboard'>('paper');
+	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
+	let hasWhiteboard = $state(false);
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
 	let comments = $state<{ id: string; text: string; at: string }[]>([]);
@@ -199,6 +201,7 @@
 			const meta = (metaBlock?.content as { icon?: string; cover?: string } | undefined) ?? {};
 			icon = meta.icon ?? '';
 			cover = meta.cover ?? '';
+			hasWhiteboard = blocks.some(b => b.type === 'whiteboard');
 			const commentsBlock = blocks.find(b => b.type === 'comments');
 			if (commentsBlock?.content && Array.isArray((commentsBlock.content as any).comments)) {
 				comments = ((commentsBlock.content as any).comments as { id: string; text: string; at: string }[])
@@ -510,6 +513,7 @@
 			tagInput = '';
 			icon = '';
 			cover = '';
+			hasWhiteboard = false;
 			loadDocument();
 			loadBlocks();
 			loadPageList();
@@ -554,8 +558,15 @@
 			/>
 			<div class="doc-actions">
 				<div class="mode-toggle" role="tablist" aria-label="Page mode">
-					<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
-					<button class="mode-btn" class:active={mode === 'whiteboard'} onclick={() => setMode('whiteboard')} role="tab">Whiteboard</button>
+					{#if hasWhiteboard || mode === 'whiteboard'}
+						<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
+						<button class="mode-btn" class:active={mode === 'whiteboard'} onclick={() => setMode('whiteboard')} role="tab">Whiteboard</button>
+					{:else}
+						<!-- A page without a whiteboard block stays paper-only; one click
+						     opts this page into whiteboard mode (the block is created on
+						     the first edit, so pages that never use it stay clean). -->
+						<button class="mode-btn" onclick={() => setMode('whiteboard')} role="tab" title="Add a whiteboard to this page">Whiteboard</button>
+					{/if}
 				</div>
 				<button class="icon-btn" class:active={fullWidth} onclick={toggleFullWidth} title="Toggle full width">
 					<Icon name="expand" size={15} />
