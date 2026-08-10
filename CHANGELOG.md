@@ -6,6 +6,17 @@ All notable changes to Enclave are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-08-10
+
+### Fixed
+
+- **Vault creation blocked on every platform** — `hash-wasm` compiles a WebAssembly module
+  at runtime for Argon2id key derivation, and the Tauri CSP had no `script-src`, so WASM
+  compilation was denied ("WebAssembly.compile() violates CSP … 'unsafe-eval' is not an
+  allowed source"). Added `script-src 'self' 'wasm-unsafe-eval'` — permits WASM without
+  granting general `eval`. Regression guard: `tests/csp.test.ts` fails CI if the directive
+  is ever dropped.
+
 ## [1.1.0] — 2026-08-10
 
 ### Added
@@ -91,7 +102,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.3.0...v0.4.0
