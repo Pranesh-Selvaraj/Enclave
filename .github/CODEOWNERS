@@ -1,0 +1,12 @@
+# Default code owners — every change needs an approving review from the
+# maintainer (enforced by the "Main" ruleset: require_code_owner_review).
+# Security-sensitive paths get extra visibility in PRs touching them.
+* @Pranesh-Selvaraj
+
+# Crypto, storage, networking and key handling — the trust boundaries.
+packages/crypto/ @Pranesh-Selvaraj
+src-tauri/crates/core-db/ @Pranesh-Selvaraj
+src-tauri/crates/core-network/ @Pranesh-Selvaraj
+src-tauri/src/embed.rs @Pranesh-Selvaraj
+apps/desktop/src/lib/VaultGuard.svelte @Pranesh-Selvaraj
+apps/desktop/src/lib/ai.ts @Pranesh-Selvaraj
