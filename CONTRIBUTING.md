@@ -167,3 +167,27 @@ Rules for crypto/non-trivial changes: leave one runnable check behind. For secur
 ## License
 
 MIT. By contributing, you agree that your contributions will be licensed under the MIT License.
+
+## Releasing
+
+1. **Bump the version** to `<new>` across `package.json`, `apps/desktop/package.json`,
+   `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` (Cargo.lock updates on the
+   next `cargo check`).
+2. **Changelog** — add a `[<new>]` entry under `## [Unreleased]` in `CHANGELOG.md`
+   (Keep a Changelog format) and update the compare links at the bottom.
+3. **Verify** — `cargo test --workspace --manifest-path src-tauri/Cargo.toml`,
+   `npm run check -w @enclave/desktop`, and (for Android) a release build:
+   `cd src-tauri && npx tauri android build --target aarch64` with
+   `ANDROID_HOME`/`NDK_HOME`/`JAVA_HOME` set — confirms the Android config
+   (versionCode auto-increment, manifests) is valid.
+4. **Commit on a release branch**, open a PR, merge. Tag + publish:
+
+   ```bash
+   git tag -a v<new> -m "v<new> — <summary>"
+   git push origin main --tags
+   gh release create v<new> --title "Enclave v<new> — <summary>" --notes "$(changelog body)"
+   ```
+
+Android release signing runs in CI (`.github/workflows/android.yml`) with the
+`ANDROID_KEYSTORE_*` secrets — the keystore itself stays out of the repo and must
+be backed up off-machine (losing it makes installed copies unupdatable).
