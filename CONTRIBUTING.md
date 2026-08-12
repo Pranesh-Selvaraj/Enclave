@@ -17,6 +17,7 @@ Thanks for contributing. Enclave is a security-sensitive local-first app — eve
 - **Linux**: `sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`
 - **macOS**: Xcode Command Line Tools
 - **Windows**: Microsoft Visual Studio C++ Build Tools + WebView2
+- **Android**: JDK 21+, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066, rustup targets `aarch64-linux-android` (+ `x86_64-linux-android` for emulators) — see [docs/android-mobile.md](docs/android-mobile.md) for the full setup and issue log.
 
 ### Getting Started
 
@@ -32,6 +33,33 @@ npm install
 # Full Tauri desktop app
 npx tauri dev
 ```
+
+### Android builds & signing
+
+```bash
+# Prereqs (see docs/android-mobile.md): JDK 21, Android SDK + NDK, rustup targets
+export ANDROID_HOME=~/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/29.0.13846066 JAVA_HOME=<jdk21>
+
+# Build the release APK + AAB (arm64)
+cd src-tauri && npx tauri android build --target aarch64 && cd ..
+
+# Sign both artifacts
+scripts/android-sign.sh
+```
+
+**Keystore** (never commit it):
+
+```bash
+keytool -genkeypair -v -keystore ~/Android/keystore/enclave-release.jks \
+  -alias enclave -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass "<random>" -keypass "<random>" -dname "CN=Enclave, OU=Mobile, O=Enclave, C=US"
+echo "<random>" > ~/Android/keystore/enclave-release.jks.password && chmod 600 ~/Android/keystore/enclave-release.jks.password
+```
+
+The script reads `KEYSTORE_PATH`/`KEYSTORE_B64` + passwords from env (CI uses secrets);
+without a keystore it warns and exits 0 so fork PRs stay green. CI signing uses
+`ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+`ANDROID_KEY_PASSWORD` secrets (see `.github/workflows/android.yml`).
 
 ### Running Tests
 
