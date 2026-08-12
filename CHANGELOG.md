@@ -6,6 +6,52 @@ All notable changes to Enclave are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-08-12
+
+### Added
+
+- **Android app (first release)** — same SvelteKit frontend and Rust core as desktop,
+  wrapped with Tauri v2: SQLCipher vault, P2P sync, RAG, all fully offline-first.
+  - Signed release pipeline: `.apk` + `.aab` (arm64) build locally or in CI
+    (`.github/workflows/android.yml`), signed via `scripts/android-sign.sh` with
+    `ANDROID_KEYSTORE_*` secrets.
+  - Cross-compilation fixes: rustls instead of native-tls (no OpenSSL dependency),
+    vendored OpenSSL for SQLCipher on Android targets, desktop unchanged.
+  - Android project (`src-tauri/gen/android`) now committed so native
+    customizations persist; volatile artifacts ignored.
+  - Enclave adaptive launcher icon (all densities); Android 12+ splash uses it.
+  - Monotonic `versionCode` (`autoIncrementVersionCode`) — Play-compliant
+    strictly increasing codes, counter tracked in `tauri.properties`.
+  - x86_64 emulator builds (local embeddings gated out there — ONNX Runtime
+    ships no x86_64-android binaries; arm64 phones keep RAG).
+  - First-boot verified on emulator: vault creation (BIP39 + Argon2id +
+    SQLCipher), page editing, encrypted persistence across restart.
+
+### Changed
+
+- **P2P sync is now authenticated + encrypted** (desktop + Android):
+  - Mutual-auth handshake — challenge-response with HMAC-SHA256 proofs over
+    the vault-derived sync key (same owner = same BIP39 seed phrase).
+    Wrong-key peers are disconnected before any data, even the hello.
+  - Every frame sealed with XChaCha20-Poly1305 (AEAD) under a per-session
+    key; forged frames kill the session.
+  - Wire-format bump: devices must run this version to sync (old builds are
+    rejected at the handshake).
+
+### Fixed
+
+- **Android release builds could not sync** — generated gradle set
+  `usesCleartextTraffic=false`, and Android's platform cleartext policy
+  blocked `ws://` before app code ran. Allowed (safe: payloads are
+  AEAD-sealed) in the committed Android project.
+- **Vault stayed unlocked when the app lost visibility** — on Android,
+  backgrounding the app now locks the vault and stops sync.
+- **Signing script trap bug** — an EXIT trap deleted the real keystore
+  alongside the temp aligned APK; cleanup now tracks only temp files.
+- **Root `tauri` npm script hijacked Android builds** — gradle's
+  `npm run -- tauri android android-studio-script` resolved to the desktop
+  `tauri dev` wrapper; the script now passes through to the real CLI.
+
 ## [1.1.1] — 2026-08-10
 
 ### Fixed
@@ -102,7 +148,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.4.0...v1.0.0

@@ -45,7 +45,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Linux** (x86_64) | Supported | `.deb`, `.AppImage` |
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
 | **macOS** (Apple Silicon) | Supported | `.dmg` |
-| **Android** | In progress | `.apk`, `.aab` (debug builds from source; release signing not yet configured) |
+| **Android** (arm64) | Beta | Signed `.apk` / `.aab` (CI-built, monotonic versionCode), first-boot verified on emulator; P2P sync pending real-device validation |
 
 ## Monorepo Structure
 
