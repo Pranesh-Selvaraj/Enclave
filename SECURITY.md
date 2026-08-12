@@ -22,7 +22,7 @@ Enclave is a zero-knowledge, local-first knowledge base. The security model rest
 - The operating system or filesystem itself. If an attacker has root access to your machine, Enclave cannot protect your data.
 - Clipboard contents, screenshots, or other side channels.
 - The seed phrase display during vault creation. Someone looking at your screen at that moment can compromise the vault.
-- **Sync traffic on the wire.** P2P sync sends **plaintext** JSON snapshots over LAN WebSockets (see [P2P Sync Security](#p2p-sync-security)).
+- ~~**Sync traffic on the wire.**~~ **Fixed:** P2P sync is now authenticated + encrypted — see [P2P Sync Security](#p2p-sync-security).
 
 ### Trust Boundaries
 
@@ -40,15 +40,17 @@ User input ──► SvelteKit frontend (trusted, same process)
    core-db (SQLCipher)     core-network (mDNS + WebSocket)
         │                           │
         ▼                           ▼
-   AES-256-CBC at rest     LAN-only, PLAINTEXT transport
+   AES-256-CBC at rest     AUTH + XChaCha20-Poly1305 in transit
 ```
 
 ## P2P Sync Security
 
-- Peers on the same LAN discover each other via mDNS (`_enclave._tcp.local`) and connect over plaintext WebSocket (`ws://`).
-- Each side exchanges a full JSON snapshot (`{kind:"snapshot", docs, blocks}`), merged with doc-level last-write-wins. Dropped peers are redialed every 3 s.
-- **Sync data is not encrypted in transit.** Any device on the same network can connect and read synced content. **The threat model assumes a trusted LAN** — do not sync across an untrusted network (e.g. a public or hotel Wi-Fi).
-- There is no peer authentication or handshake secret. A LAN device that can reach the WebSocket port can join a sync session.
+- Peers on the same LAN discover each other via mDNS (`_enclave._tcp.local`) and connect over WebSocket (`ws://`).
+- **Mutual authentication before anything else:** every session starts with a challenge-response handshake. Both sides prove knowledge of the vault-derived sync key (HKDF of the vault key, which itself derives from the BIP39 seed phrase) with HMAC-SHA256 proofs over fresh random challenges + peer ids. A peer that can't prove the key is disconnected at the handshake — **no data, not even the hello, is exchanged**.
+- **Transport encryption:** after auth, every frame is sealed with XChaCha20-Poly1305 (AEAD) under a per-session key (HKDF of the sync key + both challenges). Random 24-byte nonce per frame; forged or tampered frames fail the MAC and kill the session.
+- **Ownership = the seed phrase.** Two devices with the same vault (same BIP39 seed phrase) derive the same sync key and can sync. Devices with a different vault are rejected — even though they share the Wi-Fi and can see the traffic, they only see ciphertext. mDNS still advertises "an Enclave is here", but discovery alone yields nothing.
+- **Replay protection:** challenges are fresh per connection, so a recorded handshake cannot be replayed.
+- Remaining caveat: sync still assumes a LAN you can *reach* — mDNS and the WebSocket port are visible to the network, so an attacker with full control of the router could mount a MITM at the TCP layer. Do not sync across an untrusted network.
 
 ## Local AI / LLM Data Boundary
 

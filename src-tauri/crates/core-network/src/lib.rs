@@ -4,6 +4,7 @@
 //! Peers exchange hello messages (peer id + device name), then the app
 //! layer exchanges sync snapshots over the same socket.
 
+pub mod crypto;
 mod mdns;
 mod ws;
 
@@ -40,6 +41,10 @@ struct Inner {
     peer_id: String,
     port: u16,
     name: String,
+    /// Vault-derived PSK for peer auth + transport encryption. Set when the
+    /// network starts (the app only starts it with an unlocked vault) and
+    /// cleared on stop — a stopped/locked network holds no key material.
+    sync_key: Option<[u8; 32]>,
     peers: HashMap<String, Peer>,
     /// Established sessions, keyed by peer id (registered on hello).
     sessions: HashMap<String, mpsc::UnboundedSender<String>>,
@@ -71,6 +76,7 @@ impl NetworkState {
                 peer_id: peer_id.clone(),
                 port: 0,
                 name: String::new(),
+                sync_key: None,
                 peers: HashMap::new(),
                 sessions: HashMap::new(),
                 mdns_handle: None,
@@ -105,12 +111,15 @@ impl NetworkState {
 
     /// Start mDNS advertising + discovery, WebSocket listener on an
     /// OS-assigned port, and auto-connect to every discovered peer.
-    pub async fn start(self: &Arc<Self>, name: &str) -> Result<(), String> {
+    /// `sync_key` is the vault-derived PSK: peers that can't prove it are
+    /// rejected and everything on the wire is encrypted with it.
+    pub async fn start(self: &Arc<Self>, name: &str, sync_key: [u8; 32]) -> Result<(), String> {
         let mut inner = self.inner.write().await;
         if inner.mdns_handle.is_some() {
             return Err("Network already running".into());
         }
         inner.name = name.to_string();
+        inner.sync_key = Some(sync_key);
 
         let peer_id = inner.peer_id.clone();
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -185,6 +194,7 @@ impl NetworkState {
         if let Some(tx) = inner.ws_shutdown.take() {
             let _ = tx.send(true);
         }
+        inner.sync_key = None;
         inner.sessions.clear();
         inner.peers.clear();
         inner.port = 0;
@@ -269,6 +279,11 @@ impl NetworkState {
     pub(crate) fn local_name(&self) -> String {
         self.inner.try_read().map(|g| g.name.clone()).unwrap_or_default()
     }
+
+    /// The PSK this network is running with; None when stopped.
+    pub(crate) async fn sync_key(&self) -> Option<[u8; 32]> {
+        self.inner.read().await.sync_key
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -284,10 +299,12 @@ mod tests {
     async fn ws_sessions_exchange_hello_and_payloads() {
         let a = Arc::new(NetworkState::new());
         let b = Arc::new(NetworkState::new());
-        a.start("alice").await.unwrap();
+        let key = crate::crypto::derive_sync_key(b"same-vault-key");
+        a.start("alice", key).await.unwrap();
         let a_status = a.status().await;
         let a_id = a_status.local_peer_id.clone();
         let b_id = b.status().await.local_peer_id.clone();
+        b.start("bob", key).await.unwrap();
 
         ws::connect(&a_id, "127.0.0.1", a_status.port, b.clone())
             .await
@@ -320,6 +337,40 @@ mod tests {
         };
         assert_eq!(payload.payload, "ping");
         assert_eq!(payload.from_peer, a_id);
+
+        b.stop().await.unwrap();
+        a.stop().await.unwrap();
+    }
+
+    /// A peer with a different vault key must be rejected: no session is
+    /// registered on either side and no payload ever flows.
+    #[tokio::test]
+    async fn wrong_key_peer_is_rejected() {
+        let a = Arc::new(NetworkState::new());
+        let b = Arc::new(NetworkState::new());
+        a.start("alice", crate::crypto::derive_sync_key(b"vault-A")).await.unwrap();
+        let a_status = a.status().await;
+        let a_id = a_status.local_peer_id.clone();
+        b.start("mallory", crate::crypto::derive_sync_key(b"vault-B")).await.unwrap();
+
+        ws::connect(&a_id, "127.0.0.1", a_status.port, b.clone())
+            .await
+            .expect("dial should succeed");
+
+        // Give the failed handshake time to unwind on both sides.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        assert!(a.inner().read().await.sessions.is_empty(), "A must not register a session");
+        assert!(b.inner().read().await.sessions.is_empty(), "B must not register a session");
+
+        // No payloads may arrive on either side.
+        for (name, net) in [("a", &a), ("b", &b)] {
+            let mut rx = net.message_rx.lock().await;
+            assert!(
+                rx.as_mut().unwrap().try_recv().is_err(),
+                "{name} must receive nothing from a wrong-key peer"
+            );
+        }
 
         b.stop().await.unwrap();
         a.stop().await.unwrap();

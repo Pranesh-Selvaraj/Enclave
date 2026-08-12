@@ -8,6 +8,10 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tauri::Manager;
 
+// fastembed/ONNX Runtime ships no prebuilt binaries for x86_64-linux-android
+// (emulator-only target), so local embeddings are compiled out there.
+// arm64 phones + all desktops keep RAG. See the Cargo.toml gate.
+#[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
 mod embed;
 
 const DB_FILENAME: &str = "enclave.db";
@@ -18,6 +22,10 @@ pub struct AppState {
     pub app_dir: PathBuf,
     /// None when locked; Some when unlocked.
     pub db: Mutex<Option<rusqlite::Connection>>,
+    /// Vault-derived sync PSK, present only while the vault is unlocked.
+    /// Same owner = same seed phrase = same vault key = same sync key, so
+    /// P2P sync authenticates and encrypts with it (see core-network/crypto.rs).
+    pub sync_key: Mutex<Option<[u8; 32]>>,
     pub network: Arc<core_network::NetworkState>,
 }
 
@@ -53,6 +61,7 @@ fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String>
     let conn = core_db::init_vault(&path, &key)?;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = Some(conn);
+    *state.sync_key.lock().map_err(|e| e.to_string())? = Some(core_network::crypto::derive_sync_key(&key));
     Ok(())
 }
 
@@ -62,11 +71,17 @@ fn unlock_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), Strin
     let conn = core_db::open_vault(&path, &key)?;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = Some(conn);
+    *state.sync_key.lock().map_err(|e| e.to_string())? = Some(core_network::crypto::derive_sync_key(&key));
     Ok(())
 }
 
-#[tauri::command(async)]
-fn lock_vault(state: tauri::State<AppState>) -> Result<(), String> {
+// Lock is async so it can stop the network (which holds the sync key).
+#[tauri::command]
+async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    // Locked vault = no sync: drop the key and stop the network so no
+    // session keeps running with key material after the user locks up.
+    let _ = state.network.stop().await;
+    *state.sync_key.lock().map_err(|e| e.to_string())? = None;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = None;
     Ok(())
@@ -243,6 +258,9 @@ fn search_embeddings(
 /// Offline embedding via the built-in ONNX model (fastembed). Inference is
 /// CPU-bound, so it runs on the blocking pool; the first call downloads the
 /// model into the app data dir (needs internet once).
+/// Not available on x86_64-android (emulator-only): ORT has no prebuilt
+/// binaries for that target — see the Cargo.toml gate.
+#[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
 #[tauri::command]
 async fn embed_text(state: tauri::State<'_, AppState>, text: String) -> Result<Vec<f64>, String> {
     let cache_dir = state.app_dir.join("models");
@@ -411,7 +429,12 @@ fn save_attachment(
 #[tauri::command(async)]
 async fn start_network(state: tauri::State<'_, AppState>, name: Option<String>) -> Result<(), String> {
     let name = name.unwrap_or_else(|| "Enclave".to_string());
-    state.network.start(&name).await
+    let key = state
+        .sync_key
+        .lock()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Vault is locked — unlock before enabling sync".to_string())?;
+    state.network.start(&name, key).await
 }
 
 #[tauri::command(async)]
@@ -496,6 +519,8 @@ async fn handle_sync_message(
 
 // ── App Entry Point ─────────────────────────────────────────────────────────
 
+// Tray + quick-capture window are desktop-only (no system tray on Android).
+#[cfg(desktop)]
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
 
@@ -535,6 +560,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         })
 }
 
+#[cfg(desktop)]
 fn open_capture_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
         let _ = w.show();
@@ -576,6 +602,7 @@ pub fn run() {
             app.manage(AppState {
                 app_dir: app_dir.clone(),
                 db: Mutex::new(None),
+                sync_key: Mutex::new(None),
                 network: network.clone(),
             });
 
@@ -593,6 +620,7 @@ pub fn run() {
                 }
             });
 
+            #[cfg(desktop)]
             setup_tray(app)?;
 
             Ok(())
@@ -620,6 +648,7 @@ pub fn run() {
             // embeddings (RAG)
             upsert_embedding,
             search_embeddings,
+            #[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
             embed_text,
             // vault-scoped settings (AI config, API keys)
             get_setting,
@@ -668,6 +697,7 @@ mod tests {
         app.manage(AppState {
             app_dir: PathBuf::from("/tmp/enclave-test"),
             db: Mutex::new(None),
+            sync_key: Mutex::new(None),
             network: Arc::new(core_network::NetworkState::new()),
         });
         let state = app.state::<AppState>();
