@@ -23,6 +23,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Only temp files go here — never the real keystore.
+TMP_FILES=()
+cleanup() { rm -f "${TMP_FILES[@]:-}"; }
+trap cleanup EXIT
+
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
 KEY_ALIAS="${KEY_ALIAS:-enclave}"
@@ -34,8 +39,8 @@ OUT_APK="${OUT_APK:-$(dirname "$APK")/enclave-android-release.apk}"
 KEYSTORE=""
 if [[ -n "${KEYSTORE_B64:-}" ]]; then
   KEYSTORE="$(mktemp)"
+  TMP_FILES+=("$KEYSTORE")
   echo "$KEYSTORE_B64" | base64 -d > "$KEYSTORE"
-  trap 'rm -f "$KEYSTORE"' EXIT
 elif [[ -n "${KEYSTORE_PATH:-}" && -f "${KEYSTORE_PATH}" ]]; then
   KEYSTORE="$KEYSTORE_PATH"
 elif [[ -f "$HOME/Android/keystore/enclave-release.jks" ]]; then
@@ -59,7 +64,7 @@ JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin}"
 # ── APK: zipalign + apksigner ────────────────────────────────────────────────
 if [[ -f "$APK" ]]; then
   ALIGNED="$(mktemp)"
-  trap 'rm -f "$ALIGNED" "$KEYSTORE"' EXIT
+  TMP_FILES+=("$ALIGNED")
   "$BUILD_TOOLS/zipalign" -f -p 4 "$APK" "$ALIGNED"
   "$BUILD_TOOLS/apksigner" sign \
     --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" \
@@ -73,10 +78,19 @@ fi
 
 # ── AAB: jarsigner (JAR-style signing) ───────────────────────────────────────
 if [[ -f "$AAB" ]]; then
-  "${JAVA_BIN:-}jarsigner" -keystore "$KEYSTORE" \
+  JARSIGNER=""
+  if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/jarsigner" ]]; then
+    JARSIGNER="$JAVA_HOME/bin/jarsigner"
+  elif command -v jarsigner > /dev/null 2>&1; then
+    JARSIGNER="$(command -v jarsigner)"
+  else
+    echo "android-sign: jarsigner not found — set JAVA_HOME to a JDK" >&2
+    exit 1
+  fi
+  "$JARSIGNER" -keystore "$KEYSTORE" \
     -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
-    "$AAB" "$KEY_ALIAS" > /dev/null 2>&1
-  "${JAVA_BIN:-}jarsigner" -verify "$AAB" | head -1
+    "$AAB" "$KEY_ALIAS" 2>&1 | tail -1
+  "$JARSIGNER" -verify "$AAB" | head -1
   echo "android-sign: signed AAB -> $AAB"
 else
   echo "android-sign: no AAB at $AAB — skipping AAB signing"
