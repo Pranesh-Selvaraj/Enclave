@@ -38,10 +38,14 @@ chrono = { version = "0.4", features = ["serde"] }
 # The model (~25 MB, all-MiniLM-L6-v2) downloads once into the app data dir
 # on first use; chat still goes to the user-configured endpoint.
 # rustls variants: no OpenSSL dependency, so it cross-compiles to Android.
-fastembed = { version = "5.17", default-features = false, features = ["ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }
+# Excluded only on x86_64-linux-android (emulator-only target): ONNX Runtime
+# ships no prebuilt binaries there — see the matching cfg gate in src/lib.rs.
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["rt", "sync"] }
 tauri-plugin-dialog = "2"
+
+[target.'cfg(not(all(target_os = "android", target_arch = "x86_64")))'.dependencies]
+fastembed = { version = "5.17", default-features = false, features = ["ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }
 
 # Android: no system OpenSSL exists for the NDK, so build SQLCipher against
 # a vendored OpenSSL compiled from source (openssl-src supports android).

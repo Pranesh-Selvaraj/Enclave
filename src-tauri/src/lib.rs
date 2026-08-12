@@ -8,6 +8,10 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tauri::Manager;
 
+// fastembed/ONNX Runtime ships no prebuilt binaries for x86_64-linux-android
+// (emulator-only target), so local embeddings are compiled out there.
+// arm64 phones + all desktops keep RAG. See the Cargo.toml gate.
+#[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
 mod embed;
 
 const DB_FILENAME: &str = "enclave.db";
@@ -243,6 +247,9 @@ fn search_embeddings(
 /// Offline embedding via the built-in ONNX model (fastembed). Inference is
 /// CPU-bound, so it runs on the blocking pool; the first call downloads the
 /// model into the app data dir (needs internet once).
+/// Not available on x86_64-android (emulator-only): ORT has no prebuilt
+/// binaries for that target — see the Cargo.toml gate.
+#[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
 #[tauri::command]
 async fn embed_text(state: tauri::State<'_, AppState>, text: String) -> Result<Vec<f64>, String> {
     let cache_dir = state.app_dir.join("models");
@@ -624,6 +631,7 @@ pub fn run() {
             // embeddings (RAG)
             upsert_embedding,
             search_embeddings,
+            #[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
             embed_text,
             // vault-scoped settings (AI config, API keys)
             get_setting,
