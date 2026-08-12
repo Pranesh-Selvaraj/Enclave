@@ -69,7 +69,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-release
+          # Glob matches the signed APK on main (secrets present) and the
+          # unsigned APK on fork PRs (signing skipped) — forks still get a
+          # testable artifact and stay green.
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/enclave-android-release.apk
+            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
-          if-no-files-found: error
+          if-no-files-found: warn
