@@ -29,7 +29,7 @@ Emulator (KVM required — `sudo usermod -aG kvm $USER` then re-login):
 | 2 | No lock on background: the vault stays unlocked in memory when the app loses visibility (phones: app switcher / screen off). **Fix:** `visibilitychange` listener in the layout — on Android, `document.hidden` → `lock_vault` (which also stops the sync network). Desktop untouched. | Medium | `fix/android/lock-on-background` | fixed |
 | 3 | `gen/android/` was gitignored, so native customizations (cleartext, icons, future MulticastLock) were regenerated and lost on every `tauri android init`. | Medium | `fix/android/sync-cleartext` | fixed |
 | 4 | Release signing was manual (`apksigner`/`jarsigner` commands); keystore handling undocumented in-repo. | Medium | `feat/android-signing` | fixed |
-| 5 | No Android CI — only desktop builds in `.github/workflows/build.yml`. | Medium | `feat/android-ci` | fixed |
+| 5 | No Android CI — only desktop builds in `.github/workflows/build.yml`. Fix builds arm64 APK + AAB, signs with `ANDROID_KEYSTORE_*` secrets, uploads artifacts; fork PRs (no secrets) skip signing and upload the unsigned APK via a glob. | Medium | `feat/android-ci` | fixed |
 | 6 | Default Tauri icon on Android (no adaptive icon). | Low | `feat/android-branding` | fixed |
 | 7 | versionCode not managed (`tauri.properties` drift; Play requires strictly increasing codes). | Low | `feat/android-versioning` | fixed |
 
