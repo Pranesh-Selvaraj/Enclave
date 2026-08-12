@@ -12,3 +12,9 @@ uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 # Vector search (ANN) inside the same encrypted SQLCipher file.
 sqlite-vec = "0.1.6"
+
+# Android: no system OpenSSL for the NDK — build SQLCipher against vendored
+# OpenSSL (openssl-src compiles it from source for android targets).
+# Desktop keeps using the system OpenSSL — unchanged build.
+[target.'cfg(target_os = "android")'.dependencies]
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }

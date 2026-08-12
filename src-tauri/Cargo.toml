@@ -37,10 +37,17 @@ chrono = { version = "0.4", features = ["serde"] }
 # Local embedding model (ONNX Runtime via fastembed) for fully-offline RAG.
 # The model (~25 MB, all-MiniLM-L6-v2) downloads once into the app data dir
 # on first use; chat still goes to the user-configured endpoint.
-fastembed = { version = "5.17", default-features = false, features = ["ort-download-binaries-native-tls", "hf-hub-native-tls"] }
+# rustls variants: no OpenSSL dependency, so it cross-compiles to Android.
+fastembed = { version = "5.17", default-features = false, features = ["ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["rt", "sync"] }
 tauri-plugin-dialog = "2"
+
+# Android: no system OpenSSL exists for the NDK, so build SQLCipher against
+# a vendored OpenSSL compiled from source (openssl-src supports android).
+# Desktop keeps using the system OpenSSL — unchanged build.
+[target.'cfg(target_os = "android")'.dependencies]
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

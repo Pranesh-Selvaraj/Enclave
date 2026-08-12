@@ -496,6 +496,8 @@ async fn handle_sync_message(
 
 // ── App Entry Point ─────────────────────────────────────────────────────────
 
+// Tray + quick-capture window are desktop-only (no system tray on Android).
+#[cfg(desktop)]
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
 
@@ -535,6 +537,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         })
 }
 
+#[cfg(desktop)]
 fn open_capture_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
         let _ = w.show();
@@ -593,6 +596,7 @@ pub fn run() {
                 }
             });
 
+            #[cfg(desktop)]
             setup_tray(app)?;
 
             Ok(())
