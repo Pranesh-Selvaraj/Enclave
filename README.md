@@ -6,7 +6,7 @@
 
 ## Architecture
 
-Enclave is built on three core principles:
+Enclave is built on three core principles — for the full picture see [Vault & Security](#vault--security), [Security Model](#security-model) and [Network Design](#network-design):
 
 ### 1. Local-First
 All data lives on your device first. The application functions fully offline — create, edit, and organize pages without ever connecting to a network. Sync is an enhancement, not a requirement.
@@ -36,7 +36,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
 | **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
 | **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
-| **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) |
+| **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 
 ## Supported Platforms
 
@@ -47,14 +47,53 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **macOS** (Apple Silicon) | Supported | `.dmg` |
 | **Android** (arm64) | Beta | Signed `.apk` / `.aab` (CI-built, monotonic versionCode), first-boot verified on emulator; P2P sync pending real-device validation |
 
+## Android (Beta)
+
+Same SvelteKit frontend + Rust core in the system WebView (Tauri mobile).
+First-boot verified on emulator; **P2P sync on real phones is the remaining
+validation** (Android mDNS behavior is untested on hardware).
+
+### Build & sign
+
+Prereqs: JDK 21, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066,
+rustup target `aarch64-linux-android` (`x86_64-linux-android` for emulators — local
+embeddings are compiled out there because ONNX Runtime ships no x86_64-android binaries).
+
+```bash
+export ANDROID_HOME=~/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/29.0.13846066 JAVA_HOME=<jdk21>
+cd src-tauri && npx tauri android build --target aarch64 && cd ..
+scripts/android-sign.sh          # signs APK + AAB (keystore guidance: CONTRIBUTING)
+```
+
+CI ([.github/workflows/android.yml](.github/workflows/android.yml)) builds, signs with
+`ANDROID_KEYSTORE_*` secrets and uploads the arm64 APK/AAB; `versionCode`
+auto-increments per build.
+
+### Issue log
+
+| # | Issue | Fix |
+|---|-------|-----|
+| 1 | Release builds blocked `ws://` sync (platform cleartext policy) | cleartext allowed — payloads are AEAD-sealed at the app layer |
+| 2 | Vault stayed unlocked when the app lost visibility | backgrounding locks the vault and stops sync |
+| 3 | `gen/android` was gitignored, native customizations lost | committed; volatile artifacts only ignored |
+| 4 | Release signing was manual | `scripts/android-sign.sh` |
+| 5 | No Android CI | `.github/workflows/android.yml` |
+| 6 | Default Tauri icon | Enclave adaptive icon (all densities) |
+| 7 | versionCode drift | `autoIncrementVersionCode` (counter in `tauri.properties`) |
+
+**Open items**: P2P sync on real devices, RAG on arm64 hardware, a mobile UX pass
+(touch targets, hover menus, TipTap keyboard handling, safe areas), file
+dialogs / backup / import-export on Android.
+
 ## Monorepo Structure
 
 ```
 enclave/
 ├── .github/
-│   └── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
+│   ├── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
+│   └── workflows/android.yml       # CI: Android release APK/AAB (signs with secrets)
 ├── apps/
-│   └── desktop/                   # Tauri desktop app (SvelteKit static adapter)
+│   └── frontend/                  # Shared frontend (SvelteKit) — desktop + Android shells
 │       ├── src/
 │       │   ├── app.html           # Root HTML shell
 │       │   ├── app.css            # Global styles + theme variables (light/dark)
@@ -102,20 +141,23 @@ enclave/
 │   └── ui/                         # Shared Svelte components, theme store, types
 ├── src-tauri/                      # Rust backend (Tauri v2)
 │   ├── crates/
-│   ├── crates/
 │   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
 │   │   │   └── src/lib.rs          # Document/Block/embedding CRUD, vault lifecycle, sync merge
 │   │   └── core-network/           # mDNS + WebSocket P2P transport
 │   │       ├── src/lib.rs          # NetworkState, start/stop/status, peer redial
+│   │       ├── src/crypto.rs       # Sync key derivation, auth proofs, AEAD
 │   │       ├── src/mdns.rs         # _enclave._tcp.local. discovery
-│   │       └── src/ws.rs           # WebSocket accept loop + session relay
+│   │       └── src/ws.rs           # WS accept/dial + auth handshake + sessions
 │   ├── src/
 │   │   ├── main.rs                 # Binary entry point
 │   │   ├── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
 │   │   └── embed.rs                # Built-in offline embeddings (fastembed/ONNX)
 │   ├── Cargo.toml                  # Rust workspace root
 │   ├── tauri.conf.json             # App config, CSP, NSIS installer, bundle targets
+│   ├── gen/android/                # Committed Android project (native customizations)
 │   └── icons/
+├── scripts/
+│   └── android-sign.sh            # zipalign + apksigner / jarsigner
 ├── tsconfig.base.json              # Shared TypeScript base config
 └── package.json                    # npm workspace root
 ```
@@ -207,9 +249,9 @@ npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
 # Frontend unit tests (AI client, graph links, whiteboard layout)
-npx tsx apps/desktop/tests/ai.test.ts
-npx tsx apps/desktop/tests/graphLinks.test.ts
-npx tsx apps/desktop/tests/wbLayout.test.ts
+npx tsx apps/frontend/tests/ai.test.ts
+npx tsx apps/frontend/tests/graphLinks.test.ts
+npx tsx apps/frontend/tests/wbLayout.test.ts
 
 # Rust type-check
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -219,7 +261,7 @@ cargo test --manifest-path src-tauri/crates/core-db/Cargo.toml
 cargo test --manifest-path src-tauri/crates/core-network/Cargo.toml
 
 # Frontend type-check
-npm run check -w @enclave/desktop
+npm run check -w @enclave/frontend
 ```
 
 ## Vault & Security
@@ -245,9 +287,11 @@ npm run check -w @enclave/desktop
        ▼
   256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB,
                           AES-256-CBC + HMAC-SHA512)
-                                │
-                                └── vault.key: seed phrase re-encrypted
-                                    with Argon2id(password + random salt) + AES-256-GCM
+        │
+        └── HKDF-SHA256 ──► sync key ──► peer auth (HMAC-SHA256 proofs)
+                                         + transport (XChaCha20-Poly1305)
+        └── vault.key: seed phrase re-encrypted with
+            Argon2id(password + random salt) + AES-256-GCM
 ```
 
 ## Security Model
@@ -262,7 +306,7 @@ npm run check -w @enclave/desktop
 ```
 ┌──────────────┐        mDNS (_enclave._tcp.local)       ┌──────────────┐
 │  Laptop      │◄───────────────────────────────────────►│  Desktop     │
-│  (Tauri)     │    WebSocket (plaintext, LAN-only)       │  (Tauri)     │
+│  (Tauri)     │    WebSocket (auth + AEAD, LAN-only)     │  (Tauri)     │
 │              │◄───────────────────────────────────────►│              │
 │  SQLite      │    full JSON snapshots {docs, blocks}    │  SQLite      │
 │  +sqlcipher  │    doc-level last-write-wins merge       │  +sqlcipher  │
@@ -276,11 +320,16 @@ npm run check -w @enclave/desktop
 ### Sync Protocol
 1. **Start Sync** — begins mDNS advertising + WebSocket listener on an OS-assigned LAN port
 2. **Discovery** — peers on the same Wi-Fi discover each other via `_enclave._tcp.local.`
-3. **Connect** — WebSocket handshake; each side sends a `hello`
-4. **Snapshot** — each peer replies with a full snapshot of documents + blocks
-5. **Merge** — the receiver merges doc-level (last-write-wins by revision + timestamp; tombstones survive) and replies with an `ack`
-6. **Resilience** — a peer that drops is redialed every 3 s; the UI footer shows `peers online · last sync … ago`
-7. **Stop Sync** — shuts down mDNS + WebSocket and clears the peer list
+3. **Authenticate** — challenge-response over the vault-derived sync key (HMAC-SHA256 proofs, fresh random challenge per connection). A peer that can't prove the key is disconnected before any data — not even the `hello` — is exchanged
+4. **Connect** — WebSocket session established; each side sends a `hello` (encrypted)
+5. **Snapshot** — each peer replies with a full snapshot of documents + blocks (encrypted)
+6. **Merge** — the receiver merges doc-level (last-write-wins by revision + timestamp; tombstones survive) and replies with an `ack`
+7. **Resilience** — a peer that drops is redialed every 3 s; the UI footer shows `peers online · last sync … ago`
+8. **Stop Sync** — shuts down mDNS + WebSocket and clears the peer list
+
+Every frame after the handshake is sealed with XChaCha20-Poly1305 (AEAD, random
+nonce per frame) under a per-session key derived from the sync key + both
+challenges — see [Security Model](#security-model).
 
 ## Editor Features
 

@@ -37,14 +37,14 @@ jobs:
         run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
 
       - name: Svelte typecheck
-        run: npm run check -w @enclave/desktop
+        run: npm run check -w @enclave/frontend
 
       - name: TypeScript tests
         run: |
           for p in packages/editor packages/crypto packages/sync-engine; do
             npx tsx "$p/test.ts"
           done
-          for t in apps/desktop/tests/*.test.ts; do
+          for t in apps/frontend/tests/*.test.ts; do
             npx tsx "$t"
           done
 
