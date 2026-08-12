@@ -48,6 +48,9 @@
     "category": "Utility",
     "shortDescription": "Secure, local-first knowledge base",
     "longDescription": "Enclave is a secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi. No cloud infrastructure required.",
+    "android": {
+      "autoIncrementVersionCode": true
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser",
