@@ -26,7 +26,7 @@ Emulator (KVM required — `sudo usermod -aG kvm $USER` then re-login):
 | # | Issue | Severity | Fix branch | Status |
 |---|-------|----------|------------|--------|
 | 1 | Release APK blocks P2P sync: generated gradle sets `usesCleartextTraffic=false` for release, and Android enforces cleartext policy at the platform level — `ws://` sockets fail before app code runs. Safe to allow now: sync payloads are AEAD-sealed (XChaCha20-Poly1305) at the app layer. **Fix:** flip the placeholder in the (now committed) `gen/android/app/build.gradle.kts`; verified `usesCleartextTraffic=true` in the built release APK manifest. | High | `fix/android/sync-cleartext` | fixed |
-| 2 | No lock on background: the vault stays unlocked in memory when the app loses visibility (phones: app switcher / screen off). | Medium | `fix/android/lock-on-background` | fixed |
+| 2 | No lock on background: the vault stays unlocked in memory when the app loses visibility (phones: app switcher / screen off). **Fix:** `visibilitychange` listener in the layout — on Android, `document.hidden` → `lock_vault` (which also stops the sync network). Desktop untouched. | Medium | `fix/android/lock-on-background` | fixed |
 | 3 | `gen/android/` was gitignored, so native customizations (cleartext, icons, future MulticastLock) were regenerated and lost on every `tauri android init`. | Medium | `fix/android/sync-cleartext` | fixed |
 | 4 | Release signing was manual (`apksigner`/`jarsigner` commands); keystore handling undocumented in-repo. | Medium | `feat/android-signing` | fixed |
 | 5 | No Android CI — only desktop builds in `.github/workflows/build.yml`. | Medium | `feat/android-ci` | fixed |
