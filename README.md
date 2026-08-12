@@ -6,7 +6,7 @@
 
 ## Architecture
 
-Enclave is built on three core principles:
+Enclave is built on three core principles (deep dive: [ARCHITECTURE.md](ARCHITECTURE.md)):
 
 ### 1. Local-First
 All data lives on your device first. The application functions fully offline — create, edit, and organize pages without ever connecting to a network. Sync is an enhancement, not a requirement.
@@ -36,7 +36,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
 | **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
 | **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
-| **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) |
+| **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 
 ## Supported Platforms
 
@@ -52,7 +52,8 @@ When devices are on the same local network, they discover each other via **mDNS*
 ```
 enclave/
 ├── .github/
-│   └── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
+│   ├── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
+│   └── workflows/android.yml       # CI: Android release APK/AAB (signs with secrets)
 ├── apps/
 │   └── desktop/                   # Tauri desktop app (SvelteKit static adapter)
 │       ├── src/
@@ -102,20 +103,26 @@ enclave/
 │   └── ui/                         # Shared Svelte components, theme store, types
 ├── src-tauri/                      # Rust backend (Tauri v2)
 │   ├── crates/
-│   ├── crates/
 │   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
 │   │   │   └── src/lib.rs          # Document/Block/embedding CRUD, vault lifecycle, sync merge
 │   │   └── core-network/           # mDNS + WebSocket P2P transport
 │   │       ├── src/lib.rs          # NetworkState, start/stop/status, peer redial
+│   │       ├── src/crypto.rs       # Sync key derivation, auth proofs, AEAD
 │   │       ├── src/mdns.rs         # _enclave._tcp.local. discovery
-│   │       └── src/ws.rs           # WebSocket accept loop + session relay
+│   │       └── src/ws.rs           # WS accept/dial + auth handshake + sessions
 │   ├── src/
 │   │   ├── main.rs                 # Binary entry point
 │   │   ├── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
 │   │   └── embed.rs                # Built-in offline embeddings (fastembed/ONNX)
 │   ├── Cargo.toml                  # Rust workspace root
 │   ├── tauri.conf.json             # App config, CSP, NSIS installer, bundle targets
+│   ├── gen/android/                # Committed Android project (native customizations)
 │   └── icons/
+├── ARCHITECTURE.md                 # System architecture (keys, sync protocol, RAG)
+├── docs/
+│   └── android-mobile.md          # Android issue log + build/run guide
+├── scripts/
+│   └── android-sign.sh            # zipalign + apksigner / jarsigner
 ├── tsconfig.base.json              # Shared TypeScript base config
 └── package.json                    # npm workspace root
 ```
