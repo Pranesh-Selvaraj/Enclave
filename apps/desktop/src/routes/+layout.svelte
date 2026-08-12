@@ -285,6 +285,22 @@
 		listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
 		return () => unlisten?.();
 	});
+
+	// Android: lock the vault when the app loses visibility (app switcher,
+	// screen off, another app on top). Desktop keeps its behavior — minimizing
+	// a window must not wipe the session (issue #2, docs/android-mobile.md).
+	$effect(() => {
+		if (!vaultUnlocked || !navigator.userAgent.includes('Android')) return;
+		const onHide = () => {
+			if (document.hidden) {
+				invoke('lock_vault')
+					.then(() => (vaultUnlocked = false))
+					.catch(() => {});
+			}
+		};
+		document.addEventListener('visibilitychange', onHide);
+		return () => document.removeEventListener('visibilitychange', onHide);
+	});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
