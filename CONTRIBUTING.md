@@ -17,7 +17,7 @@ Thanks for contributing. Enclave is a security-sensitive local-first app — eve
 - **Linux**: `sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`
 - **macOS**: Xcode Command Line Tools
 - **Windows**: Microsoft Visual Studio C++ Build Tools + WebView2
-- **Android**: JDK 21+, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066, rustup targets `aarch64-linux-android` (+ `x86_64-linux-android` for emulators) — see [docs/android-mobile.md](docs/android-mobile.md) for the full setup and issue log.
+- **Android**: JDK 21+, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066, rustup targets `aarch64-linux-android` (+ `x86_64-linux-android` for emulators) — see the [Android section](README.md#android-beta) of the README.
 
 ### Getting Started
 
@@ -37,7 +37,7 @@ npx tauri dev
 ### Android builds & signing
 
 ```bash
-# Prereqs (see docs/android-mobile.md): JDK 21, Android SDK + NDK, rustup targets
+# Prereqs (see README "Android (Beta)"): JDK 21, Android SDK + NDK, rustup targets
 export ANDROID_HOME=~/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/29.0.13846066 JAVA_HOME=<jdk21>
 
 # Build the release APK + AAB (arm64)
@@ -75,9 +75,9 @@ npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
 # Frontend unit tests (AI client, graph links, whiteboard layout)
-npx tsx apps/desktop/tests/ai.test.ts
-npx tsx apps/desktop/tests/graphLinks.test.ts
-npx tsx apps/desktop/tests/wbLayout.test.ts
+npx tsx apps/frontend/tests/ai.test.ts
+npx tsx apps/frontend/tests/graphLinks.test.ts
+npx tsx apps/frontend/tests/wbLayout.test.ts
 
 # Rust type-check
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -87,7 +87,7 @@ cargo test --manifest-path src-tauri/crates/core-db/Cargo.toml
 cargo test --manifest-path src-tauri/crates/core-network/Cargo.toml
 
 # Frontend type-check (svelte-check)
-npm run check -w @enclave/desktop
+npm run check -w @enclave/frontend
 ```
 
 CI runs all of the above plus the platform builds; a PR that fails any check won't merge.
@@ -97,7 +97,7 @@ CI runs all of the above plus the platform builds; a PR that fails any check won
 ```
 enclave/
 ├── .github/workflows/build.yml   # CI: tests + Windows/Linux/macOS builds + releases
-├── apps/desktop/                 # Tauri desktop app (SvelteKit static adapter)
+├── apps/frontend/                 # Tauri desktop app (SvelteKit static adapter)
 │   ├── src/
 │   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ai.ts (OpenAI-compatible
 │   │   │                         #   client + vault settings), importExport.ts, graphLinks.ts,
@@ -144,11 +144,11 @@ Changes to these files need extra scrutiny — tag them clearly in the PR descri
 - `packages/crypto/src/index.ts` — key derivation, encryption/decryption
 - `src-tauri/crates/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling, sync merge, FTS/embedding queries
 - `src-tauri/crates/core-network/` — peer discovery, plaintext WebSocket transport, redial
-- `apps/desktop/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
-- `apps/desktop/src/lib/backend.ts` — the Tauri IPC bridge; the single place the frontend invokes Rust commands
-- `apps/desktop/src/lib/ai.ts` — sends page content to the configured LLM endpoint when AI is enabled; reads/writes vault settings incl. the API key
+- `apps/frontend/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
+- `apps/frontend/src/lib/backend.ts` — the Tauri IPC bridge; the single place the frontend invokes Rust commands
+- `apps/frontend/src/lib/ai.ts` — sends page content to the configured LLM endpoint when AI is enabled; reads/writes vault settings incl. the API key
 - `src-tauri/src/embed.rs` — built-in offline embedding model (fastembed/ONNX)
-- `apps/desktop/src/routes/[id]/+page.svelte` — editor UI; rebuilds embeddings from page content on save
+- `apps/frontend/src/routes/[id]/+page.svelte` — editor UI; rebuilds embeddings from page content on save
 
 Notes on trust boundaries:
 
@@ -170,13 +170,13 @@ MIT. By contributing, you agree that your contributions will be licensed under t
 
 ## Releasing
 
-1. **Bump the version** to `<new>` across `package.json`, `apps/desktop/package.json`,
+1. **Bump the version** to `<new>` across `package.json`, `apps/frontend/package.json`,
    `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` (Cargo.lock updates on the
    next `cargo check`).
 2. **Changelog** — add a `[<new>]` entry under `## [Unreleased]` in `CHANGELOG.md`
    (Keep a Changelog format) and update the compare links at the bottom.
 3. **Verify** — `cargo test --workspace --manifest-path src-tauri/Cargo.toml`,
-   `npm run check -w @enclave/desktop`, and (for Android) a release build:
+   `npm run check -w @enclave/frontend`, and (for Android) a release build:
    `cd src-tauri && npx tauri android build --target aarch64` with
    `ANDROID_HOME`/`NDK_HOME`/`JAVA_HOME` set — confirms the Android config
    (versionCode auto-increment, manifests) is valid.

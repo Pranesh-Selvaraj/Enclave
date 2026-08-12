@@ -1,5 +1,5 @@
 {
-  "name": "@enclave/desktop",
+  "name": "@enclave/frontend",
   "version": "1.2.0",
   "private": true,
   "type": "module",

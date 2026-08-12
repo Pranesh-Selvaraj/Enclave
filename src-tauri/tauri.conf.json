@@ -4,10 +4,10 @@
   "version": "1.2.0",
   "identifier": "com.enclave.app",
   "build": {
-    "frontendDist": "../apps/desktop/build",
+    "frontendDist": "../apps/frontend/build",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeDevCommand": "cd apps/desktop && npm run dev",
-    "beforeBuildCommand": "cd apps/desktop && npm run build"
+    "beforeDevCommand": "cd apps/frontend && npm run dev",
+    "beforeBuildCommand": "cd apps/frontend && npm run build"
   },
   "app": {
     "withGlobalTauri": false,
