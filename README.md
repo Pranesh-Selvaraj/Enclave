@@ -15,7 +15,7 @@ All data lives on your device first. The application functions fully offline —
 The vault database is encrypted with **SQLCipher** (AES-256-CBC with HMAC-SHA512) before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
 
 ### 3. Peer-to-Peer Sync
-When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync documents directly over **WebSocket**, merged with **doc-level last-write-wins** resolution. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary. Sync travels **unencrypted on the wire**, so run it on a network you trust (see [Security Model](#security-model)).
+When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync documents directly over **WebSocket**, merged with **doc-level last-write-wins** resolution. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary. Sync is **authenticated and encrypted**: peers must prove knowledge of the vault-derived sync key (challenge-response, so only devices of the same owner — same seed phrase — can join) and every frame is encrypted with XChaCha20-Poly1305. Other devices on the Wi-Fi see only challenges and ciphertext.
 
 ## Tech Stack
 
@@ -253,7 +253,7 @@ npm run check -w @enclave/desktop
 ## Security Model
 
 - **At rest**: the SQLCipher database is encrypted (default AES-256-CBC, HMAC-SHA512). Keys are derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
-- **In transit**: LAN WebSockets carry **plaintext** JSON snapshots of documents and blocks, merged with doc-level last-write-wins. Enclave treats the LAN as trusted — a device on the same network can connect and read synced content. Do not sync across an untrusted network.
+- **In transit**: LAN WebSockets carry **authenticated + encrypted** frames — a challenge-response handshake (HMAC-SHA256 proofs over the vault-derived sync key, fresh random challenge per connection) gates every session, then all payloads are sealed with XChaCha20-Poly1305 (AEAD, random nonce per frame) under a per-session key. Only devices that hold the same vault key (same BIP39 seed phrase = same owner) can join or read sync traffic; other devices on the LAN are rejected at the handshake and see only ciphertext. Do not sync across an untrusted network.
 - **No cloud**: the app makes no requests to Enclave infrastructure. The only optional outbound traffic is the local-AI feature, which sends content to an endpoint you configure (local servers, or any https endpoint when you add an API key).
 - **Key material**: the seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
 

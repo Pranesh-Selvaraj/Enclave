@@ -22,6 +22,10 @@ pub struct AppState {
     pub app_dir: PathBuf,
     /// None when locked; Some when unlocked.
     pub db: Mutex<Option<rusqlite::Connection>>,
+    /// Vault-derived sync PSK, present only while the vault is unlocked.
+    /// Same owner = same seed phrase = same vault key = same sync key, so
+    /// P2P sync authenticates and encrypts with it (see core-network/crypto.rs).
+    pub sync_key: Mutex<Option<[u8; 32]>>,
     pub network: Arc<core_network::NetworkState>,
 }
 
@@ -57,6 +61,7 @@ fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String>
     let conn = core_db::init_vault(&path, &key)?;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = Some(conn);
+    *state.sync_key.lock().map_err(|e| e.to_string())? = Some(core_network::crypto::derive_sync_key(&key));
     Ok(())
 }
 
@@ -66,11 +71,17 @@ fn unlock_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), Strin
     let conn = core_db::open_vault(&path, &key)?;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = Some(conn);
+    *state.sync_key.lock().map_err(|e| e.to_string())? = Some(core_network::crypto::derive_sync_key(&key));
     Ok(())
 }
 
-#[tauri::command(async)]
-fn lock_vault(state: tauri::State<AppState>) -> Result<(), String> {
+// Lock is async so it can stop the network (which holds the sync key).
+#[tauri::command]
+async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    // Locked vault = no sync: drop the key and stop the network so no
+    // session keeps running with key material after the user locks up.
+    let _ = state.network.stop().await;
+    *state.sync_key.lock().map_err(|e| e.to_string())? = None;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = None;
     Ok(())
@@ -418,7 +429,12 @@ fn save_attachment(
 #[tauri::command(async)]
 async fn start_network(state: tauri::State<'_, AppState>, name: Option<String>) -> Result<(), String> {
     let name = name.unwrap_or_else(|| "Enclave".to_string());
-    state.network.start(&name).await
+    let key = state
+        .sync_key
+        .lock()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Vault is locked — unlock before enabling sync".to_string())?;
+    state.network.start(&name, key).await
 }
 
 #[tauri::command(async)]
@@ -586,6 +602,7 @@ pub fn run() {
             app.manage(AppState {
                 app_dir: app_dir.clone(),
                 db: Mutex::new(None),
+                sync_key: Mutex::new(None),
                 network: network.clone(),
             });
 
@@ -680,6 +697,7 @@ mod tests {
         app.manage(AppState {
             app_dir: PathBuf::from("/tmp/enclave-test"),
             db: Mutex::new(None),
+            sync_key: Mutex::new(None),
             network: Arc::new(core_network::NetworkState::new()),
         });
         let state = app.state::<AppState>();

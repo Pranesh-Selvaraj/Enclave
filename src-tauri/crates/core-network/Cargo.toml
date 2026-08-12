@@ -12,6 +12,14 @@ futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
+# Sync transport security: HKDF key derivation, HMAC-SHA256 proofs for the
+# mutual-auth handshake, XChaCha20-Poly1305 AEAD for every frame.
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
