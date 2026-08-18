@@ -14,6 +14,8 @@ use tauri::Manager;
 #[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
 mod embed;
 
+mod updater;
+
 const DB_FILENAME: &str = "enclave.db";
 
 // ── App State ───────────────────────────────────────────────────────────────
@@ -582,6 +584,7 @@ fn open_capture_window(app: &tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(updater::plugin())
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -677,6 +680,11 @@ pub fn run() {
             start_network,
             stop_network,
             network_status,
+            // self-update
+            updater::app_version,
+            updater::check_for_update,
+            updater::download_update,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("Error while launching Enclave");
