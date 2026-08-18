@@ -6,6 +6,23 @@ All notable changes to Enclave are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-08-18
+
+### Added
+
+- **In-app updates (desktop + Android)** — Enclave now checks GitHub Releases on
+  startup and shows an "Update now" banner when a newer version is available.
+  One click downloads the platform installer/APK (with a live progress bar) and
+  installs it in place — no uninstall, all pages and settings are kept:
+  - Windows: silent NSIS over-install (the installer closes the running app and
+    replaces it, preserving user data).
+  - macOS: opens the DMG; dragging onto Applications replaces the app.
+  - Linux: swaps the new AppImage in place and launches it.
+  - Android: hands the APK to the Android package installer
+    (`REQUEST_INSTALL_PACKAGES`), which overwrites the app without uninstalling.
+  - Version comparison is numeric (1.10.0 > 1.2.0) and per-platform assets are
+    picked from the release automatically.
+
 ## [1.2.0] — 2026-08-12
 
 ### Added
@@ -148,7 +165,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.0.0...v1.1.0
