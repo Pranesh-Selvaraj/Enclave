@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # release step attaches APK/AAB to tag releases
     steps:
       - uses: actions/checkout@v4
 
@@ -76,3 +78,17 @@ jobs:
             src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
           if-no-files-found: warn
+
+      # Desktop installers are attached to tag releases by build.yml; this
+      # workflow is a separate run, so attach the Android artifacts here too.
+      # softprops/action-gh-release handles the race when both workflows hit
+      # the same tag: if the release was already created it updates it.
+      - name: Attach APK + AAB to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+            src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
