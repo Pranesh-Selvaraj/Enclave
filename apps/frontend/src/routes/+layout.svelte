@@ -9,6 +9,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
+	import UpdateBanner from '$lib/UpdateBanner.svelte';
 	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
 
 	let { children } = $props();
@@ -515,8 +516,11 @@
 	{/if}
 
 	<!-- Main Content Area -->
-	<div class="main-pane">
-		{@render children?.()}
+	<div class="content-area">
+		<UpdateBanner />
+		<div class="main-pane">
+			{@render children?.()}
+		</div>
 	</div>
 
 	<!-- Command Palette Overlay -->
@@ -954,6 +958,12 @@
 	.context-sep { height: 1px; background: var(--color-border); margin: 4px 6px; }
 
 	/* ── Main Pane ── */
+	.content-area {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
 	.main-pane {
 		flex: 1;
 		overflow-y: auto;
