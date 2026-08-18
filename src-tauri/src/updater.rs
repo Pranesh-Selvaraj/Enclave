@@ -89,9 +89,12 @@ fn platform_suffixes() -> &'static [&'static str] {
 
 fn pick_asset<'a>(assets: &'a [GhAsset]) -> Option<&'a GhAsset> {
     let suffixes = platform_suffixes();
-    assets
-        .iter()
-        .find(|a| suffixes.iter().any(|s| a.name.to_ascii_lowercase().ends_with(s)))
+    // Skip the raw unsigned APK the CI glob also uploads — it can't install
+    // over the signed app (signature mismatch).
+    assets.iter().find(|a| {
+        let n = a.name.to_ascii_lowercase();
+        !n.contains("unsigned") && suffixes.iter().any(|s| n.ends_with(s))
+    })
 }
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -308,10 +311,12 @@ mod tests {
             mk("enclave_1.3.0_amd64.AppImage"),
             mk("enclave_1.3.0_x64-setup.exe"),
             mk("enclave_1.3.0_aarch64.dmg"),
-            mk("app-universal-release.apk"),
+            mk("app-universal-release-unsigned.apk"),
+            mk("enclave-android-release.apk"),
             mk("source.tar.gz"),
         ];
         let picked = pick_asset(&assets).expect("one platform asset always matches");
+        assert!(!picked.name.contains("unsigned"), "unsigned APK must never be picked");
         assert!(matches!(
             picked.name.as_str(),
             "enclave_1.3.0_amd64.AppImage"
