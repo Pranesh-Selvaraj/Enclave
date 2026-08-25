@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import { generateMnemonic, validateMnemonic, deriveMasterKey, selfCheck, encryptWithPassword, decryptWithPassword, type EncryptedNote } from '@enclave/crypto';
-	import { Button } from '@enclave/ui';
+	import { Button, Logo } from '@enclave/ui';
 
 	let { onunlock }: { onunlock: () => void } = $props();
 
@@ -166,14 +166,14 @@
 
 	{#if step === 'loading' || step === 'checking'}
 		<div class="vault-card vault-card-center">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<div class="vault-loader"></div>
 			<p class="vault-message">{step === 'loading' ? 'Initializing cryptography…' : 'Checking vault…'}</p>
 		</div>
 
 	{:else if step === 'welcome'}
 		<div class="vault-card">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<h1 class="vault-heading">Welcome to Enclave</h1>
 			<p class="vault-desc">Your pages are encrypted and live only on this device.</p>
 			<div class="vault-form">
@@ -197,8 +197,7 @@
 
 	{:else if step === 'create-seed'}
 		<div class="vault-card">
-			<div class="brand-mark brand-mark-ok">✓</div>
-			<h1 class="vault-heading">Vault created</h1>
+			<div class="brand-mark brand-mark-ok">✓</div>			<h1 class="vault-heading">Vault created</h1>
 			<p class="vault-desc-warn">
 				Save these 12 words somewhere safe. This is your recovery phrase if you forget your password.
 			</p>
@@ -217,7 +216,7 @@
 
 	{:else if step === 'unlock'}
 		<div class="vault-card">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<h1 class="vault-heading">{hasPassword ? 'Unlock your vault' : 'Enter recovery phrase'}</h1>
 			<p class="vault-desc">
 				{#if hasPassword}
@@ -256,7 +255,7 @@
 
 	{:else if step === 'setup-password'}
 		<div class="vault-card">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<h1 class="vault-heading">Set up a password?</h1>
 			<p class="vault-desc">
 				You unlocked with your recovery phrase. Set up a password for faster unlocking next time.
@@ -340,6 +339,11 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+	}
+	/* The brand logo is its own tile — center it like the old text mark. */
+	.vault-card > svg {
+		display: block;
+		margin: 0 auto 18px;
 	}
 
 	.brand-mark {

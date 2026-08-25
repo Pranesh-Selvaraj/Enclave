@@ -4,6 +4,31 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Brand mark — "the keyhole vault" logo** — violet→indigo gradient tile
+  with a white keyhole: in-app SVG component (sidebar, top bar, vault
+  screen, home empty state) plus a full regenerated app-icon set for
+  desktop (PNG/ICO) and Android (legacy launcher + adaptive icon,
+  background color fixed from the default green). Reproducible via
+  `scripts/generate-icons.py`; source SVG at `src-tauri/icons/logo.svg`.
+- **Icon system rework** — one consistent stroke set (24px grid, Lucide-
+  style geometry, ~60 icons) moved into `@enclave/ui` and shared with the
+  editor package.
+- **Editor: slash menu upgraded** — real icons in grouped sections (Basic
+  blocks / Lists / Media / Advanced) with accent-tinted selection states;
+  bubble menu (B/I/S/code) now uses icon buttons.
+- **Home page polish** — relative timestamps ("2h ago"), logo in the empty
+  state.
+- **Bottom navigation** — Material-style active pill behind the selected tab.
+
+### Changed
+
+- `Icon.svelte` moved from `apps/frontend/src/lib` to `@enclave/ui`;
+  `@enclave/editor` now depends on `@enclave/ui`.
+
 ## [1.4.0] — 2026-08-25
 
 ### Added

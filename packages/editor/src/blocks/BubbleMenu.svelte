@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { Icon } from '@enclave/ui';
 
 	let {
 		editor,
@@ -95,7 +96,7 @@
 			onclick={toggleBold}
 			aria-label="Bold"
 		>
-			<strong>B</strong>
+			<Icon name="bold" size={16} />
 		</button>
 		<button
 			class="bubble-btn"
@@ -103,7 +104,7 @@
 			onclick={toggleItalic}
 			aria-label="Italic"
 		>
-			<em>I</em>
+			<Icon name="italic" size={16} />
 		</button>
 		<button
 			class="bubble-btn"
@@ -111,7 +112,7 @@
 			onclick={toggleStrike}
 			aria-label="Strikethrough"
 		>
-			<s>S</s>
+			<Icon name="strike" size={16} />
 		</button>
 		<div class="bubble-divider"></div>
 		<button
@@ -120,7 +121,7 @@
 			onclick={toggleCode}
 			aria-label="Inline code"
 		>
-			{'</>'}
+			<Icon name="code" size={16} />
 		</button>
 	</div>
 {/if}

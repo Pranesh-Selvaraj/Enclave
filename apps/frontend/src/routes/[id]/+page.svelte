@@ -7,7 +7,7 @@
 	import { EmojiPicker } from '@enclave/ui';
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import { saveWithRetry } from '$lib/saveRetry.js';
-	import Icon from '$lib/Icon.svelte';
+	import { Icon } from '@enclave/ui';
 	import Whiteboard from '$lib/Whiteboard.svelte';
 	import { loadAISettings, chatStream, embedText, embedLocal, type ChatMessage, type AISettings } from '$lib/ai.js';
 

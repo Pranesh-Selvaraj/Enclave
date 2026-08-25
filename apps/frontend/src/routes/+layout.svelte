@@ -4,9 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { invoke, listen } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
-	import { theme } from '@enclave/ui';
-	import { ShortcutsDialog } from '@enclave/ui';
-	import Icon from '$lib/Icon.svelte';
+	import { theme, ShortcutsDialog, Icon, Logo } from '@enclave/ui';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
@@ -419,7 +417,7 @@
 		<div class="sidebar-header">
 			<a href="/" class="sidebar-brand" title="Enclave home">
 				<span class="brand-mark">
-					<Icon name="lock" size={14} />
+					<Logo size={20} />
 				</span>
 				{#if sidebarOpen}
 					<span class="brand-name">Enclave</span>
@@ -637,7 +635,7 @@
 			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Menu" title="Menu">
 				<Icon name="menu" size={18} />
 			</button>
-			<a href="/" class="topbar-brand">Enclave</a>
+			<a href="/" class="topbar-brand"><Logo size={22} /> Enclave</a>
 			<div class="topbar-spacer"></div>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
 				<Icon name="search" size={18} />
@@ -652,15 +650,15 @@
 	{#if isMobile && !currentDocId}
 		<nav class="bottom-nav" aria-label="Main">
 			<a href="/" class="nav-tab" class:active={currentPath === '/'} onclick={() => haptic()} aria-current={currentPath === '/' ? 'page' : undefined}>
-				<Icon name="home" size={20} />
+				<span class="nav-tab-pill"><Icon name="home" size={20} /></span>
 				<span>Home</span>
 			</a>
 			<a href="/graph" class="nav-tab" class:active={currentPath === '/graph'} onclick={() => haptic()} aria-current={currentPath === '/graph' ? 'page' : undefined}>
-				<Icon name="graph" size={20} />
+				<span class="nav-tab-pill"><Icon name="graph" size={20} /></span>
 				<span>Graph</span>
 			</a>
 			<button class="nav-tab" class:active={settingsOpen} onclick={() => { openUI('settings'); haptic(); }}>
-				<Icon name="gear" size={20} />
+				<span class="nav-tab-pill"><Icon name="gear" size={20} /></span>
 				<span>Settings</span>
 			</button>
 		</nav>
@@ -813,6 +811,9 @@
 		letter-spacing: -0.01em;
 		color: var(--color-text);
 		text-decoration: none;
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
 	.topbar-spacer { flex: 1; }
 	.topbar-btn {
@@ -864,8 +865,6 @@
 		width: 26px;
 		height: 26px;
 		border-radius: 8px;
-		background: var(--color-accent);
-		color: #fff;
 	}
 	.brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 
@@ -1426,6 +1425,13 @@
 		}
 		.nav-tab.active { color: var(--color-accent); }
 		.nav-tab:active { background: var(--color-surface-hover); }
+		.nav-tab-pill {
+			display: flex;
+			padding: 4px 20px;
+			border-radius: 999px;
+			transition: background 0.15s;
+		}
+		.nav-tab.active .nav-tab-pill { background: var(--color-accent-subtle); }
 
 		/* Keep page content clear of the fixed nav. */
 		.main-pane { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }

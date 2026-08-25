@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@enclave/ui": "*",
     "@tiptap/core": "^2.20.0",
     "@tiptap/extension-placeholder": "^2.20.0",
     "@tiptap/extension-task-item": "^2.27.2",

@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
-	import { theme } from '@enclave/ui';
+	import { theme, Icon, Logo } from '@enclave/ui';
 	import { goto } from '$app/navigation';
-	import Icon from '$lib/Icon.svelte';
 
 	let documents = $state<Document[]>([]);
 
@@ -49,6 +48,18 @@
 	const greeting = $derived(
 		new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'
 	);
+
+	function timeAgo(iso: string): string {
+		const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+		if (s < 60) return 'just now';
+		const m = Math.floor(s / 60);
+		if (m < 60) return `${m}m ago`;
+		const h = Math.floor(m / 60);
+		if (h < 24) return `${h}h ago`;
+		const d = Math.floor(h / 24);
+		if (d < 7) return `${d}d ago`;
+		return new Date(iso).toLocaleDateString();
+	}
 </script>
 
 <div class="home-page">
@@ -71,7 +82,7 @@
 	<div class="home-content">
 		{#if documents.length === 0}
 			<div class="home-empty">
-				<div class="home-empty-icon"><Icon name="lock" size={28} /></div>
+				<div class="home-empty-icon"><Logo size={40} /></div>
 				<h2>Welcome to Enclave</h2>
 				<p>
 					Create your first page or start today's journal. All data is encrypted
@@ -94,7 +105,7 @@
 							<a href="/{doc.id}" class="recent-item">
 								<span class="recent-icon fav"><Icon name="star" size={14} /></span>
 								<span class="recent-title">{doc.title || 'Untitled'}</span>
-								<span class="recent-date">{new Date(doc.updated_at).toLocaleDateString()}</span>
+								<span class="recent-date">{timeAgo(doc.updated_at)}</span>
 							</a>
 						{/each}
 					</div>
@@ -108,7 +119,7 @@
 						<a href="/{doc.id}" class="recent-item">
 							<span class="recent-icon"><Icon name="page" size={14} /></span>
 							<span class="recent-title">{doc.title || 'Untitled'}</span>
-							<span class="recent-date">{new Date(doc.updated_at).toLocaleDateString()}</span>
+							<span class="recent-date">{timeAgo(doc.updated_at)}</span>
 						</a>
 					{/each}
 				</div>
