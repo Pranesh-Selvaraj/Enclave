@@ -7,7 +7,7 @@
 	import { EmojiPicker } from '@enclave/ui';
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import { saveWithRetry } from '$lib/saveRetry.js';
-	import Icon from '$lib/Icon.svelte';
+	import { Icon } from '@enclave/ui';
 	import Whiteboard from '$lib/Whiteboard.svelte';
 	import { loadAISettings, chatStream, embedText, embedLocal, type ChatMessage, type AISettings } from '$lib/ai.js';
 
@@ -20,8 +20,7 @@
 	let backlinks = $state<Array<{ doc_id: string; doc_title: string; block_content: string }>>([]);
 	let editorContent = $state<object | undefined>(undefined);
 	let pageList = $state<{ id: string; title: string }[]>([]);
-	let mode = $state<'paper' | 'whiteboard'>('paper');
-	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
+	let mode = $state<'paper' | 'whiteboard'>('paper');	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
 	let hasWhiteboard = $state(false);
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
@@ -43,8 +42,7 @@
 	let exportOpen = $state(false);
 	let infoOpen = $state(false);
 	let toast = $state<string | null>(null);
-	let toastTimer: ReturnType<typeof setTimeout>;
-	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
+	let toastTimer: ReturnType<typeof setTimeout>;	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
 	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
 	let saveVersion = 0;
 
@@ -729,33 +727,8 @@
 		/>
 	</div>
 
-			<div class="doc-comments">
-				{#each comments as c (c.id)}
-					<div class="comment-item">
-						<div class="comment-text">{c.text}</div>
-						<div class="comment-meta">
-							<span>{new Date(c.at).toLocaleString()}</span>
-							<button class="comment-del" aria-label="Delete comment" onclick={() => removeComment(c.id)}>✕</button>
-						</div>
-					</div>
-				{/each}
-				{#if comments.length === 0}
-					<div class="comments-empty">No comments yet.</div>
-				{/if}
-				<div class="comment-add">
-					<input
-						class="comment-input"
-						bind:value={commentInput}
-						placeholder="Write a comment…"
-						aria-label="Write a comment"
-						onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
-					/>
-					<button class="comment-submit" onclick={addComment} disabled={!commentInput.trim()}>Add</button>
-				</div>
-			</div>
-
-		{#if mode === 'paper'}
-			<div class="doc-body">
+	{#if mode === 'paper'}
+		<div class="doc-body">
 				<div class="doc-editor">
 					<TipTapEditor
 						bind:editor
@@ -788,6 +761,33 @@
 		{:else}
 			<Whiteboard docId={docId!} />
 		{/if}
+
+		<!-- Comments moved below the editor: they annotate the page, they
+		     shouldn't sit between the title and the content. -->
+		<div class="doc-comments">
+			{#each comments as c (c.id)}
+				<div class="comment-item">
+					<div class="comment-text">{c.text}</div>
+					<div class="comment-meta">
+						<span>{new Date(c.at).toLocaleString()}</span>
+						<button class="comment-del" aria-label="Delete comment" onclick={() => removeComment(c.id)}>✕</button>
+					</div>
+				</div>
+			{/each}
+			{#if comments.length === 0}
+				<div class="comments-empty">No comments yet.</div>
+			{/if}
+			<div class="comment-add">
+				<input
+					class="comment-input"
+					bind:value={commentInput}
+					placeholder="Write a comment…"
+					aria-label="Write a comment"
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
+				/>
+				<button class="comment-submit" onclick={addComment} disabled={!commentInput.trim()}>Add</button>
+			</div>
+		</div>
 
 		{#if toast}
 			<div class="toast" role="status">

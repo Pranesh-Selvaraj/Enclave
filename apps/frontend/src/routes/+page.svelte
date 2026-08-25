@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
-	import { theme } from '@enclave/ui';
+	import { theme, Icon, Logo } from '@enclave/ui';
 	import { goto } from '$app/navigation';
-	import Icon from '$lib/Icon.svelte';
 
 	let documents = $state<Document[]>([]);
 
@@ -49,6 +48,18 @@
 	const greeting = $derived(
 		new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'
 	);
+
+	function timeAgo(iso: string): string {
+		const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+		if (s < 60) return 'just now';
+		const m = Math.floor(s / 60);
+		if (m < 60) return `${m}m ago`;
+		const h = Math.floor(m / 60);
+		if (h < 24) return `${h}h ago`;
+		const d = Math.floor(h / 24);
+		if (d < 7) return `${d}d ago`;
+		return new Date(iso).toLocaleDateString();
+	}
 </script>
 
 <div class="home-page">
@@ -71,7 +82,7 @@
 	<div class="home-content">
 		{#if documents.length === 0}
 			<div class="home-empty">
-				<div class="home-empty-icon"><Icon name="lock" size={28} /></div>
+				<div class="home-empty-icon"><Logo size={40} /></div>
 				<h2>Welcome to Enclave</h2>
 				<p>
 					Create your first page or start today's journal. All data is encrypted
@@ -94,7 +105,7 @@
 							<a href="/{doc.id}" class="recent-item">
 								<span class="recent-icon fav"><Icon name="star" size={14} /></span>
 								<span class="recent-title">{doc.title || 'Untitled'}</span>
-								<span class="recent-date">{new Date(doc.updated_at).toLocaleDateString()}</span>
+								<span class="recent-date">{timeAgo(doc.updated_at)}</span>
 							</a>
 						{/each}
 					</div>
@@ -108,7 +119,7 @@
 						<a href="/{doc.id}" class="recent-item">
 							<span class="recent-icon"><Icon name="page" size={14} /></span>
 							<span class="recent-title">{doc.title || 'Untitled'}</span>
-							<span class="recent-date">{new Date(doc.updated_at).toLocaleDateString()}</span>
+							<span class="recent-date">{timeAgo(doc.updated_at)}</span>
 						</a>
 					{/each}
 				</div>
@@ -194,22 +205,46 @@
 		color: var(--color-text-faint);
 		margin: 0 0 10px;
 	}
-	.recent-list { display: flex; flex-direction: column; gap: 2px; }
+	/* Cards instead of plain rows — reads better as a page picker. */
+	.recent-list {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
 	.recent-item {
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 9px 12px;
-		border-radius: var(--radius-md);
+		padding: 12px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-surface);
 		color: var(--color-text);
 		text-decoration: none;
-		transition: background 0.1s;
+		transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 	}
-	.recent-item:hover { background: var(--color-surface-hover); }
-	.recent-icon { display: flex; color: var(--color-text-faint); width: 18px; }
-	.recent-icon.fav { color: var(--color-warning); }
+	.recent-item:hover {
+		border-color: var(--color-border-strong);
+		box-shadow: var(--shadow-sm);
+		transform: translateY(-1px);
+	}
+	.recent-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border-radius: 9px;
+		background: var(--color-surface-hover);
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+	.recent-icon.fav {
+		background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+		color: var(--color-warning);
+	}
 	.recent-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.recent-date { font-size: 12px; color: var(--color-text-faint); }
+	.recent-date { font-size: 12px; color: var(--color-text-faint); flex-shrink: 0; }
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
@@ -228,6 +263,7 @@
 
 		.recent-item { padding: 13px 12px; min-height: 48px; }
 		.recent-date { flex-shrink: 0; }
+		.recent-list { grid-template-columns: 1fr; }
 
 		/* Keyboard tips are meaningless on a phone. */
 		.home-tips { display: none; }

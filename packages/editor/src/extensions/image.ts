@@ -4,13 +4,15 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { Plugin } from '@tiptap/pm/state';
+import { mount, unmount } from 'svelte';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import type { Editor } from '@tiptap/core';
+import ImageView from '../blocks/ImageView.svelte';
 
 declare module '@tiptap/core' {
 	interface Commands<ReturnType> {
 		image: {
-			setImage: (attrs: { src: string; alt?: string }) => ReturnType;
+			setImage: (attrs: { src: string; alt?: string; caption?: string }) => ReturnType;
 		};
 	}
 }
@@ -44,15 +46,55 @@ export const Image = Node.create({
 		return {
 			src: { default: null },
 			alt: { default: '' },
+			caption: {
+				default: '',
+				parseHTML: (el) => (el as HTMLElement).dataset.caption ?? '',
+				renderHTML: (attrs) => ({ 'data-caption': attrs.caption }),
+			},
 		};
 	},
 
 	parseHTML() {
-		return [{ tag: 'img[src]' }];
+		return [{ tag: 'figure[data-img]' }];
 	},
 
 	renderHTML({ HTMLAttributes }) {
-		return ['img', mergeAttributes(HTMLAttributes, { draggable: 'false' })];
+		// ponytail: ZWSP child — the markdown serializer skips blank nodes
+		return ['figure', mergeAttributes(HTMLAttributes, { 'data-img': '' }), '\u200b'];
+	},
+
+	addNodeView() {
+		return ({ node, editor, getPos }) => {
+			const dom = document.createElement('div');
+			let current = { src: node.attrs.src, alt: node.attrs.alt, caption: node.attrs.caption ?? '' };
+			const view = mount(ImageView, {
+				target: dom,
+				props: {
+					...current,
+					onCaptionChange: (caption: string) => {
+						const pos = getPos();
+						if (pos == null) return;
+						current = { ...current, caption };
+						editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, current));
+					},
+				},
+			});
+			return {
+				dom,
+				update(newNode) {
+					const next = { src: newNode.attrs.src, alt: newNode.attrs.alt, caption: newNode.attrs.caption ?? '' };
+					if (next.src === current.src && next.alt === current.alt && next.caption === current.caption) {
+						return true;
+					}
+					current = next;
+					(view as unknown as { $set: (p: Record<string, unknown>) => void }).$set(current);
+					return true;
+				},
+				destroy() {
+					unmount(view);
+				},
+			};
+		};
 	},
 
 	addCommands() {

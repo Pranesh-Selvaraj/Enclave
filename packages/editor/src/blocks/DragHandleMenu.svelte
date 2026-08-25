@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { Icon } from '@enclave/ui';
 	import { DragHandlePluginKey, type DragHandleState } from '../extensions/drag-handle.js';
 
 	let {
@@ -16,11 +17,9 @@
 		const ed = editor;
 		if (!ed || !menuState) return;
 		const coords = ed.view.coordsAtPos(menuState.pos);
-		const editorEl = ed.view.dom.closest('.editor-container');
-		const editorRect = editorEl?.getBoundingClientRect();
 		position = {
-			x: coords.left - (editorRect?.left ?? 0),
-			y: coords.bottom - (editorRect?.top ?? 0) + 8,
+			x: Math.min(Math.max(coords.left, 8), window.innerWidth - 190),
+			y: Math.min(coords.bottom + 8, window.innerHeight - 200),
 		};
 	}
 
@@ -120,11 +119,23 @@
 		aria-label="Block menu"
 		onclick={(e: MouseEvent) => e.stopPropagation()}
 	>
-		<button class="dh-item" role="menuitem" onclick={duplicate}>Duplicate</button>
-		<button class="dh-item" role="menuitem" onclick={() => cut(true)}>Copy text</button>
-		<button class="dh-item" role="menuitem" onclick={() => cut(false)}>Cut</button>
+		<button class="dh-item" role="menuitem" onclick={duplicate}>
+			<Icon name="duplicate" size={14} />
+			Duplicate
+		</button>
+		<button class="dh-item" role="menuitem" onclick={() => cut(true)}>
+			<Icon name="copy" size={14} />
+			Copy text
+		</button>
+		<button class="dh-item" role="menuitem" onclick={() => cut(false)}>
+			<Icon name="cut" size={14} />
+			Cut
+		</button>
 		<div class="dh-sep"></div>
-		<button class="dh-item danger" role="menuitem" onclick={remove}>Delete</button>
+		<button class="dh-item danger" role="menuitem" onclick={remove}>
+			<Icon name="trash" size={14} />
+			Delete
+		</button>
 	</div>
 {/if}
 
@@ -136,8 +147,8 @@
 	}
 
 	.dh-menu {
-		position: absolute;
-		z-index: 241;
+		position: fixed;
+		z-index: 301;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
@@ -147,7 +158,9 @@
 	}
 
 	.dh-item {
-		display: block;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		width: 100%;
 		border: none;
 		background: none;
@@ -155,10 +168,12 @@
 		font-size: 13px;
 		font-family: inherit;
 		text-align: left;
-		padding: 6px 10px;
+		padding: 7px 10px;
 		border-radius: 6px;
 		cursor: pointer;
 	}
+	.dh-item :global(svg) { color: var(--color-text-faint); }
+	.dh-item:hover :global(svg) { color: var(--color-text); }
 
 	.dh-item:hover {
 		background: var(--color-surface-hover);

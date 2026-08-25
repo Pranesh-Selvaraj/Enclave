@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@enclave/ui": "*",
     "@tiptap/core": "^2.20.0",
     "@tiptap/extension-placeholder": "^2.20.0",
     "@tiptap/extension-task-item": "^2.27.2",
@@ -16,7 +17,8 @@
     "@tiptap/html": "^2.27.2",
     "@tiptap/pm": "^2.20.0",
     "@tiptap/starter-kit": "^2.20.0",
-    "marked": "^18.0.7"
+    "marked": "^18.0.7",
+    "@tauri-apps/plugin-opener": "^2.5.4"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"

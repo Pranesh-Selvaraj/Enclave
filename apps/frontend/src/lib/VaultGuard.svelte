@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import { generateMnemonic, validateMnemonic, deriveMasterKey, selfCheck, encryptWithPassword, decryptWithPassword, type EncryptedNote } from '@enclave/crypto';
-	import { Button } from '@enclave/ui';
+	import { Button, Logo, Icon } from '@enclave/ui';
 
 	let { onunlock }: { onunlock: () => void } = $props();
 
@@ -158,6 +158,15 @@
 	function handleFinishCreate() {
 		onunlock();
 	}
+
+	let phraseCopied = $state(false);
+	async function copyPhrase() {
+		try {
+			await navigator.clipboard.writeText(mnemonic);
+			phraseCopied = true;
+			setTimeout(() => (phraseCopied = false), 1500);
+		} catch { /* clipboard unavailable */ }
+	}
 </script>
 
 <div class="vault-wall">
@@ -166,16 +175,21 @@
 
 	{#if step === 'loading' || step === 'checking'}
 		<div class="vault-card vault-card-center">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<div class="vault-loader"></div>
 			<p class="vault-message">{step === 'loading' ? 'Initializing cryptography…' : 'Checking vault…'}</p>
 		</div>
 
 	{:else if step === 'welcome'}
 		<div class="vault-card">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<h1 class="vault-heading">Welcome to Enclave</h1>
 			<p class="vault-desc">Your pages are encrypted and live only on this device.</p>
+			<div class="vault-features">
+				<div class="vf-item"><Icon name="lock" size={15} /><span>Encrypted vault on your device</span></div>
+				<div class="vf-item"><Icon name="network" size={15} /><span>Peer-to-peer sync over Wi-Fi</span></div>
+				<div class="vf-item"><Icon name="zap" size={15} /><span>Offline-first — no cloud, ever</span></div>
+			</div>
 			<div class="vault-form">
 				<label class="field-label" for="password">Create vault password</label>
 				<!-- svelte-ignore a11y_autofocus -->
@@ -197,8 +211,7 @@
 
 	{:else if step === 'create-seed'}
 		<div class="vault-card">
-			<div class="brand-mark brand-mark-ok">✓</div>
-			<h1 class="vault-heading">Vault created</h1>
+			<div class="brand-mark brand-mark-ok">✓</div>			<h1 class="vault-heading">Vault created</h1>
 			<p class="vault-desc-warn">
 				Save these 12 words somewhere safe. This is your recovery phrase if you forget your password.
 			</p>
@@ -210,6 +223,9 @@
 					</div>
 				{/each}
 			</div>
+			<button class="vault-link-btn" onclick={copyPhrase}>
+				{phraseCopied ? '✓ Copied to clipboard' : 'Copy phrase to clipboard'}
+			</button>
 			<div class="vault-actions">
 				<Button onclick={handleFinishCreate}>I've saved my recovery phrase</Button>
 			</div>
@@ -217,7 +233,7 @@
 
 	{:else if step === 'unlock'}
 		<div class="vault-card">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<h1 class="vault-heading">{hasPassword ? 'Unlock your vault' : 'Enter recovery phrase'}</h1>
 			<p class="vault-desc">
 				{#if hasPassword}
@@ -256,7 +272,7 @@
 
 	{:else if step === 'setup-password'}
 		<div class="vault-card">
-			<div class="brand-mark">E</div>
+			<Logo size={56} />
 			<h1 class="vault-heading">Set up a password?</h1>
 			<p class="vault-desc">
 				You unlocked with your recovery phrase. Set up a password for faster unlocking next time.
@@ -341,6 +357,11 @@
 		flex-direction: column;
 		align-items: center;
 	}
+	/* The brand logo is its own tile — center it like the old text mark. */
+	.vault-card > svg {
+		display: block;
+		margin: 0 auto 18px;
+	}
 
 	.brand-mark {
 		display: flex;
@@ -379,6 +400,29 @@
 		padding: 8px 12px;
 		margin: 12px 0 0;
 	}
+	.vault-features {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		text-align: left;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		padding: 12px 14px;
+		margin-bottom: 20px;
+	}
+	.vf-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 13px;
+		color: var(--color-text);
+	}
+	.vf-item :global(svg) {
+		color: var(--color-accent);
+		flex-shrink: 0;
+	}
+
 	.vault-form { text-align: left; margin-bottom: 22px; }
 	.field-label { display: block; font-size: 13px; font-weight: 600; color: var(--color-text-muted); margin: 14px 0 5px; }
 	.field-label:first-child { margin-top: 0; }

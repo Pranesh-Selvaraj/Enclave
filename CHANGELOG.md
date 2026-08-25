@@ -4,6 +4,70 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] — 2026-08-25
+
+### Added
+
+- **PDF support** — paste or insert a PDF (slash menu → PDF) and it's
+  stored in the vault and shown inline in the page; an "Open" button hands
+  it to the system viewer (tauri-plugin-opener, works on Android via
+  ACTION_VIEW). CSP updated to allow the inline preview.
+- **Brand mark — "the keyhole vault" logo** — violet→indigo gradient tile
+  with a white keyhole: in-app SVG component (sidebar, top bar, vault
+  screen, home empty state) plus a full regenerated app-icon set for
+  desktop (PNG/ICO) and Android (legacy launcher + adaptive icon,
+  background color fixed from the default green). Reproducible via
+  `scripts/generate-icons.py`; source SVG at `src-tauri/icons/logo.svg`.
+  Three alternative logo concepts (shield-E, hexagon fortress, layered
+  vault) are rendered as previews by the same script (`--concepts`).
+- **Icon system rework** — one consistent stroke set (24px grid, Lucide-
+  style geometry, ~60 icons) moved into `@enclave/ui` and shared with the
+  editor package.
+- **Editor: slash menu upgraded** — real icons in grouped sections (Basic
+  blocks / Lists / Media / Advanced) with accent-tinted selection states;
+  bubble menu (B/I/S/code) now uses icon buttons.
+- **Editor: image captions** — images are figure blocks with an editable
+  caption underneath (stored as a node attribute).
+- **Editor: code block polish** — language bar with code icon, more
+  languages (rust, go, java, c, cpp, yaml, toml), icon copy button with
+  "Copied" state.
+- **Editor: bookmark card redesign** — gradient link avatar, inline URL
+  with external-link icon, hover lift.
+- **Editor: template gallery** — slash menu templates render as a two-
+  column tile grid.
+- **Editor: drag-handle menu** — items now have icons (duplicate, copy,
+  cut, delete).
+- **Home page polish** — recent/favorite pages are cards (two-column on
+  desktop) with icon chips and relative timestamps ("2h ago"); logo in the
+  empty state.
+- **Command palette** — arrow-key navigation with a visible active item,
+  Enter activates.
+- **Vault onboarding** — welcome screen highlights the three core promises
+  (encrypted, P2P, offline-first) with icons; recovery phrase can be copied
+  to the clipboard with one tap.
+- **Bottom navigation** — Material-style active pill behind the selected tab.
+
+### Changed
+
+- `Icon.svelte` moved from `apps/frontend/src/lib` to `@enclave/ui`;
+  `@enclave/editor` now depends on `@enclave/ui`.
+- Slash, bubble and drag-handle menus are now fixed-positioned and clamped
+  to the viewport — they stay next to the caret/selection instead of
+  rendering detached from the editor.
+- Settings icon replaced with a Material-style sliders mark.
+- Comments section moved below the editor — it no longer sits between the
+  title and the content.
+
+### Fixed
+
+- Sidebar collapse was ignored under narrow/wide density settings (equal
+  CSS specificity, density rule won) — collapsed now wins.
+
+### Removed
+
+- Block-type dropdown from the page top bar (the slash menu already covers
+  headings).
+
 ## [1.4.0] — 2026-08-25
 
 ### Added
@@ -223,7 +287,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { Icon } from '@enclave/ui';
 	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 	import { SlashCommandPluginKey } from '../extensions/slash-command.js';
 	import { templates } from '../templates.js';
@@ -12,6 +13,7 @@
 		label: string;
 		icon: string;
 		description: string;
+		group: 'basic' | 'lists' | 'media' | 'advanced';
 		action: (editor: Editor) => void;
 	}
 
@@ -38,92 +40,124 @@
 		}
 	}
 
+	async function importFile(file: File) {
+		if (!editor) return;
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const abs = await invoke<string>('save_attachment', {
+				documentId: editor.storage.image.docId,
+				filename: file.name || `file-${Date.now()}.pdf`,
+				data: Array.from(bytes),
+			});
+			editor.chain().focus().setFile({ path: abs, name: file.name }).run();
+		} catch (e) {
+			console.error('Failed to import file:', e);
+		}
+	}
+
 	function pickImage(ed: Editor) {
 		fileInput?.click();
+	}
+
+	let fileInput2: HTMLInputElement | undefined = $state();
+	function pickFile(ed: Editor) {
+		fileInput2?.click();
 	}
 
 	const commands: Command[] = [
 		{
 			id: 'paragraph',
 			label: 'Text',
-			icon: '¶',
+			icon: 'text',
+			group: 'basic',
 			description: 'Start with plain text',
 			action: (ed) => ed.chain().focus().setParagraph().run(),
 		},
 		{
 			id: 'heading1',
 			label: 'Heading 1',
-			icon: 'H1',
+			icon: 'heading1',
+			group: 'basic',
 			description: 'Large section heading',
 			action: (ed) => ed.chain().focus().setHeading({ level: 1 }).run(),
 		},
 		{
 			id: 'heading2',
 			label: 'Heading 2',
-			icon: 'H2',
+			icon: 'heading2',
+			group: 'basic',
 			description: 'Medium section heading',
 			action: (ed) => ed.chain().focus().setHeading({ level: 2 }).run(),
 		},
 		{
 			id: 'heading3',
 			label: 'Heading 3',
-			icon: 'H3',
+			icon: 'heading3',
+			group: 'basic',
 			description: 'Small section heading',
 			action: (ed) => ed.chain().focus().setHeading({ level: 3 }).run(),
 		},
 		{
 			id: 'bulletList',
 			label: 'Bullet List',
-			icon: '•',
+			icon: 'list',
+			group: 'lists',
 			description: 'Create a bulleted list',
 			action: (ed) => ed.chain().focus().toggleBulletList().run(),
 		},
 		{
 			id: 'orderedList',
 			label: 'Numbered List',
-			icon: '1.',
+			icon: 'listOrdered',
+			group: 'lists',
 			description: 'Create a numbered list',
 			action: (ed) => ed.chain().focus().toggleOrderedList().run(),
 		},
 		{
 			id: 'taskList',
 			label: 'Task List',
-			icon: '☑',
+			icon: 'listChecks',
+			group: 'lists',
 			description: 'Track tasks with checkboxes',
 			action: (ed) => ed.chain().focus().toggleTaskList().run(),
 		},
 		{
+			id: 'toggleBlock',
+			label: 'Toggle',
+			icon: 'toggle',
+			group: 'lists',
+			description: 'Collapsible section',
+			action: (ed) => ed.chain().focus().setToggleBlock().run(),
+		},
+		{
 			id: 'blockquote',
 			label: 'Quote',
-			icon: '"',
+			icon: 'quote',
+			group: 'advanced',
 			description: 'Capture a blockquote',
 			action: (ed) => ed.chain().focus().toggleBlockquote().run(),
 		},
 		{
 			id: 'callout',
 			label: 'Callout',
-			icon: '💡',
+			icon: 'callout',
+			group: 'advanced',
 			description: 'Highlighted info box',
 			action: (ed) => ed.chain().focus().toggleCallout().run(),
 		},
 		{
-			id: 'toggleBlock',
-			label: 'Toggle',
-			icon: '▶',
-			description: 'Collapsible section',
-			action: (ed) => ed.chain().focus().setToggleBlock().run(),
-		},
-		{
 			id: 'database',
 			label: 'Database',
-			icon: '▦',
+			icon: 'database',
+			group: 'advanced',
 			description: 'Insert a typed table database',
 			action: (ed) => ed.chain().focus().setDatabase().run(),
 		},
 		{
 			id: 'linkedDatabase',
 			label: 'Linked Database',
-			icon: '⧉',
+			icon: 'layout',
+			group: 'advanced',
 			description: 'Mirror another database on this page',
 			action: () => {
 				showingLinkedDb = !showingLinkedDb;
@@ -133,28 +167,40 @@
 		{
 			id: 'pageEmbed',
 			label: 'Embed Page',
-			icon: '🔗',
+			icon: 'page',
+			group: 'media',
 			description: 'Embed a link to another page',
 			action: (ed) => ed.chain().focus().setPageEmbed().run(),
 		},
 		{
 			id: 'image',
 			label: 'Image',
-			icon: '🖼',
+			icon: 'image',
+			group: 'media',
 			description: 'Insert an image from your device',
 			action: (ed) => pickImage(ed),
 		},
 		{
+			id: 'file',
+			label: 'PDF',
+			icon: 'page',
+			group: 'media',
+			description: 'Insert a PDF file and view it here',
+			action: (ed) => pickFile(ed),
+		},
+		{
 			id: 'templates',
 			label: 'Template',
-			icon: '📄',
+			icon: 'grid',
+			group: 'advanced',
 			description: 'Insert a starter template',
 			action: () => { showingTemplates = !showingTemplates; },
 		},
 		{
 			id: 'bookmark',
 			label: 'Bookmark',
-			icon: '🔖',
+			icon: 'bookmark',
+			group: 'media',
 			description: 'Insert a link card',
 			// ponytail: window.prompt for the URL — a small inline form is
 			// nicer but costs a menu state; paste-URL already inserts directly.
@@ -166,18 +212,27 @@
 		{
 			id: 'codeBlock',
 			label: 'Code Block',
-			icon: '</>',
+			icon: 'codeBlock',
+			group: 'advanced',
 			description: 'Insert a code snippet',
 			action: (ed) => ed.chain().focus().toggleCodeBlock().run(),
 		},
 		{
 			id: 'horizontalRule',
 			label: 'Divider',
-			icon: '—',
+			icon: 'divider',
+			group: 'advanced',
 			description: 'Insert a horizontal divider',
 			action: (ed) => ed.chain().focus().setHorizontalRule().run(),
 		},
 	];
+
+	const GROUP_LABELS: Record<Command['group'], string> = {
+		basic: 'Basic blocks',
+		lists: 'Lists',
+		media: 'Media',
+		advanced: 'Advanced',
+	};
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -194,6 +249,24 @@
 				)
 			: commands
 	);
+
+	// Grouped rows keep their flat index so keyboard navigation (selectedIndex)
+	// and the hover/arrow highlight stay in sync.
+	let filteredGroups = $derived.by(() => {
+		const out: { group: Command['group']; label: string; items: Command[] }[] = [];
+		for (const cmd of filtered) {
+			const g = out.find((x) => x.group === cmd.group);
+			if (g) g.items.push(cmd);
+			else out.push({ group: cmd.group, label: GROUP_LABELS[cmd.group], items: [cmd] });
+		}
+		return out;
+	});
+	let flatIndex = $derived.by(() => {
+		const m = new Map<string, number>();
+		let i = 0;
+		for (const g of filteredGroups) for (const c of g.items) m.set(c.id, i++);
+		return m;
+	});
 
 	function selectCommand(cmd: Command) {
 		if (!editor) return;
@@ -271,12 +344,12 @@
 		if (!editor) return;
 		const { from } = editor.state.selection;
 		const coords = editor.view.coordsAtPos(from);
-		const editorEl = editor.view.dom.closest('.editor-container');
-		const editorRect = editorEl?.getBoundingClientRect();
-
+		// Fixed positioning + viewport coords: the menu stays where the caret
+		// is regardless of scroll containers, and can't land "somewhere in the
+		// app" when an ancestor isn't a positioned element.
 		position = {
-			x: coords.left - (editorRect?.left ?? 0),
-			y: coords.bottom - (editorRect?.top ?? 0) + 8,
+			x: Math.min(Math.max(coords.left, 8), window.innerWidth - 296),
+			y: Math.min(coords.bottom + 8, window.innerHeight - 340),
 		};
 	}
 
@@ -366,6 +439,23 @@
 	}}
 	aria-hidden="true"
 />
+<input
+	bind:this={fileInput2}
+	type="file"
+	accept="application/pdf,.pdf"
+	class="hidden-file-input"
+	onchange={(e: Event) => {
+		const f = (e.currentTarget as HTMLInputElement).files?.[0];
+		(e.currentTarget as HTMLInputElement).value = '';
+		if (f && editor) {
+			deleteSlashTrigger(editor);
+			visible = false;
+			void importFile(f);
+		}
+	}}
+	aria-hidden="true"
+/>
+
 
 {#if visible && editor}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -375,14 +465,14 @@
 	>
 		{#if showingTemplates}
 			<div class="slash-menu-header">Templates</div>
-			{#each templates as t}
-				<button class="slash-item" onclick={() => pickTemplate(t)}>
-					<span class="slash-item-icon">{t.icon}</span>
-					<div class="slash-item-text">
-						<span class="slash-item-label">{t.name}</span>
-					</div>
-				</button>
-			{/each}
+			<div class="tpl-grid">
+				{#each templates as t (t.id)}
+					<button class="tpl-item" onclick={() => pickTemplate(t)}>
+						<span class="tpl-icon">{t.icon}</span>
+						<span class="tpl-name">{t.name}</span>
+					</button>
+				{/each}
+			</div>
 		{:else if showingLinkedDb}
 			<div class="slash-menu-header">Linked Database</div>
 			{#if linkedDbs.length === 0}
@@ -399,19 +489,22 @@
 				{/each}
 			{/if}
 		{:else}
-			<div class="slash-menu-header">Basic Blocks</div>
-			{#each filtered as cmd, i}
-				<button
-					class="slash-item"
-					class:selected={i === selectedIndex}
-					onclick={() => selectCommand(cmd)}
-				>
-					<span class="slash-item-icon">{cmd.icon}</span>
-					<div class="slash-item-text">
-						<span class="slash-item-label">{cmd.label}</span>
-						<span class="slash-item-desc">{cmd.description}</span>
-					</div>
-				</button>
+			{#each filteredGroups as g (g.group)}
+				<div class="slash-menu-header">{g.label}</div>
+				{#each g.items as cmd (cmd.id)}
+					{@const idx = flatIndex.get(cmd.id) ?? 0}
+					<button
+						class="slash-item"
+						class:selected={idx === selectedIndex}
+						onclick={() => selectCommand(cmd)}
+					>
+						<span class="slash-item-icon"><Icon name={cmd.icon} size={16} /></span>
+						<div class="slash-item-text">
+							<span class="slash-item-label">{cmd.label}</span>
+							<span class="slash-item-desc">{cmd.description}</span>
+						</div>
+					</button>
+				{/each}
 			{/each}
 		{/if}
 	</div>
@@ -419,8 +512,8 @@
 
 <style>
 	.slash-menu {
-		position: absolute;
-		z-index: 100;
+		position: fixed;
+		z-index: 300;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
@@ -467,11 +560,16 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 6px;
-		background: rgba(255, 255, 255, 0.04);
-		font-size: 14px;
-		font-weight: 600;
+		border-radius: 8px;
+		background: var(--color-surface-hover);
+		color: var(--color-text-muted);
 		flex-shrink: 0;
+		transition: color 0.1s;
+	}
+	.slash-item:hover .slash-item-icon,
+	.slash-item.selected .slash-item-icon {
+		color: var(--color-accent);
+		background: var(--color-accent-subtle);
 	}
 
 	.slash-item-text {
@@ -497,5 +595,41 @@
 		padding: 8px 10px;
 		font-size: 13px;
 		color: var(--color-text-muted);
+	}
+
+	/* Template gallery — two-column grid of icon + name tiles. */
+	.tpl-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		padding: 2px;
+	}
+	.tpl-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: none;
+		color: var(--color-text);
+		cursor: pointer;
+		padding: 12px 8px;
+		font-family: inherit;
+		transition: border-color 0.1s, background 0.1s;
+	}
+	.tpl-item:hover,
+	.tpl-item.selected {
+		border-color: var(--color-accent);
+		background: var(--color-accent-subtle);
+	}
+	.tpl-icon {
+		font-size: 20px;
+		line-height: 1;
+	}
+	.tpl-name {
+		font-size: 12px;
+		font-weight: 500;
+		text-align: center;
 	}
 </style>

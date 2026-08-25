@@ -6,7 +6,7 @@
 	// elements by containment (center inside), not by grouping.
 	// Persistence: one 'whiteboard' block per doc (no schema change).
 	import { invoke } from '$lib/backend.js';
-	import Icon from '$lib/Icon.svelte';
+	import { Icon } from '@enclave/ui';
 	import { mindmapChildPos, centerInside, orderFrames, fitCam, type Rect } from '$lib/wbLayout';
 
 	let { docId, title = 'untitled' }: { docId: string; title?: string } = $props();

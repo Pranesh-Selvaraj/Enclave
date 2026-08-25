@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { Icon } from '@enclave/ui';
 
 	let {
 		editor,
@@ -32,12 +33,12 @@
 
 		const start = editor.view.coordsAtPos(from);
 		const end = editor.view.coordsAtPos(to);
-		const editorEl = editor.view.dom.closest('.editor-container');
-		const editorRect = editorEl?.getBoundingClientRect();
 
+		// Fixed + viewport coords (see SlashMenu) — never detached from the
+		// selection, clamped to the screen.
 		position = {
-			x: (start.left + end.right) / 2 - (editorRect?.left ?? 0) - 120,
-			y: start.top - (editorRect?.top ?? 0) - 48,
+			x: Math.min(Math.max((start.left + end.right) / 2 - 120, 8), window.innerWidth - 248),
+			y: Math.min(Math.max(start.top - 48, 8), window.innerHeight - 56),
 		};
 		visible = true;
 	}
@@ -95,7 +96,7 @@
 			onclick={toggleBold}
 			aria-label="Bold"
 		>
-			<strong>B</strong>
+			<Icon name="bold" size={16} />
 		</button>
 		<button
 			class="bubble-btn"
@@ -103,7 +104,7 @@
 			onclick={toggleItalic}
 			aria-label="Italic"
 		>
-			<em>I</em>
+			<Icon name="italic" size={16} />
 		</button>
 		<button
 			class="bubble-btn"
@@ -111,7 +112,7 @@
 			onclick={toggleStrike}
 			aria-label="Strikethrough"
 		>
-			<s>S</s>
+			<Icon name="strike" size={16} />
 		</button>
 		<div class="bubble-divider"></div>
 		<button
@@ -120,15 +121,15 @@
 			onclick={toggleCode}
 			aria-label="Inline code"
 		>
-			{'</>'}
+			<Icon name="code" size={16} />
 		</button>
 	</div>
 {/if}
 
 <style>
 	.bubble-menu {
-		position: absolute;
-		z-index: 100;
+		position: fixed;
+		z-index: 300;
 		display: flex;
 		align-items: center;
 		gap: 2px;

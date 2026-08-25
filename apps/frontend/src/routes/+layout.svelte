@@ -4,9 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { invoke, listen } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
-	import { theme } from '@enclave/ui';
-	import { ShortcutsDialog } from '@enclave/ui';
-	import Icon from '$lib/Icon.svelte';
+	import { theme, ShortcutsDialog, Icon, Logo } from '@enclave/ui';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
@@ -48,7 +46,10 @@
 	let uiStack = $state<string[]>([]);
 	function openUI(name: 'drawer' | 'palette' | 'settings') {
 		if (name === 'drawer') sidebarOpen = true;
-		else if (name === 'palette') commandPaletteOpen = true;
+		else if (name === 'palette') {
+			commandPaletteOpen = true;
+			paletteIndex = 0;
+		}
 		else settingsOpen = true;
 		if (isMobile && !uiStack.includes(name)) {
 			uiStack = [...uiStack, name];
@@ -114,6 +115,33 @@
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
+	// Keyboard navigation for the palette: arrow keys move a highlight over
+	// the rendered items (search results, recents, actions), Enter activates.
+	let paletteEl = $state<HTMLDivElement | undefined>();
+	let paletteIndex = $state(0);
+	function paletteItems(): HTMLElement[] {
+		return Array.from(paletteEl?.querySelectorAll<HTMLElement>('.palette-item') ?? []);
+	}
+	function paletteMove(dir: 1 | -1) {
+		const items = paletteItems();
+		if (items.length === 0) return;
+		paletteIndex = (paletteIndex + dir + items.length) % items.length;
+	}
+	function paletteActivate() {
+		const items = paletteItems();
+		const el = items[Math.min(paletteIndex, items.length - 1)];
+		el?.click();
+	}
+	// Keep the highlight class in sync after renders (query keystrokes re-render
+	// the list) — tracks searchResults/paletteIndex reactively.
+	$effect(() => {
+		const _r = searchResults;
+		const items = paletteItems();
+		if (items.length === 0) return;
+		const idx = Math.min(paletteIndex, items.length - 1);
+		items.forEach((el, i) => el.classList.toggle('palette-active', i === idx));
+		items[idx]?.scrollIntoView({ block: 'nearest' });
+	});
 	let networkRunning = $state(false);
 	let networkStatus = $state<{
 		local_peer_id: string;
@@ -287,9 +315,27 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		const mod = e.ctrlKey || e.metaKey;
+		if (commandPaletteOpen) {
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				paletteMove(1);
+				return;
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				paletteMove(-1);
+				return;
+			}
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				paletteActivate();
+				return;
+			}
+		}
 		if (mod && e.key === 'k') {
 			e.preventDefault();
 			commandPaletteOpen = !commandPaletteOpen;
+			if (commandPaletteOpen) paletteIndex = 0;
 		}
 		if (mod && e.key === 'n') {
 			e.preventDefault();
@@ -419,7 +465,7 @@
 		<div class="sidebar-header">
 			<a href="/" class="sidebar-brand" title="Enclave home">
 				<span class="brand-mark">
-					<Icon name="lock" size={14} />
+					<Logo size={20} />
 				</span>
 				{#if sidebarOpen}
 					<span class="brand-name">Enclave</span>
@@ -572,7 +618,7 @@
 							<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} />
 						</button>
 						<button class="icon-btn" onclick={() => openUI('settings')} title="Settings">
-							<Icon name="gear" size={15} />
+							<Icon name="settings" size={15} />
 						</button>
 					</div>
 				</div>
@@ -637,7 +683,7 @@
 			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Menu" title="Menu">
 				<Icon name="menu" size={18} />
 			</button>
-			<a href="/" class="topbar-brand">Enclave</a>
+			<a href="/" class="topbar-brand"><Logo size={22} /> Enclave</a>
 			<div class="topbar-spacer"></div>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
 				<Icon name="search" size={18} />
@@ -652,15 +698,15 @@
 	{#if isMobile && !currentDocId}
 		<nav class="bottom-nav" aria-label="Main">
 			<a href="/" class="nav-tab" class:active={currentPath === '/'} onclick={() => haptic()} aria-current={currentPath === '/' ? 'page' : undefined}>
-				<Icon name="home" size={20} />
+				<span class="nav-tab-pill"><Icon name="home" size={20} /></span>
 				<span>Home</span>
 			</a>
 			<a href="/graph" class="nav-tab" class:active={currentPath === '/graph'} onclick={() => haptic()} aria-current={currentPath === '/graph' ? 'page' : undefined}>
-				<Icon name="graph" size={20} />
+				<span class="nav-tab-pill"><Icon name="graph" size={20} /></span>
 				<span>Graph</span>
 			</a>
 			<button class="nav-tab" class:active={settingsOpen} onclick={() => { openUI('settings'); haptic(); }}>
-				<Icon name="gear" size={20} />
+				<span class="nav-tab-pill"><Icon name="settings" size={20} /></span>
 				<span>Settings</span>
 			</button>
 		</nav>
@@ -701,7 +747,7 @@
 		<div class="overlay" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1" onclick={() => (commandPaletteOpen = false)} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') commandPaletteOpen = false; }}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="command-palette" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="command-palette" bind:this={paletteEl} onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<div class="palette-input-wrap">
 					<Icon name="search" size={16} />
 					<!-- svelte-ignore a11y_autofocus -->
@@ -813,6 +859,9 @@
 		letter-spacing: -0.01em;
 		color: var(--color-text);
 		text-decoration: none;
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
 	.topbar-spacer { flex: 1; }
 	.topbar-btn {
@@ -842,6 +891,10 @@
 	.sidebar.collapsed { width: 48px; min-width: 48px; }
 	:global([data-density="narrow"]) .sidebar { width: 220px; min-width: 220px; }
 	:global([data-density="wide"]) .sidebar { width: 320px; min-width: 320px; }
+	/* Same specificity as the density rules above — must come last so a
+	 * collapsed sidebar really collapses under any density. */
+	:global([data-density="narrow"]) .sidebar.collapsed,
+	:global([data-density="wide"]) .sidebar.collapsed { width: 48px; min-width: 48px; }
 
 	.sidebar-header {
 		display: flex;
@@ -864,8 +917,6 @@
 		width: 26px;
 		height: 26px;
 		border-radius: 8px;
-		background: var(--color-accent);
-		color: #fff;
 	}
 	.brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 
@@ -1272,6 +1323,7 @@
 		transition: background 0.1s;
 	}
 	.palette-item:hover { background: var(--color-surface-hover); }
+	.palette-item.palette-active { background: var(--color-surface-hover); box-shadow: inset 2px 0 0 var(--color-accent); }
 	.palette-icon { display: flex; color: var(--color-text-faint); }
 	.palette-item-text {
 		display: flex;
@@ -1426,6 +1478,13 @@
 		}
 		.nav-tab.active { color: var(--color-accent); }
 		.nav-tab:active { background: var(--color-surface-hover); }
+		.nav-tab-pill {
+			display: flex;
+			padding: 4px 20px;
+			border-radius: 999px;
+			transition: background 0.15s;
+		}
+		.nav-tab.active .nav-tab-pill { background: var(--color-accent-subtle); }
 
 		/* Keep page content clear of the fixed nav. */
 		.main-pane { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
