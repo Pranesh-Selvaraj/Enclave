@@ -36,7 +36,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
 | **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
 | **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download |
-| **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
+| **Theming** | Auto / light / dark (follows system), 6 accents, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 
 ## Supported Platforms

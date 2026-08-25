@@ -6,6 +6,7 @@
 	import { htmlToMarkdown } from '@enclave/editor';
 	import { EmojiPicker } from '@enclave/ui';
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
+	import { saveWithRetry } from '$lib/saveRetry.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
 	import { loadAISettings, chatStream, embedText, embedLocal, type ChatMessage, type AISettings } from '$lib/ai.js';
@@ -43,6 +44,9 @@
 	let infoOpen = $state(false);
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout>;
+	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
+	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
+	let saveVersion = 0;
 
 	const docId = $derived($page.params.id);
 
@@ -273,19 +277,27 @@
 
 	async function saveContent() {
 		if (!document || !editor) return;
-		try {
-			// Serialize once, here — not on every keystroke.
-			const json = editor.getJSON();
-			await invoke('upsert_block', {
+		// Serialize once, here — not on every keystroke.
+		const json = editor.getJSON();
+		const expected = ++saveVersion;
+		saveState = 'saving';
+		const res = await saveWithRetry(
+			() => invoke('upsert_block', {
 				id: `${docId}-content`,
 				documentId: docId,
 				blockType: 'doc',
 				content: json,
 				sortOrder: 0,
-			});
+			}),
+			() => saveVersion,
+			expected,
+		);
+		// A newer save already superseded this one — don't clobber its status.
+		if (saveVersion === expected) saveState = res.ok ? 'saved' : 'error';
+		if (res.ok) {
 			rebuildEmbedding();
-		} catch (e) {
-			console.error('Failed to save content:', e);
+		} else {
+			console.error('Failed to save content after retries');
 		}
 	}
 
@@ -425,7 +437,7 @@
 	});
 
 	async function deleteDocument() {
-		if (!document || !confirm(`Move "${documentTitle || 'Untitled'}" to trash?`)) return;
+		if (!document) return;
 		try {
 			await invoke('archive_document', { id: docId });
 			// Stay on the page so the undo toast can act (Notion-style);
@@ -557,6 +569,9 @@
 				aria-label="Page title"
 			/>
 			<div class="doc-actions">
+				<span class="save-status {saveState}" role="status">
+					{saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : ''}
+				</span>
 				<div class="mode-toggle" role="tablist" aria-label="Page mode">
 					{#if hasWhiteboard || mode === 'whiteboard'}
 						<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
@@ -844,7 +859,7 @@
 	}
 
 	.document-page {
-		max-width: 1100px;
+		max-width: var(--page-width, 1100px);
 		margin: 0 auto;
 		padding: 0 48px;
 		height: 100%;
@@ -1075,6 +1090,14 @@
 		gap: 4px;
 		flex-shrink: 0;
 	}
+	.save-status {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		flex-shrink: 0;
+		align-self: center;
+		white-space: nowrap;
+	}
+	.save-status.error { color: var(--color-danger); font-weight: 500; }
 
 	.mode-toggle {
 		display: flex;

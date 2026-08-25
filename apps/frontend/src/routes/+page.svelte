@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
+	import { theme } from '@enclave/ui';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 
@@ -37,7 +38,13 @@
 
 	const favorites = $derived(documents.filter(d => d.is_favorite));
 	const recent = $derived(
-		[...documents].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8)
+		[...documents]
+			.sort((a, b) => {
+				if (theme.homeSort === 'title') return (a.title || '').localeCompare(b.title || '');
+				if (theme.homeSort === 'created') return b.created_at.localeCompare(a.created_at);
+				return b.updated_at.localeCompare(a.updated_at);
+			})
+			.slice(0, 8)
 	);
 	const greeting = $derived(
 		new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'

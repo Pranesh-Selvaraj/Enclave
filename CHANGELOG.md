@@ -6,6 +6,37 @@ All notable changes to Enclave are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Modern Android navigation** — bottom navigation bar (Home / Graph /
+  Settings) on phones, drawer + search in the top bar, and the Android back
+  gesture now closes the topmost overlay (drawer, search, settings) instead
+  of exiting the app.
+- **More customization** — theme mode Auto/Light/Dark (follows the OS),
+  OLED true-black dark mode, editor font size (S–XL), page width
+  (compact/wide/full), home page order (recent/created/title), vibration
+  feedback toggle, reduce-motion, and auto-lock after inactivity
+  (never/1m/5m/15m/1h) which re-locks the vault on an idle phone.
+- **Save reliability** — content saves retry with backoff (stale retries
+  can't overwrite newer edits) and the editor shows a live
+  Saving…/Save failed status.
+- **Snackbar feedback with Undo** — moving a page to trash no longer pops a
+  native confirm; it shows a snackbar with Undo (consistent with the page
+  view). Permanent deletes use an in-app confirm dialog instead of the
+  browser alert.
+- **Haptic feedback** on key phone interactions (toggleable).
+
+### Changed
+
+- Sidebar page tree is capped at 120 rows with a "Show all" button — big
+  vaults stay snappy (one tap reveals the rest).
+- Settings panel reorganized: Appearance / General / Security / Updates /
+  AI / Backup / Shortcuts / About.
+
+### Fixed
+
+- No more native `confirm()` alerts in the main flow (trash/delete).
+
 ### Changed
 
 - **Updates are now strictly opt-in (offline-first)** — the auto "Update now"

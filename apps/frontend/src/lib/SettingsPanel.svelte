@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import { Button } from '@enclave/ui';
-	import { theme, ACCENTS, FONTS, DENSITIES } from '@enclave/ui';
+	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
 	import { loadUpdatePrefs, saveUpdatePrefs } from './updates.js';
 	import UpdateDialog from './UpdateDialog.svelte';
@@ -109,9 +109,18 @@
 				<h3>Appearance</h3>
 				<div class="setting-row">
 					<span>Theme</span>
-					<button class="theme-toggle" onclick={() => theme.toggle()}>
-						{theme.value === 'dark' ? '☀ Light' : '🌙 Dark'}
-					</button>
+					<div class="seg-row">
+						<button class="seg" class:active={theme.mode === 'auto'} onclick={() => (theme.mode = 'auto')}>Auto</button>
+						<button class="seg" class:active={theme.mode === 'light'} onclick={() => (theme.mode = 'light')}>Light</button>
+						<button class="seg" class:active={theme.mode === 'dark'} onclick={() => (theme.mode = 'dark')}>Dark</button>
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>True black (OLED)</span>
+					<label class="switch" title="Pure black background in dark mode — better battery on AMOLED screens">
+						<input type="checkbox" bind:checked={theme.trueBlack} />
+						<span class="switch-slider"></span>
+					</label>
 				</div>
 				<div class="setting-row">
 					<span>Accent color</span>
@@ -137,7 +146,23 @@
 					</div>
 				</div>
 				<div class="setting-row">
-					<span>Sidebar width</span>
+					<span>Editor font size</span>
+					<div class="seg-row">
+						{#each FONT_SIZES as s (s)}
+							<button class="seg" class:active={theme.fontSize === s} onclick={() => (theme.fontSize = s)}>{s.toUpperCase()}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Page width</span>
+					<div class="seg-row">
+						{#each PAGE_WIDTHS as w (w)}
+							<button class="seg" class:active={theme.pageWidth === w} onclick={() => (theme.pageWidth = w)}>{w}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Sidebar width (desktop)</span>
 					<div class="seg-row">
 						{#each DENSITIES as d (d)}
 							<button class="seg" class:active={theme.density === d} onclick={() => (theme.density = d)}>{d}</button>
@@ -147,10 +172,53 @@
 			</div>
 
 			<div class="settings-section">
+				<h3>General</h3>
+				<div class="setting-row">
+					<span>Home page order</span>
+					<div class="seg-row">
+						{#each HOME_SORTS as s (s)}
+							<button class="seg" class:active={theme.homeSort === s} onclick={() => (theme.homeSort = s)}>{s}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Vibration feedback</span>
+					<label class="switch" title="Subtle haptic taps on buttons (phones)">
+						<input type="checkbox" bind:checked={theme.haptics} />
+						<span class="switch-slider"></span>
+					</label>
+				</div>
+				<div class="setting-row">
+					<span>Reduce motion</span>
+					<label class="switch" title="Turn off transitions and animations">
+						<input type="checkbox" bind:checked={theme.reduceMotion} />
+						<span class="switch-slider"></span>
+					</label>
+				</div>
+			</div>
+
+			<div class="settings-section">
 				<h3>Security</h3>
 				<div class="setting-row">
-					<span>Lock vault</span>
+					<span>Auto-lock after</span>
+					<div class="seg-row">
+						{#each LOCK_AFTERS as m (m)}
+							<button
+								class="seg"
+								class:active={theme.lockAfter === m}
+								onclick={() => (theme.lockAfter = m)}
+								title={m === 0 ? 'Never auto-lock' : `Lock after ${m} minute${m > 1 ? 's' : ''} of inactivity`}
+							>{m === 0 ? 'Never' : m === 60 ? '1h' : `${m}m`}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Lock vault now</span>
 					<button class="danger-btn" onclick={lockVault}>Lock now</button>
+				</div>
+				<div class="backup-hint">
+					Auto-lock protects your notes when you put the phone down — the vault
+					relocks after the chosen time without any taps.
 				</div>
 			</div>
 
@@ -332,13 +400,8 @@ sentinel check</pre>
 	}
 	.setting-row {
 		display: flex; align-items: center; justify-content: space-between; font-size: 14px;
+		margin: 10px 0;
 	}
-	.theme-toggle {
-		background: var(--color-surface-hover); border: 1px solid var(--color-border);
-		border-radius: var(--radius-md); color: var(--color-text);
-		padding: 4px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
-	}
-	.setting-row { margin: 10px 0; }
 	.swatch-row { display: flex; gap: 6px; }
 	.swatch {
 		width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
