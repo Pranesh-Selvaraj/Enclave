@@ -1291,4 +1291,39 @@
 		color: var(--color-text-muted);
 	}
 	.empty-state a { color: var(--color-accent); text-decoration: none; }
+
+	/* ── Phone layout ── */
+	@media (max-width: 768px) {
+		.document-page { padding: 0 14px; }
+		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
+		.doc-title-input { font-size: 24px; }
+		.doc-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+		.mode-toggle { margin-right: 0; }
+		.doc-cover { height: 96px; margin-top: 10px; }
+
+		.doc-tags { padding: 0 2px 4px; }
+		.doc-comments { padding: 0 2px; }
+
+		/* The 220px backlinks rail has no room on a phone. */
+		.backlinks-panel { display: none; }
+
+		/* Ask-AI panel becomes a full-screen sheet. */
+		.ai-panel {
+			inset: 0;
+			width: 100%;
+			max-width: 100%;
+			border-radius: 0;
+			border: none;
+			padding-top: env(safe-area-inset-top);
+		}
+		.ai-compose { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+		/* Page-icon popover: full-width instead of centered-overflowing. */
+		.meta-popover {
+			left: 12px;
+			right: 12px;
+			transform: none;
+			top: 60px;
+		}
+	}
 </style>

@@ -9,7 +9,6 @@
 	import Icon from '$lib/Icon.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
-	import UpdateBanner from '$lib/UpdateBanner.svelte';
 	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
 
 	let { children } = $props();
@@ -22,6 +21,24 @@
 	let documents = $state<Document[]>([]);
 	let archivedDocs = $state<Document[]>([]);
 	let sidebarOpen = $state(true);
+	// Phone layout: the sidebar becomes a slide-in drawer behind a hamburger.
+	let isMobile = $state(false);
+	$effect(() => {
+		const mq = window.matchMedia('(max-width: 768px)');
+		isMobile = mq.matches;
+		sidebarOpen = !mq.matches;
+		const onChange = (e: MediaQueryListEvent) => {
+			isMobile = e.matches;
+			sidebarOpen = !e.matches;
+		};
+		mq.addEventListener('change', onChange);
+		return () => mq.removeEventListener('change', onChange);
+	});
+	// Close the drawer after navigating so the page isn't half-covered.
+	$effect(() => {
+		const _p = $page.url.pathname;
+		if (isMobile) sidebarOpen = false;
+	});
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
@@ -185,7 +202,13 @@
 
 	function showContextMenu(e: MouseEvent, doc: Document) {
 		e.preventDefault();
-		contextMenu = { doc, x: e.clientX, y: e.clientY };
+		// Clamp to the viewport — unclamped, a tap near the edge renders the
+		// menu off-screen (unusable on phones).
+		contextMenu = {
+			doc,
+			x: Math.min(e.clientX, window.innerWidth - 190),
+			y: Math.min(e.clientY, window.innerHeight - 150),
+		};
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -312,8 +335,8 @@
 	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
 {:else}
 <div class="app-shell">
-	<!-- Left Sidebar -->
-	<aside class="sidebar" class:collapsed={!sidebarOpen}>
+	<!-- Left Sidebar (drawer on phones) -->
+	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen}>
 		<div class="sidebar-header">
 			<a href="/" class="sidebar-brand" title="Enclave home">
 				<span class="brand-mark">
@@ -515,9 +538,29 @@
 		</div>
 	{/if}
 
+	<!-- Tap-away backdrop for the phone drawer -->
+	{#if isMobile && sidebarOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="sidebar-backdrop" onclick={() => (sidebarOpen = false)}></div>
+	{/if}
+
 	<!-- Main Content Area -->
 	<div class="content-area">
-		<UpdateBanner />
+		<!-- Phone top bar (hidden on desktop): drawer trigger + quick actions -->
+		<header class="mobile-topbar">
+			<button class="topbar-btn" onclick={() => (sidebarOpen = !sidebarOpen)} aria-label="Menu" title="Menu">
+				<Icon name="menu" size={18} />
+			</button>
+			<a href="/" class="topbar-brand">Enclave</a>
+			<div class="topbar-spacer"></div>
+			<button class="topbar-btn" onclick={() => (commandPaletteOpen = true)} aria-label="Search" title="Search">
+				<Icon name="search" size={18} />
+			</button>
+			<button class="topbar-btn" onclick={() => (settingsOpen = true)} aria-label="Settings" title="Settings">
+				<Icon name="gear" size={18} />
+			</button>
+		</header>
 		<div class="main-pane">
 			{@render children?.()}
 		</div>
@@ -618,6 +661,45 @@
 		height: 100vh;
 		overflow: hidden;
 	}
+
+	/* ── Phone drawer backdrop + top bar (hidden on desktop) ── */
+	.sidebar-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 125;
+		background: var(--color-overlay);
+	}
+	.mobile-topbar {
+		display: none;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		padding-top: calc(8px + env(safe-area-inset-top));
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface);
+		flex-shrink: 0;
+	}
+	.topbar-brand {
+		font-size: 15px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		color: var(--color-text);
+		text-decoration: none;
+	}
+	.topbar-spacer { flex: 1; }
+	.topbar-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border: none;
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--color-text);
+		padding: 0;
+	}
+	.topbar-btn:active { background: var(--color-surface-hover); }
 
 	/* ── Sidebar ── */
 	.sidebar {
@@ -1072,5 +1154,44 @@
 		text-align: center;
 		color: var(--color-text-faint);
 		font-size: 13px;
+	}
+
+	/* ── Phone layout ── */
+	@media (max-width: 768px) {
+		.sidebar,
+		.sidebar.collapsed,
+		:global([data-density="narrow"]) .sidebar,
+		:global([data-density="wide"]) .sidebar {
+			position: fixed;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			z-index: 130;
+			width: 280px;
+			min-width: 280px;
+			transform: translateX(-105%);
+			transition: transform 0.22s ease;
+			box-shadow: var(--shadow-lg);
+		}
+		.sidebar.open { transform: translateX(0); }
+		.sidebar-toggle { display: none; }
+
+		.mobile-topbar { display: flex; }
+
+		/* Touch: no hover — row actions must be tappable without a long-press. */
+		.tree-item-actions { display: flex; }
+
+		/* Sidebar footer pads for gesture bar. */
+		.sidebar-footer { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+		/* Command palette: near-full-screen, thumb-reachable. */
+		.overlay { padding-top: 8vh; align-items: flex-start; }
+		.command-palette {
+			width: 94vw;
+			max-width: 94vw;
+			max-height: 82vh;
+		}
+		.palette-input-wrap { padding: 14px 16px; }
+		.palette-item { padding: 12px 10px; }
 	}
 </style>

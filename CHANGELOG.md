@@ -6,6 +6,32 @@ All notable changes to Enclave are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Updates are now strictly opt-in (offline-first)** — the auto "Update now"
+  banner is gone; Enclave never phones home on its own. Settings → Updates
+  has an "Allow checking for updates?" toggle (off by default) and a manual
+  "Check" button. Every check result shows the full changelog and requires
+  the user to review it and agree per update before anything downloads.
+- **Sentinel CLI promoted in Settings** — users who want to stay fully
+  offline can monitor Enclave releases from their terminal with the free
+  open-source Sentinel CLI (`sentinel add github
+  Pranesh-Selvaraj/Enclave --monitor release`), keeping Enclave itself off
+  the internet.
+- **Mobile UX pass (Android)** — the desktop-style fixed sidebar is now a
+  slide-in drawer with a top bar (menu / search / settings), row actions are
+  always tappable (no hover dependency), the home page uses full-width
+  thumb-sized action buttons, the editor topbar wraps, the backlinks rail
+  and keyboard-tip lists are hidden on phones, and the Settings / Ask-AI /
+  update dialogs become full-screen bottom sheets. Context menus are clamped
+  to the viewport; safe-area insets are respected.
+- Settings panel scrolls instead of clipping on short windows.
+
+### Fixed
+
+- Context menu could render off-screen when opened near the viewport edge.
+- Settings / Update dialogs overflowed (and clipped) on small screens.
+
 ## [1.3.1] — 2026-08-18
 
 ### Fixed

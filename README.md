@@ -35,6 +35,7 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM, or frontier APIs with a key |
 | **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
 | **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
+| **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download |
 | **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 
@@ -81,9 +82,9 @@ auto-increments per build.
 | 6 | Default Tauri icon | Enclave adaptive icon (all densities) |
 | 7 | versionCode drift | `autoIncrementVersionCode` (counter in `tauri.properties`) |
 
-**Open items**: P2P sync on real devices, RAG on arm64 hardware, a mobile UX pass
-(touch targets, hover menus, TipTap keyboard handling, safe areas), file
-dialogs / backup / import-export on Android.
+**Open items**: P2P sync on real devices, RAG on arm64 hardware, file
+dialogs / backup / import-export on Android. (The mobile UX pass landed —
+drawer navigation, touch targets, safe areas.)
 
 ## Monorepo Structure
 

@@ -74,6 +74,7 @@ html, body {
 	line-height: 1.6;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	-webkit-tap-highlight-color: transparent;
 	transition: background-color 0.2s, color 0.2s;
 }
 
