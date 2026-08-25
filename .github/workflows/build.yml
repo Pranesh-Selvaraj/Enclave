@@ -99,6 +99,33 @@ jobs:
       - name: npm install
         run: npm ci
 
+      - name: Pre-fetch AppImage bundler tools
+        if: runner.os == 'Linux'
+        run: |
+          # The Tauri bundler downloads these once into ~/.cache/tauri with a
+          # single request and no retry — one reset connection fails the whole
+          # build (seen on v1.4.0). Pre-fetch them here so the bundler finds
+          # them cached. Files must match the bundler's cache names exactly.
+          mkdir -p "$HOME/.cache/tauri"
+          files="
+          https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
+          https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage
+          https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          "
+          for url in $files; do
+            f="$HOME/.cache/tauri/$(basename "$url")"
+            [ -s "$f" ] && continue
+            for i in 1 2 3 4 5; do
+              if curl -fsSL --retry 3 --retry-all-errors -o "$f" "$url"; then break; fi
+              echo "download failed (attempt $i/5): $url"
+              sleep 5
+            done
+            [ -s "$f" ] || { echo "giving up on $url"; exit 1; }
+            chmod +x "$f"
+          done
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
