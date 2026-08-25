@@ -4,10 +4,16 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.0] — 2026-08-25
 
 ### Added
 
+- **Offline-first updates (opt-in)** — the auto "Update now" banner is gone;
+  Enclave never phones home on its own. Settings → Updates has an "Allow
+  checking for updates?" toggle (off by default) and a manual "Check"
+  button. Every check shows the full changelog and requires the user to
+  review it and agree per update before anything downloads. The Sentinel CLI
+  is promoted in Settings for users who want Enclave to stay fully offline.
 - **Modern Android navigation** — bottom navigation bar (Home / Graph /
   Settings) on phones, drawer + search in the top bar, and the Android back
   gesture now closes the topmost overlay (drawer, search, settings) instead
@@ -28,27 +34,6 @@ All notable changes to Enclave are documented here. The format is based on
 
 ### Changed
 
-- Sidebar page tree is capped at 120 rows with a "Show all" button — big
-  vaults stay snappy (one tap reveals the rest).
-- Settings panel reorganized: Appearance / General / Security / Updates /
-  AI / Backup / Shortcuts / About.
-
-### Fixed
-
-- No more native `confirm()` alerts in the main flow (trash/delete).
-
-### Changed
-
-- **Updates are now strictly opt-in (offline-first)** — the auto "Update now"
-  banner is gone; Enclave never phones home on its own. Settings → Updates
-  has an "Allow checking for updates?" toggle (off by default) and a manual
-  "Check" button. Every check result shows the full changelog and requires
-  the user to review it and agree per update before anything downloads.
-- **Sentinel CLI promoted in Settings** — users who want to stay fully
-  offline can monitor Enclave releases from their terminal with the free
-  open-source Sentinel CLI (`sentinel add github
-  Pranesh-Selvaraj/Enclave --monitor release`), keeping Enclave itself off
-  the internet.
 - **Mobile UX pass (Android)** — the desktop-style fixed sidebar is now a
   slide-in drawer with a top bar (menu / search / settings), row actions are
   always tappable (no hover dependency), the home page uses full-width
@@ -56,12 +41,19 @@ All notable changes to Enclave are documented here. The format is based on
   and keyboard-tip lists are hidden on phones, and the Settings / Ask-AI /
   update dialogs become full-screen bottom sheets. Context menus are clamped
   to the viewport; safe-area insets are respected.
-- Settings panel scrolls instead of clipping on short windows.
+- Sidebar page tree is capped at 120 rows with a "Show all" button — big
+  vaults stay snappy (one tap reveals the rest).
+- Settings panel reorganized: Appearance / General / Security / Updates /
+  AI / Backup / Shortcuts / About; it scrolls instead of clipping on short
+  windows.
+- Known gaps (real-device sync, arm64 RAG, Android file dialogs) moved out
+  of the README into tracked GitHub issues.
 
 ### Fixed
 
 - Context menu could render off-screen when opened near the viewport edge.
 - Settings / Update dialogs overflowed (and clipped) on small screens.
+- No more native `confirm()` alerts in the main flow (trash/delete).
 
 ## [1.3.1] — 2026-08-18
 
@@ -231,7 +223,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...v1.2.0
