@@ -2,11 +2,19 @@ name: Android
 
 on:
   push:
-    branches: [main]
+    # Release builds only — tag pushes produce the signed APK/AAB.
+    # Post-merge main pushes are skipped: the pull_request trigger already
+    # built this exact content on the merge-preview ref.
     tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+# Rapid commits to a PR cancel their superseded runs — one effective build
+# per head commit instead of one per push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
