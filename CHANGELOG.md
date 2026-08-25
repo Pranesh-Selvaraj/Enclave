@@ -4,7 +4,7 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.5.0] — 2026-08-25
 
 ### Added
 
@@ -12,7 +12,6 @@ All notable changes to Enclave are documented here. The format is based on
   stored in the vault and shown inline in the page; an "Open" button hands
   it to the system viewer (tauri-plugin-opener, works on Android via
   ACTION_VIEW). CSP updated to allow the inline preview.
-
 - **Brand mark — "the keyhole vault" logo** — violet→indigo gradient tile
   with a white keyhole: in-app SVG component (sidebar, top bar, vault
   screen, home empty state) plus a full regenerated app-icon set for
@@ -27,8 +26,6 @@ All notable changes to Enclave are documented here. The format is based on
 - **Editor: slash menu upgraded** — real icons in grouped sections (Basic
   blocks / Lists / Media / Advanced) with accent-tinted selection states;
   bubble menu (B/I/S/code) now uses icon buttons.
-- **Editor: block-type dropdown** in the page top bar — reflects the block
-  under the caret (Text / H1 / H2 / H3) and switches it directly.
 - **Editor: image captions** — images are figure blocks with an editable
   caption underneath (stored as a node attribute).
 - **Editor: code block polish** — language bar with code icon, more
@@ -58,6 +55,8 @@ All notable changes to Enclave are documented here. The format is based on
   to the viewport — they stay next to the caret/selection instead of
   rendering detached from the editor.
 - Settings icon replaced with a Material-style sliders mark.
+- Comments section moved below the editor — it no longer sits between the
+  title and the content.
 
 ### Fixed
 
@@ -68,8 +67,6 @@ All notable changes to Enclave are documented here. The format is based on
 
 - Block-type dropdown from the page top bar (the slash menu already covers
   headings).
-- Comments section moved below the editor — it no longer sits between the
-  title and the content.
 
 ## [1.4.0] — 2026-08-25
 
@@ -290,7 +287,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0

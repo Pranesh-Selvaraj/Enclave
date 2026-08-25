@@ -336,6 +336,7 @@ Every page toggles between **Paper** (documents) and **Whiteboard** (infinite ca
 | **Linked Database** | `/linked database` — mirror another database on this page |
 | **Page embed** | `/embed page` — inline page card |
 | **Image** | `/image`, or paste/drop |
+| **PDF / file** | `/pdf`, or paste — stored in the vault, inline preview + open in system viewer |
 | **Bookmark** | `/bookmark`, or paste a URL |
 | **Template** | `/template` — Meeting Notes, Project Plan, Daily Journal, Book Notes |
 | Page links / backlinks | type `[[` + page title |
