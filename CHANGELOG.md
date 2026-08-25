@@ -14,14 +14,35 @@ All notable changes to Enclave are documented here. The format is based on
   desktop (PNG/ICO) and Android (legacy launcher + adaptive icon,
   background color fixed from the default green). Reproducible via
   `scripts/generate-icons.py`; source SVG at `src-tauri/icons/logo.svg`.
+  Three alternative logo concepts (shield-E, hexagon fortress, layered
+  vault) are rendered as previews by the same script (`--concepts`).
 - **Icon system rework** — one consistent stroke set (24px grid, Lucide-
   style geometry, ~60 icons) moved into `@enclave/ui` and shared with the
   editor package.
 - **Editor: slash menu upgraded** — real icons in grouped sections (Basic
   blocks / Lists / Media / Advanced) with accent-tinted selection states;
   bubble menu (B/I/S/code) now uses icon buttons.
-- **Home page polish** — relative timestamps ("2h ago"), logo in the empty
-  state.
+- **Editor: block-type dropdown** in the page top bar — reflects the block
+  under the caret (Text / H1 / H2 / H3) and switches it directly.
+- **Editor: image captions** — images are figure blocks with an editable
+  caption underneath (stored as a node attribute).
+- **Editor: code block polish** — language bar with code icon, more
+  languages (rust, go, java, c, cpp, yaml, toml), icon copy button with
+  "Copied" state.
+- **Editor: bookmark card redesign** — gradient link avatar, inline URL
+  with external-link icon, hover lift.
+- **Editor: template gallery** — slash menu templates render as a two-
+  column tile grid.
+- **Editor: drag-handle menu** — items now have icons (duplicate, copy,
+  cut, delete).
+- **Home page polish** — recent/favorite pages are cards (two-column on
+  desktop) with icon chips and relative timestamps ("2h ago"); logo in the
+  empty state.
+- **Command palette** — arrow-key navigation with a visible active item,
+  Enter activates.
+- **Vault onboarding** — welcome screen highlights the three core promises
+  (encrypted, P2P, offline-first) with icons; recovery phrase can be copied
+  to the clipboard with one tap.
 - **Bottom navigation** — Material-style active pill behind the selected tab.
 
 ### Changed

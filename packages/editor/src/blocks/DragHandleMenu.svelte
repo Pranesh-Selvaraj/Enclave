@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { Icon } from '@enclave/ui';
 	import { DragHandlePluginKey, type DragHandleState } from '../extensions/drag-handle.js';
 
 	let {
@@ -120,11 +121,23 @@
 		aria-label="Block menu"
 		onclick={(e: MouseEvent) => e.stopPropagation()}
 	>
-		<button class="dh-item" role="menuitem" onclick={duplicate}>Duplicate</button>
-		<button class="dh-item" role="menuitem" onclick={() => cut(true)}>Copy text</button>
-		<button class="dh-item" role="menuitem" onclick={() => cut(false)}>Cut</button>
+		<button class="dh-item" role="menuitem" onclick={duplicate}>
+			<Icon name="duplicate" size={14} />
+			Duplicate
+		</button>
+		<button class="dh-item" role="menuitem" onclick={() => cut(true)}>
+			<Icon name="copy" size={14} />
+			Copy text
+		</button>
+		<button class="dh-item" role="menuitem" onclick={() => cut(false)}>
+			<Icon name="cut" size={14} />
+			Cut
+		</button>
 		<div class="dh-sep"></div>
-		<button class="dh-item danger" role="menuitem" onclick={remove}>Delete</button>
+		<button class="dh-item danger" role="menuitem" onclick={remove}>
+			<Icon name="trash" size={14} />
+			Delete
+		</button>
 	</div>
 {/if}
 
@@ -147,7 +160,9 @@
 	}
 
 	.dh-item {
-		display: block;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		width: 100%;
 		border: none;
 		background: none;
@@ -155,10 +170,12 @@
 		font-size: 13px;
 		font-family: inherit;
 		text-align: left;
-		padding: 6px 10px;
+		padding: 7px 10px;
 		border-radius: 6px;
 		cursor: pointer;
 	}
+	.dh-item :global(svg) { color: var(--color-text-faint); }
+	.dh-item:hover :global(svg) { color: var(--color-text); }
 
 	.dh-item:hover {
 		background: var(--color-surface-hover);

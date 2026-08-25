@@ -73,6 +73,98 @@ def adaptive_foreground(size: int) -> Image.Image:
     return canvas
 
 
+# ── Alternate logo concepts (previews only, `--concepts` flag) ──
+# Concept 1 (the shipped mark) is above; these are alternatives to compare.
+
+def _font(size_px: int):
+    for path in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ):
+        if os.path.exists(path):
+            from PIL import ImageFont
+
+            return ImageFont.truetype(path, size_px)
+    return None
+
+
+def concept_shield_e(size: int) -> Image.Image:
+    """Concept 2: white shield with an E cut out (heraldic)."""
+    grad = diagonal_gradient(S, S, VIOLET, INDIGO)
+    tile_mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(tile_mask).rounded_rectangle((0, 0, S - 1, S - 1), radius=S * 0.25, fill=255)
+    # Shield polygon: rounded top corners via a rounded rect + triangle bottom.
+    shield = Image.new("L", (S, S), 0)
+    ds = ImageDraw.Draw(shield)
+    ds.rounded_rectangle((S * 0.12, S * 0.1, S * 0.88, S * 0.62), radius=S * 0.12, fill=255)
+    ds.polygon([(S * 0.12, S * 0.55), (S * 0.88, S * 0.55), (S * 0.5, S * 0.95)], fill=255)
+    white = Image.new("RGB", (S, S), WHITE)
+    out = Image.composite(white, grad, shield)
+    # E cutout — reuse the gradient as the letter fill.
+    fnt = _font(S * 0.34)
+    if fnt:
+        tmp = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(tmp).text((S * 0.5, S * 0.47), "E", font=fnt, fill=255, anchor="mm")
+        out = Image.composite(grad, out, tmp)
+    out.putalpha(tile_mask)
+    return out.resize((size, size), Image.LANCZOS)
+
+
+def concept_hexagon(size: int) -> Image.Image:
+    """Concept 3: hexagon fortress (an enclave is an enclosed territory)."""
+    grad = diagonal_gradient(S, S, VIOLET, INDIGO)
+    body, hole = keyhole_masks(S)
+    white = Image.new("RGB", (S, S), WHITE)
+    hex_mask = Image.new("L", (S, S), 0)
+    h = S * 0.433
+    cx = S / 2
+    ImageDraw.Draw(hex_mask).polygon(
+        [(cx, S * 0.04), (S * 0.92, S * 0.29), (S * 0.92, S * 0.71), (cx, S * 0.96), (S * 0.08, S * 0.71), (S * 0.08, S * 0.29)],
+        fill=255,
+    )
+    keyhole = Image.composite(white, grad, body)
+    out = Image.composite(grad, keyhole, hole)
+    out.putalpha(hex_mask)
+    return out.resize((size, size), Image.LANCZOS)
+
+
+def concept_layers(size: int) -> Image.Image:
+    """Concept 4: layered vault — data inside the vault."""
+    grad = diagonal_gradient(S, S, VIOLET, INDIGO)
+    tile_mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(tile_mask).rounded_rectangle((0, 0, S - 1, S - 1), radius=S * 0.25, fill=255)
+    # Back page (white, offset up-left) + front page (gradient, keyhole).
+    back = Image.new("RGB", (S, S), WHITE)
+    back_mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(back_mask).rounded_rectangle((S * 0.08, S * 0.16, S * 0.88, S * 0.84), radius=S * 0.07, fill=255)
+    front_mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(front_mask).rounded_rectangle((S * 0.18, S * 0.1, S * 0.94, S * 0.82), radius=S * 0.07, fill=255)
+    body, hole = keyhole_masks(S)
+    # Small keyhole on the front page.
+    k_small = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(k_small).ellipse((S * 0.42, S * 0.32, S * 0.62, S * 0.52), fill=255)
+    white = Image.new("RGB", (S, S), WHITE)
+    out = Image.composite(white, grad, back_mask)
+    front = Image.composite(grad, white, front_mask)
+    out = Image.composite(front, out, front_mask)
+    out = Image.composite(white, out, k_small)
+    out.putalpha(tile_mask)
+    return out.resize((size, size), Image.LANCZOS)
+
+
+CONCEPTS = {
+    "logo-concept-2-shield-e.png": concept_shield_e,
+    "logo-concept-3-hexagon.png": concept_hexagon,
+    "logo-concept-4-layers.png": concept_layers,
+}
+
+
+def write_concepts() -> None:
+    for name, fn in CONCEPTS.items():
+        fn(1024).save(os.path.join(ROOT, name))
+    print("concept previews written to " + ", ".join(CONCEPTS))
+
+
 def main() -> None:
     icon_dir = os.path.join(ROOT, "src-tauri", "icons")
     android_res = os.path.join(ROOT, "src-tauri", "gen", "android", "app", "src", "main", "res")
@@ -128,7 +220,10 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        if len(sys.argv) > 1 and sys.argv[1] == "--concepts":
+            write_concepts()
+        else:
+            main()
     except ImportError:
         print("Pillow is required: pip install Pillow", file=sys.stderr)
         sys.exit(1)

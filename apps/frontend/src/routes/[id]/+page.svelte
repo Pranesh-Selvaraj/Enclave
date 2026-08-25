@@ -20,8 +20,7 @@
 	let backlinks = $state<Array<{ doc_id: string; doc_title: string; block_content: string }>>([]);
 	let editorContent = $state<object | undefined>(undefined);
 	let pageList = $state<{ id: string; title: string }[]>([]);
-	let mode = $state<'paper' | 'whiteboard'>('paper');
-	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
+	let mode = $state<'paper' | 'whiteboard'>('paper');	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
 	let hasWhiteboard = $state(false);
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
@@ -43,8 +42,7 @@
 	let exportOpen = $state(false);
 	let infoOpen = $state(false);
 	let toast = $state<string | null>(null);
-	let toastTimer: ReturnType<typeof setTimeout>;
-	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
+	let toastTimer: ReturnType<typeof setTimeout>;	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
 	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
 	let saveVersion = 0;
 
@@ -508,6 +506,33 @@
 		return text.trim() ? text.trim().split(/\s+/).length : 0;
 	});
 
+	// ── Block-type dropdown: reflects the block under the caret ──
+	let blockType = $state<'text' | 'h1' | 'h2' | 'h3'>('text');
+	$effect(() => {
+		const ed = editor;
+		if (!ed) return;
+		const sync = () => {
+			if (ed.isActive('heading', { level: 1 })) blockType = 'h1';
+			else if (ed.isActive('heading', { level: 2 })) blockType = 'h2';
+			else if (ed.isActive('heading', { level: 3 })) blockType = 'h3';
+			else blockType = 'text';
+		};
+		sync();
+		ed.on('selectionUpdate', sync);
+		ed.on('transaction', sync);
+		return () => {
+			ed.off('selectionUpdate', sync);
+			ed.off('transaction', sync);
+		};
+	});
+	function setBlockType(v: string) {
+		if (!editor) return;
+		const chain = editor.chain().focus();
+		if (v === 'text') chain.setParagraph();
+		else chain.setHeading({ level: Number(v[1]) as 1 | 2 | 3 });
+		chain.run();
+	}
+
 	function formatDate(iso: string | undefined): string {
 		if (!iso) return '—';
 		const d = new Date(iso);
@@ -572,6 +597,18 @@
 				<span class="save-status {saveState}" role="status">
 					{saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : ''}
 				</span>
+				<select
+					class="block-type"
+					value={blockType}
+					onchange={(e: Event) => setBlockType((e.currentTarget as HTMLSelectElement).value)}
+					aria-label="Block type"
+					title="Block type (slash menu also works)"
+				>
+					<option value="text">Text</option>
+					<option value="h1">Heading 1</option>
+					<option value="h2">Heading 2</option>
+					<option value="h3">Heading 3</option>
+				</select>
 				<div class="mode-toggle" role="tablist" aria-label="Page mode">
 					{#if hasWhiteboard || mode === 'whiteboard'}
 						<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
@@ -1098,6 +1135,20 @@
 		white-space: nowrap;
 	}
 	.save-status.error { color: var(--color-danger); font-weight: 500; }
+
+	.block-type {
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-surface);
+		color: var(--color-text-muted);
+		font-size: 12px;
+		font-family: inherit;
+		padding: 5px 8px;
+		outline: none;
+		cursor: pointer;
+	}
+	.block-type:hover { border-color: var(--color-border-strong); color: var(--color-text); }
+	.block-type:focus { border-color: var(--color-accent); }
 
 	.mode-toggle {
 		display: flex;

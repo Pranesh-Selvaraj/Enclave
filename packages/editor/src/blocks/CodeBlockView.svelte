@@ -1,5 +1,7 @@
 <script lang="ts">
-	const LANGUAGES = ['plaintext', 'js', 'ts', 'py', 'bash', 'json', 'sql', 'md', 'html', 'css'];
+	import { Icon } from '@enclave/ui';
+
+	const LANGUAGES = ['plaintext', 'js', 'ts', 'py', 'bash', 'json', 'sql', 'md', 'html', 'css', 'rust', 'go', 'java', 'c', 'cpp', 'yaml', 'toml'];
 
 	let {
 		language,
@@ -31,18 +33,22 @@
 
 <div class="cb-wrap">
 	<div class="cb-bar">
-		<select
-			class="cb-lang"
-			value={language || 'plaintext'}
-			onchange={(e: Event) => onLanguageChange((e.currentTarget as HTMLSelectElement).value)}
-			aria-label="Code language"
-		>
-			{#each LANGUAGES as l}
-				<option value={l}>{l}</option>
-			{/each}
-		</select>
+		<div class="cb-bar-left">
+			<Icon name="code" size={13} />
+			<select
+				class="cb-lang"
+				value={language || 'plaintext'}
+				onchange={(e: Event) => onLanguageChange((e.currentTarget as HTMLSelectElement).value)}
+				aria-label="Code language"
+			>
+				{#each LANGUAGES as l}
+					<option value={l}>{l}</option>
+				{/each}
+			</select>
+		</div>
 		<button class="cb-copy" onclick={copy} title="Copy code">
-			{copied ? '✓' : 'Copy'}
+			<Icon name={copied ? 'check' : 'copy'} size={13} />
+			{copied ? 'Copied' : 'Copy'}
 		</button>
 	</div>
 	<div bind:this={host}></div>
@@ -66,7 +72,12 @@
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-surface-hover);
 	}
-
+	.cb-bar-left {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		color: var(--color-text-faint);
+	}
 	.cb-lang {
 		border: none;
 		background: none;
@@ -77,18 +88,19 @@
 		outline: none;
 		cursor: pointer;
 	}
-
 	.cb-copy {
-		border: none;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
 		background: none;
 		color: var(--color-text-muted);
 		font-size: 11px;
 		cursor: pointer;
-		padding: 2px 6px;
-		border-radius: 4px;
+		padding: 3px 8px;
 		font-family: inherit;
 	}
-
 	.cb-copy:hover {
 		background: var(--color-surface-active);
 		color: var(--color-text);

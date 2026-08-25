@@ -420,14 +420,14 @@
 	>
 		{#if showingTemplates}
 			<div class="slash-menu-header">Templates</div>
-			{#each templates as t}
-				<button class="slash-item" onclick={() => pickTemplate(t)}>
-					<span class="slash-item-icon">{t.icon}</span>
-					<div class="slash-item-text">
-						<span class="slash-item-label">{t.name}</span>
-					</div>
-				</button>
-			{/each}
+			<div class="tpl-grid">
+				{#each templates as t (t.id)}
+					<button class="tpl-item" onclick={() => pickTemplate(t)}>
+						<span class="tpl-icon">{t.icon}</span>
+						<span class="tpl-name">{t.name}</span>
+					</button>
+				{/each}
+			</div>
 		{:else if showingLinkedDb}
 			<div class="slash-menu-header">Linked Database</div>
 			{#if linkedDbs.length === 0}
@@ -550,5 +550,41 @@
 		padding: 8px 10px;
 		font-size: 13px;
 		color: var(--color-text-muted);
+	}
+
+	/* Template gallery — two-column grid of icon + name tiles. */
+	.tpl-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		padding: 2px;
+	}
+	.tpl-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: none;
+		color: var(--color-text);
+		cursor: pointer;
+		padding: 12px 8px;
+		font-family: inherit;
+		transition: border-color 0.1s, background 0.1s;
+	}
+	.tpl-item:hover,
+	.tpl-item.selected {
+		border-color: var(--color-accent);
+		background: var(--color-accent-subtle);
+	}
+	.tpl-icon {
+		font-size: 20px;
+		line-height: 1;
+	}
+	.tpl-name {
+		font-size: 12px;
+		font-weight: 500;
+		text-align: center;
 	}
 </style>

@@ -205,22 +205,46 @@
 		color: var(--color-text-faint);
 		margin: 0 0 10px;
 	}
-	.recent-list { display: flex; flex-direction: column; gap: 2px; }
+	/* Cards instead of plain rows — reads better as a page picker. */
+	.recent-list {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
 	.recent-item {
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 9px 12px;
-		border-radius: var(--radius-md);
+		padding: 12px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-surface);
 		color: var(--color-text);
 		text-decoration: none;
-		transition: background 0.1s;
+		transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 	}
-	.recent-item:hover { background: var(--color-surface-hover); }
-	.recent-icon { display: flex; color: var(--color-text-faint); width: 18px; }
-	.recent-icon.fav { color: var(--color-warning); }
+	.recent-item:hover {
+		border-color: var(--color-border-strong);
+		box-shadow: var(--shadow-sm);
+		transform: translateY(-1px);
+	}
+	.recent-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border-radius: 9px;
+		background: var(--color-surface-hover);
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+	.recent-icon.fav {
+		background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+		color: var(--color-warning);
+	}
 	.recent-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.recent-date { font-size: 12px; color: var(--color-text-faint); }
+	.recent-date { font-size: 12px; color: var(--color-text-faint); flex-shrink: 0; }
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
@@ -239,6 +263,7 @@
 
 		.recent-item { padding: 13px 12px; min-height: 48px; }
 		.recent-date { flex-shrink: 0; }
+		.recent-list { grid-template-columns: 1fr; }
 
 		/* Keyboard tips are meaningless on a phone. */
 		.home-tips { display: none; }

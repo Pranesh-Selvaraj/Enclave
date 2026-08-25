@@ -46,7 +46,10 @@
 	let uiStack = $state<string[]>([]);
 	function openUI(name: 'drawer' | 'palette' | 'settings') {
 		if (name === 'drawer') sidebarOpen = true;
-		else if (name === 'palette') commandPaletteOpen = true;
+		else if (name === 'palette') {
+			commandPaletteOpen = true;
+			paletteIndex = 0;
+		}
 		else settingsOpen = true;
 		if (isMobile && !uiStack.includes(name)) {
 			uiStack = [...uiStack, name];
@@ -112,6 +115,33 @@
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
+	// Keyboard navigation for the palette: arrow keys move a highlight over
+	// the rendered items (search results, recents, actions), Enter activates.
+	let paletteEl = $state<HTMLDivElement | undefined>();
+	let paletteIndex = $state(0);
+	function paletteItems(): HTMLElement[] {
+		return Array.from(paletteEl?.querySelectorAll<HTMLElement>('.palette-item') ?? []);
+	}
+	function paletteMove(dir: 1 | -1) {
+		const items = paletteItems();
+		if (items.length === 0) return;
+		paletteIndex = (paletteIndex + dir + items.length) % items.length;
+	}
+	function paletteActivate() {
+		const items = paletteItems();
+		const el = items[Math.min(paletteIndex, items.length - 1)];
+		el?.click();
+	}
+	// Keep the highlight class in sync after renders (query keystrokes re-render
+	// the list) — tracks searchResults/paletteIndex reactively.
+	$effect(() => {
+		const _r = searchResults;
+		const items = paletteItems();
+		if (items.length === 0) return;
+		const idx = Math.min(paletteIndex, items.length - 1);
+		items.forEach((el, i) => el.classList.toggle('palette-active', i === idx));
+		items[idx]?.scrollIntoView({ block: 'nearest' });
+	});
 	let networkRunning = $state(false);
 	let networkStatus = $state<{
 		local_peer_id: string;
@@ -285,9 +315,27 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		const mod = e.ctrlKey || e.metaKey;
+		if (commandPaletteOpen) {
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				paletteMove(1);
+				return;
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				paletteMove(-1);
+				return;
+			}
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				paletteActivate();
+				return;
+			}
+		}
 		if (mod && e.key === 'k') {
 			e.preventDefault();
 			commandPaletteOpen = !commandPaletteOpen;
+			if (commandPaletteOpen) paletteIndex = 0;
 		}
 		if (mod && e.key === 'n') {
 			e.preventDefault();
@@ -699,7 +747,7 @@
 		<div class="overlay" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1" onclick={() => (commandPaletteOpen = false)} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') commandPaletteOpen = false; }}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="command-palette" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="command-palette" bind:this={paletteEl} onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<div class="palette-input-wrap">
 					<Icon name="search" size={16} />
 					<!-- svelte-ignore a11y_autofocus -->
@@ -1271,6 +1319,7 @@
 		transition: background 0.1s;
 	}
 	.palette-item:hover { background: var(--color-surface-hover); }
+	.palette-item.palette-active { background: var(--color-surface-hover); box-shadow: inset 2px 0 0 var(--color-accent); }
 	.palette-icon { display: flex; color: var(--color-text-faint); }
 	.palette-item-text {
 		display: flex;

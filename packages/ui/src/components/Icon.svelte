@@ -47,6 +47,7 @@
 		download: 'M12 3v12M7 10l5 5 5-5M4 19h16',
 		upload: 'M12 21V9M7 14l5-5 5 5M4 5h16',
 		send: 'M22 2 11 13M22 2l-7 20-4-9-9-4z',
+		cut: 'M6 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM4 6l16 12M20 6 4 18',
 		filter: 'M22 3H2l8 9.5V19l4 2v-8.5z',
 
 		// ── Content types ──
