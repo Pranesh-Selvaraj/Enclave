@@ -40,8 +40,28 @@
 		}
 	}
 
+	async function importFile(file: File) {
+		if (!editor) return;
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const abs = await invoke<string>('save_attachment', {
+				documentId: editor.storage.image.docId,
+				filename: file.name || `file-${Date.now()}.pdf`,
+				data: Array.from(bytes),
+			});
+			editor.chain().focus().setFile({ path: abs, name: file.name }).run();
+		} catch (e) {
+			console.error('Failed to import file:', e);
+		}
+	}
+
 	function pickImage(ed: Editor) {
 		fileInput?.click();
+	}
+
+	let fileInput2: HTMLInputElement | undefined = $state();
+	function pickFile(ed: Editor) {
+		fileInput2?.click();
 	}
 
 	const commands: Command[] = [
@@ -159,6 +179,14 @@
 			group: 'media',
 			description: 'Insert an image from your device',
 			action: (ed) => pickImage(ed),
+		},
+		{
+			id: 'file',
+			label: 'PDF',
+			icon: 'page',
+			group: 'media',
+			description: 'Insert a PDF file and view it here',
+			action: (ed) => pickFile(ed),
 		},
 		{
 			id: 'templates',
@@ -316,12 +344,12 @@
 		if (!editor) return;
 		const { from } = editor.state.selection;
 		const coords = editor.view.coordsAtPos(from);
-		const editorEl = editor.view.dom.closest('.editor-container');
-		const editorRect = editorEl?.getBoundingClientRect();
-
+		// Fixed positioning + viewport coords: the menu stays where the caret
+		// is regardless of scroll containers, and can't land "somewhere in the
+		// app" when an ancestor isn't a positioned element.
 		position = {
-			x: coords.left - (editorRect?.left ?? 0),
-			y: coords.bottom - (editorRect?.top ?? 0) + 8,
+			x: Math.min(Math.max(coords.left, 8), window.innerWidth - 296),
+			y: Math.min(coords.bottom + 8, window.innerHeight - 340),
 		};
 	}
 
@@ -411,6 +439,23 @@
 	}}
 	aria-hidden="true"
 />
+<input
+	bind:this={fileInput2}
+	type="file"
+	accept="application/pdf,.pdf"
+	class="hidden-file-input"
+	onchange={(e: Event) => {
+		const f = (e.currentTarget as HTMLInputElement).files?.[0];
+		(e.currentTarget as HTMLInputElement).value = '';
+		if (f && editor) {
+			deleteSlashTrigger(editor);
+			visible = false;
+			void importFile(f);
+		}
+	}}
+	aria-hidden="true"
+/>
+
 
 {#if visible && editor}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -467,8 +512,8 @@
 
 <style>
 	.slash-menu {
-		position: absolute;
-		z-index: 100;
+		position: fixed;
+		z-index: 300;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;

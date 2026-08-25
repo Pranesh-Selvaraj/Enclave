@@ -12,6 +12,7 @@ import { Callout } from './extensions/callout.js';
 import { ToggleBlock, ToggleSummary } from './extensions/toggle-block.js';
 import { Database } from './extensions/database.js';
 import { Image } from './extensions/image.js';
+import { File } from './extensions/file.js';
 import { PageEmbed } from './extensions/page-embed.js';
 import { Bookmark } from './extensions/bookmark.js';
 import { DragHandle } from './extensions/drag-handle.js';
@@ -32,6 +33,7 @@ export function editorExtensions() {
 		ToggleSummary,
 		Database,
 		Image,
+		File,
 		PageEmbed,
 		Bookmark,
 		SlashCommand,

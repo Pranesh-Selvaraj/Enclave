@@ -506,33 +506,6 @@
 		return text.trim() ? text.trim().split(/\s+/).length : 0;
 	});
 
-	// ── Block-type dropdown: reflects the block under the caret ──
-	let blockType = $state<'text' | 'h1' | 'h2' | 'h3'>('text');
-	$effect(() => {
-		const ed = editor;
-		if (!ed) return;
-		const sync = () => {
-			if (ed.isActive('heading', { level: 1 })) blockType = 'h1';
-			else if (ed.isActive('heading', { level: 2 })) blockType = 'h2';
-			else if (ed.isActive('heading', { level: 3 })) blockType = 'h3';
-			else blockType = 'text';
-		};
-		sync();
-		ed.on('selectionUpdate', sync);
-		ed.on('transaction', sync);
-		return () => {
-			ed.off('selectionUpdate', sync);
-			ed.off('transaction', sync);
-		};
-	});
-	function setBlockType(v: string) {
-		if (!editor) return;
-		const chain = editor.chain().focus();
-		if (v === 'text') chain.setParagraph();
-		else chain.setHeading({ level: Number(v[1]) as 1 | 2 | 3 });
-		chain.run();
-	}
-
 	function formatDate(iso: string | undefined): string {
 		if (!iso) return '—';
 		const d = new Date(iso);
@@ -597,18 +570,6 @@
 				<span class="save-status {saveState}" role="status">
 					{saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : ''}
 				</span>
-				<select
-					class="block-type"
-					value={blockType}
-					onchange={(e: Event) => setBlockType((e.currentTarget as HTMLSelectElement).value)}
-					aria-label="Block type"
-					title="Block type (slash menu also works)"
-				>
-					<option value="text">Text</option>
-					<option value="h1">Heading 1</option>
-					<option value="h2">Heading 2</option>
-					<option value="h3">Heading 3</option>
-				</select>
 				<div class="mode-toggle" role="tablist" aria-label="Page mode">
 					{#if hasWhiteboard || mode === 'whiteboard'}
 						<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
@@ -766,33 +727,8 @@
 		/>
 	</div>
 
-			<div class="doc-comments">
-				{#each comments as c (c.id)}
-					<div class="comment-item">
-						<div class="comment-text">{c.text}</div>
-						<div class="comment-meta">
-							<span>{new Date(c.at).toLocaleString()}</span>
-							<button class="comment-del" aria-label="Delete comment" onclick={() => removeComment(c.id)}>✕</button>
-						</div>
-					</div>
-				{/each}
-				{#if comments.length === 0}
-					<div class="comments-empty">No comments yet.</div>
-				{/if}
-				<div class="comment-add">
-					<input
-						class="comment-input"
-						bind:value={commentInput}
-						placeholder="Write a comment…"
-						aria-label="Write a comment"
-						onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
-					/>
-					<button class="comment-submit" onclick={addComment} disabled={!commentInput.trim()}>Add</button>
-				</div>
-			</div>
-
-		{#if mode === 'paper'}
-			<div class="doc-body">
+	{#if mode === 'paper'}
+		<div class="doc-body">
 				<div class="doc-editor">
 					<TipTapEditor
 						bind:editor
@@ -825,6 +761,33 @@
 		{:else}
 			<Whiteboard docId={docId!} />
 		{/if}
+
+		<!-- Comments moved below the editor: they annotate the page, they
+		     shouldn't sit between the title and the content. -->
+		<div class="doc-comments">
+			{#each comments as c (c.id)}
+				<div class="comment-item">
+					<div class="comment-text">{c.text}</div>
+					<div class="comment-meta">
+						<span>{new Date(c.at).toLocaleString()}</span>
+						<button class="comment-del" aria-label="Delete comment" onclick={() => removeComment(c.id)}>✕</button>
+					</div>
+				</div>
+			{/each}
+			{#if comments.length === 0}
+				<div class="comments-empty">No comments yet.</div>
+			{/if}
+			<div class="comment-add">
+				<input
+					class="comment-input"
+					bind:value={commentInput}
+					placeholder="Write a comment…"
+					aria-label="Write a comment"
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
+				/>
+				<button class="comment-submit" onclick={addComment} disabled={!commentInput.trim()}>Add</button>
+			</div>
+		</div>
 
 		{#if toast}
 			<div class="toast" role="status">
@@ -1135,20 +1098,6 @@
 		white-space: nowrap;
 	}
 	.save-status.error { color: var(--color-danger); font-weight: 500; }
-
-	.block-type {
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background: var(--color-surface);
-		color: var(--color-text-muted);
-		font-size: 12px;
-		font-family: inherit;
-		padding: 5px 8px;
-		outline: none;
-		cursor: pointer;
-	}
-	.block-type:hover { border-color: var(--color-border-strong); color: var(--color-text); }
-	.block-type:focus { border-color: var(--color-accent); }
 
 	.mode-toggle {
 		display: flex;

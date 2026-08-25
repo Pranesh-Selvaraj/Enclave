@@ -8,6 +8,11 @@ All notable changes to Enclave are documented here. The format is based on
 
 ### Added
 
+- **PDF support** — paste or insert a PDF (slash menu → PDF) and it's
+  stored in the vault and shown inline in the page; an "Open" button hands
+  it to the system viewer (tauri-plugin-opener, works on Android via
+  ACTION_VIEW). CSP updated to allow the inline preview.
+
 - **Brand mark — "the keyhole vault" logo** — violet→indigo gradient tile
   with a white keyhole: in-app SVG component (sidebar, top bar, vault
   screen, home empty state) plus a full regenerated app-icon set for
@@ -49,6 +54,22 @@ All notable changes to Enclave are documented here. The format is based on
 
 - `Icon.svelte` moved from `apps/frontend/src/lib` to `@enclave/ui`;
   `@enclave/editor` now depends on `@enclave/ui`.
+- Slash, bubble and drag-handle menus are now fixed-positioned and clamped
+  to the viewport — they stay next to the caret/selection instead of
+  rendering detached from the editor.
+- Settings icon replaced with a Material-style sliders mark.
+
+### Fixed
+
+- Sidebar collapse was ignored under narrow/wide density settings (equal
+  CSS specificity, density rule won) — collapsed now wins.
+
+### Removed
+
+- Block-type dropdown from the page top bar (the slash menu already covers
+  headings).
+- Comments section moved below the editor — it no longer sits between the
+  title and the content.
 
 ## [1.4.0] — 2026-08-25
 

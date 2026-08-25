@@ -33,12 +33,12 @@
 
 		const start = editor.view.coordsAtPos(from);
 		const end = editor.view.coordsAtPos(to);
-		const editorEl = editor.view.dom.closest('.editor-container');
-		const editorRect = editorEl?.getBoundingClientRect();
 
+		// Fixed + viewport coords (see SlashMenu) — never detached from the
+		// selection, clamped to the screen.
 		position = {
-			x: (start.left + end.right) / 2 - (editorRect?.left ?? 0) - 120,
-			y: start.top - (editorRect?.top ?? 0) - 48,
+			x: Math.min(Math.max((start.left + end.right) / 2 - 120, 8), window.innerWidth - 248),
+			y: Math.min(Math.max(start.top - 48, 8), window.innerHeight - 56),
 		};
 		visible = true;
 	}
@@ -128,8 +128,8 @@
 
 <style>
 	.bubble-menu {
-		position: absolute;
-		z-index: 100;
+		position: fixed;
+		z-index: 300;
 		display: flex;
 		align-items: center;
 		gap: 2px;

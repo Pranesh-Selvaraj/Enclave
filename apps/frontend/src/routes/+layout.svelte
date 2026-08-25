@@ -618,7 +618,7 @@
 							<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} />
 						</button>
 						<button class="icon-btn" onclick={() => openUI('settings')} title="Settings">
-							<Icon name="gear" size={15} />
+							<Icon name="settings" size={15} />
 						</button>
 					</div>
 				</div>
@@ -706,7 +706,7 @@
 				<span>Graph</span>
 			</a>
 			<button class="nav-tab" class:active={settingsOpen} onclick={() => { openUI('settings'); haptic(); }}>
-				<span class="nav-tab-pill"><Icon name="gear" size={20} /></span>
+				<span class="nav-tab-pill"><Icon name="settings" size={20} /></span>
 				<span>Settings</span>
 			</button>
 		</nav>
@@ -891,6 +891,10 @@
 	.sidebar.collapsed { width: 48px; min-width: 48px; }
 	:global([data-density="narrow"]) .sidebar { width: 220px; min-width: 220px; }
 	:global([data-density="wide"]) .sidebar { width: 320px; min-width: 320px; }
+	/* Same specificity as the density rules above — must come last so a
+	 * collapsed sidebar really collapses under any density. */
+	:global([data-density="narrow"]) .sidebar.collapsed,
+	:global([data-density="wide"]) .sidebar.collapsed { width: 48px; min-width: 48px; }
 
 	.sidebar-header {
 		display: flex;

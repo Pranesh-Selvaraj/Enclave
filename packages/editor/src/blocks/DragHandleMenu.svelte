@@ -17,11 +17,9 @@
 		const ed = editor;
 		if (!ed || !menuState) return;
 		const coords = ed.view.coordsAtPos(menuState.pos);
-		const editorEl = ed.view.dom.closest('.editor-container');
-		const editorRect = editorEl?.getBoundingClientRect();
 		position = {
-			x: coords.left - (editorRect?.left ?? 0),
-			y: coords.bottom - (editorRect?.top ?? 0) + 8,
+			x: Math.min(Math.max(coords.left, 8), window.innerWidth - 190),
+			y: Math.min(coords.bottom + 8, window.innerHeight - 200),
 		};
 	}
 
@@ -149,8 +147,8 @@
 	}
 
 	.dh-menu {
-		position: absolute;
-		z-index: 241;
+		position: fixed;
+		z-index: 301;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
