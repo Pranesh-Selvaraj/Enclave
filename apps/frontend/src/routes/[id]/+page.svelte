@@ -6,6 +6,7 @@
 	import { htmlToMarkdown } from '@enclave/editor';
 	import { EmojiPicker } from '@enclave/ui';
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
+	import { saveWithRetry } from '$lib/saveRetry.js';
 	import Icon from '$lib/Icon.svelte';
 	import Whiteboard from '$lib/Whiteboard.svelte';
 	import { loadAISettings, chatStream, embedText, embedLocal, type ChatMessage, type AISettings } from '$lib/ai.js';
@@ -43,6 +44,9 @@
 	let infoOpen = $state(false);
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout>;
+	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
+	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
+	let saveVersion = 0;
 
 	const docId = $derived($page.params.id);
 
@@ -273,19 +277,27 @@
 
 	async function saveContent() {
 		if (!document || !editor) return;
-		try {
-			// Serialize once, here — not on every keystroke.
-			const json = editor.getJSON();
-			await invoke('upsert_block', {
+		// Serialize once, here — not on every keystroke.
+		const json = editor.getJSON();
+		const expected = ++saveVersion;
+		saveState = 'saving';
+		const res = await saveWithRetry(
+			() => invoke('upsert_block', {
 				id: `${docId}-content`,
 				documentId: docId,
 				blockType: 'doc',
 				content: json,
 				sortOrder: 0,
-			});
+			}),
+			() => saveVersion,
+			expected,
+		);
+		// A newer save already superseded this one — don't clobber its status.
+		if (saveVersion === expected) saveState = res.ok ? 'saved' : 'error';
+		if (res.ok) {
 			rebuildEmbedding();
-		} catch (e) {
-			console.error('Failed to save content:', e);
+		} else {
+			console.error('Failed to save content after retries');
 		}
 	}
 
@@ -425,7 +437,7 @@
 	});
 
 	async function deleteDocument() {
-		if (!document || !confirm(`Move "${documentTitle || 'Untitled'}" to trash?`)) return;
+		if (!document) return;
 		try {
 			await invoke('archive_document', { id: docId });
 			// Stay on the page so the undo toast can act (Notion-style);
@@ -557,6 +569,9 @@
 				aria-label="Page title"
 			/>
 			<div class="doc-actions">
+				<span class="save-status {saveState}" role="status">
+					{saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : ''}
+				</span>
 				<div class="mode-toggle" role="tablist" aria-label="Page mode">
 					{#if hasWhiteboard || mode === 'whiteboard'}
 						<button class="mode-btn" class:active={mode === 'paper'} onclick={() => setMode('paper')} role="tab">Paper</button>
@@ -844,7 +859,7 @@
 	}
 
 	.document-page {
-		max-width: 1100px;
+		max-width: var(--page-width, 1100px);
 		margin: 0 auto;
 		padding: 0 48px;
 		height: 100%;
@@ -1075,6 +1090,14 @@
 		gap: 4px;
 		flex-shrink: 0;
 	}
+	.save-status {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		flex-shrink: 0;
+		align-self: center;
+		white-space: nowrap;
+	}
+	.save-status.error { color: var(--color-danger); font-weight: 500; }
 
 	.mode-toggle {
 		display: flex;
@@ -1291,4 +1314,39 @@
 		color: var(--color-text-muted);
 	}
 	.empty-state a { color: var(--color-accent); text-decoration: none; }
+
+	/* ── Phone layout ── */
+	@media (max-width: 768px) {
+		.document-page { padding: 0 14px; }
+		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
+		.doc-title-input { font-size: 24px; }
+		.doc-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+		.mode-toggle { margin-right: 0; }
+		.doc-cover { height: 96px; margin-top: 10px; }
+
+		.doc-tags { padding: 0 2px 4px; }
+		.doc-comments { padding: 0 2px; }
+
+		/* The 220px backlinks rail has no room on a phone. */
+		.backlinks-panel { display: none; }
+
+		/* Ask-AI panel becomes a full-screen sheet. */
+		.ai-panel {
+			inset: 0;
+			width: 100%;
+			max-width: 100%;
+			border-radius: 0;
+			border: none;
+			padding-top: env(safe-area-inset-top);
+		}
+		.ai-compose { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+		/* Page-icon popover: full-width instead of centered-overflowing. */
+		.meta-popover {
+			left: 12px;
+			right: 12px;
+			transform: none;
+			top: 60px;
+		}
+	}
 </style>

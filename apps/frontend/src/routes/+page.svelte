@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
+	import { theme } from '@enclave/ui';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 
@@ -37,7 +38,13 @@
 
 	const favorites = $derived(documents.filter(d => d.is_favorite));
 	const recent = $derived(
-		[...documents].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8)
+		[...documents]
+			.sort((a, b) => {
+				if (theme.homeSort === 'title') return (a.title || '').localeCompare(b.title || '');
+				if (theme.homeSort === 'created') return b.created_at.localeCompare(a.created_at);
+				return b.updated_at.localeCompare(a.updated_at);
+			})
+			.slice(0, 8)
 	);
 	const greeting = $derived(
 		new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'
@@ -203,4 +210,27 @@
 	.recent-icon.fav { color: var(--color-warning); }
 	.recent-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.recent-date { font-size: 12px; color: var(--color-text-faint); }
+
+	/* ── Phone layout ── */
+	@media (max-width: 768px) {
+		.home-page { padding: 24px 16px 48px; }
+		.home-title { font-size: 24px; }
+		.home-subtitle { font-size: 13px; }
+
+		/* Full-width, thumb-sized actions instead of a cramped row. */
+		.quick-actions { flex-direction: column; margin-bottom: 28px; }
+		.quick-btn {
+			justify-content: center;
+			padding: 14px 16px;
+			font-size: 15px;
+			border-radius: var(--radius-lg);
+		}
+
+		.recent-item { padding: 13px 12px; min-height: 48px; }
+		.recent-date { flex-shrink: 0; }
+
+		/* Keyboard tips are meaningless on a phone. */
+		.home-tips { display: none; }
+		.home-empty { padding: 36px 20px; }
+	}
 </style>

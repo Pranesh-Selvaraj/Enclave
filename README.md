@@ -35,7 +35,8 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM, or frontier APIs with a key |
 | **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
 | **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
-| **Theming** | Light / dark with CSS custom properties (6 accents, 4 fonts, 3 densities) |
+| **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download |
+| **Theming** | Auto / light / dark (follows system), 6 accents, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 
 ## Supported Platforms
@@ -45,13 +46,13 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Linux** (x86_64) | Supported | `.deb`, `.AppImage` |
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
 | **macOS** (Apple Silicon) | Supported | `.dmg` |
-| **Android** (arm64) | Beta | Signed `.apk` / `.aab` (CI-built, monotonic versionCode), first-boot verified on emulator; P2P sync pending real-device validation |
+| **Android** (arm64) | Beta | Signed `.apk` / `.aab` (CI-built, monotonic versionCode) |
 
 ## Android (Beta)
 
 Same SvelteKit frontend + Rust core in the system WebView (Tauri mobile).
-First-boot verified on emulator; **P2P sync on real phones is the remaining
-validation** (Android mDNS behavior is untested on hardware).
+Builds, signs and installs; known gaps are tracked on the
+[issues page](https://github.com/Pranesh-Selvaraj/Enclave/issues).
 
 ### Build & sign
 
@@ -69,21 +70,9 @@ CI ([.github/workflows/android.yml](.github/workflows/android.yml)) builds, sign
 `ANDROID_KEYSTORE_*` secrets and uploads the arm64 APK/AAB; `versionCode`
 auto-increments per build.
 
-### Issue log
-
-| # | Issue | Fix |
-|---|-------|-----|
-| 1 | Release builds blocked `ws://` sync (platform cleartext policy) | cleartext allowed — payloads are AEAD-sealed at the app layer |
-| 2 | Vault stayed unlocked when the app lost visibility | backgrounding locks the vault and stops sync |
-| 3 | `gen/android` was gitignored, native customizations lost | committed; volatile artifacts only ignored |
-| 4 | Release signing was manual | `scripts/android-sign.sh` |
-| 5 | No Android CI | `.github/workflows/android.yml` |
-| 6 | Default Tauri icon | Enclave adaptive icon (all densities) |
-| 7 | versionCode drift | `autoIncrementVersionCode` (counter in `tauri.properties`) |
-
-**Open items**: P2P sync on real devices, RAG on arm64 hardware, a mobile UX pass
-(touch targets, hover menus, TipTap keyboard handling, safe areas), file
-dialogs / backup / import-export on Android.
+Known issues and gaps (real-device sync, arm64 RAG, file dialogs) are tracked
+as [GitHub issues](https://github.com/Pranesh-Selvaraj/Enclave/issues) — the
+README only documents what the app does today.
 
 ## Monorepo Structure
 

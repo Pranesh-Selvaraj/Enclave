@@ -4,7 +4,56 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.0] — 2026-08-25
+
+### Added
+
+- **Offline-first updates (opt-in)** — the auto "Update now" banner is gone;
+  Enclave never phones home on its own. Settings → Updates has an "Allow
+  checking for updates?" toggle (off by default) and a manual "Check"
+  button. Every check shows the full changelog and requires the user to
+  review it and agree per update before anything downloads. The Sentinel CLI
+  is promoted in Settings for users who want Enclave to stay fully offline.
+- **Modern Android navigation** — bottom navigation bar (Home / Graph /
+  Settings) on phones, drawer + search in the top bar, and the Android back
+  gesture now closes the topmost overlay (drawer, search, settings) instead
+  of exiting the app.
+- **More customization** — theme mode Auto/Light/Dark (follows the OS),
+  OLED true-black dark mode, editor font size (S–XL), page width
+  (compact/wide/full), home page order (recent/created/title), vibration
+  feedback toggle, reduce-motion, and auto-lock after inactivity
+  (never/1m/5m/15m/1h) which re-locks the vault on an idle phone.
+- **Save reliability** — content saves retry with backoff (stale retries
+  can't overwrite newer edits) and the editor shows a live
+  Saving…/Save failed status.
+- **Snackbar feedback with Undo** — moving a page to trash no longer pops a
+  native confirm; it shows a snackbar with Undo (consistent with the page
+  view). Permanent deletes use an in-app confirm dialog instead of the
+  browser alert.
+- **Haptic feedback** on key phone interactions (toggleable).
+
+### Changed
+
+- **Mobile UX pass (Android)** — the desktop-style fixed sidebar is now a
+  slide-in drawer with a top bar (menu / search / settings), row actions are
+  always tappable (no hover dependency), the home page uses full-width
+  thumb-sized action buttons, the editor topbar wraps, the backlinks rail
+  and keyboard-tip lists are hidden on phones, and the Settings / Ask-AI /
+  update dialogs become full-screen bottom sheets. Context menus are clamped
+  to the viewport; safe-area insets are respected.
+- Sidebar page tree is capped at 120 rows with a "Show all" button — big
+  vaults stay snappy (one tap reveals the rest).
+- Settings panel reorganized: Appearance / General / Security / Updates /
+  AI / Backup / Shortcuts / About; it scrolls instead of clipping on short
+  windows.
+- Known gaps (real-device sync, arm64 RAG, Android file dialogs) moved out
+  of the README into tracked GitHub issues.
+
+### Fixed
+
+- Context menu could render off-screen when opened near the viewport edge.
+- Settings / Update dialogs overflowed (and clipped) on small screens.
+- No more native `confirm()` alerts in the main flow (trash/delete).
 
 ## [1.3.1] — 2026-08-18
 
@@ -174,7 +223,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...v1.2.0

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import { Button } from '@enclave/ui';
-	import { theme, ACCENTS, FONTS, DENSITIES } from '@enclave/ui';
+	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
+	import { loadUpdatePrefs, saveUpdatePrefs } from './updates.js';
+	import UpdateDialog from './UpdateDialog.svelte';
 
 	let {
 		open = $bindable(false),
@@ -13,7 +15,23 @@
 	} = $props();
 
 	let vaultPath = $state('~/.local/share/com.enclave.app/enclave.db');
-	let appVersion = $state('0.4.0');
+	let appVersion = $state('');
+
+	$effect(() => {
+		if (open && !appVersion) {
+			invoke<string>('app_version').then((v) => (appVersion = v)).catch(() => {});
+		}
+	});
+
+	// ── Updates: opt-in, offline-first ──
+	// Enclave never checks for updates on its own. The user must (1) allow
+	// checks here, and (2) approve each update in the changelog dialog.
+	let checkUpdates = $state(loadUpdatePrefs());
+	let updateDialogOpen = $state(false);
+
+	function onCheckUpdatesChange() {
+		saveUpdatePrefs(checkUpdates);
+	}
 
 	async function lockVault() {
 		try {
@@ -91,9 +109,18 @@
 				<h3>Appearance</h3>
 				<div class="setting-row">
 					<span>Theme</span>
-					<button class="theme-toggle" onclick={() => theme.toggle()}>
-						{theme.value === 'dark' ? '☀ Light' : '🌙 Dark'}
-					</button>
+					<div class="seg-row">
+						<button class="seg" class:active={theme.mode === 'auto'} onclick={() => (theme.mode = 'auto')}>Auto</button>
+						<button class="seg" class:active={theme.mode === 'light'} onclick={() => (theme.mode = 'light')}>Light</button>
+						<button class="seg" class:active={theme.mode === 'dark'} onclick={() => (theme.mode = 'dark')}>Dark</button>
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>True black (OLED)</span>
+					<label class="switch" title="Pure black background in dark mode — better battery on AMOLED screens">
+						<input type="checkbox" bind:checked={theme.trueBlack} />
+						<span class="switch-slider"></span>
+					</label>
 				</div>
 				<div class="setting-row">
 					<span>Accent color</span>
@@ -119,7 +146,23 @@
 					</div>
 				</div>
 				<div class="setting-row">
-					<span>Sidebar width</span>
+					<span>Editor font size</span>
+					<div class="seg-row">
+						{#each FONT_SIZES as s (s)}
+							<button class="seg" class:active={theme.fontSize === s} onclick={() => (theme.fontSize = s)}>{s.toUpperCase()}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Page width</span>
+					<div class="seg-row">
+						{#each PAGE_WIDTHS as w (w)}
+							<button class="seg" class:active={theme.pageWidth === w} onclick={() => (theme.pageWidth = w)}>{w}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Sidebar width (desktop)</span>
 					<div class="seg-row">
 						{#each DENSITIES as d (d)}
 							<button class="seg" class:active={theme.density === d} onclick={() => (theme.density = d)}>{d}</button>
@@ -129,11 +172,95 @@
 			</div>
 
 			<div class="settings-section">
+				<h3>General</h3>
+				<div class="setting-row">
+					<span>Home page order</span>
+					<div class="seg-row">
+						{#each HOME_SORTS as s (s)}
+							<button class="seg" class:active={theme.homeSort === s} onclick={() => (theme.homeSort = s)}>{s}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Vibration feedback</span>
+					<label class="switch" title="Subtle haptic taps on buttons (phones)">
+						<input type="checkbox" bind:checked={theme.haptics} />
+						<span class="switch-slider"></span>
+					</label>
+				</div>
+				<div class="setting-row">
+					<span>Reduce motion</span>
+					<label class="switch" title="Turn off transitions and animations">
+						<input type="checkbox" bind:checked={theme.reduceMotion} />
+						<span class="switch-slider"></span>
+					</label>
+				</div>
+			</div>
+
+			<div class="settings-section">
 				<h3>Security</h3>
 				<div class="setting-row">
-					<span>Lock vault</span>
+					<span>Auto-lock after</span>
+					<div class="seg-row">
+						{#each LOCK_AFTERS as m (m)}
+							<button
+								class="seg"
+								class:active={theme.lockAfter === m}
+								onclick={() => (theme.lockAfter = m)}
+								title={m === 0 ? 'Never auto-lock' : `Lock after ${m} minute${m > 1 ? 's' : ''} of inactivity`}
+							>{m === 0 ? 'Never' : m === 60 ? '1h' : `${m}m`}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>Lock vault now</span>
 					<button class="danger-btn" onclick={lockVault}>Lock now</button>
 				</div>
+				<div class="backup-hint">
+					Auto-lock protects your notes when you put the phone down — the vault
+					relocks after the chosen time without any taps.
+				</div>
+			</div>
+
+			<div class="settings-section">
+				<h3>Updates</h3>
+				<div class="setting-row">
+					<span>Allow checking for updates?</span>
+					<label class="switch">
+						<input type="checkbox" bind:checked={checkUpdates} onchange={onCheckUpdatesChange} />
+						<span class="switch-slider"></span>
+					</label>
+				</div>
+				<div class="setting-row">
+					<span>Check now</span>
+					<Button onclick={() => (updateDialogOpen = true)} disabled={!checkUpdates}>Check</Button>
+				</div>
+				{#if checkUpdates}
+					<div class="backup-hint">
+						Checking contacts GitHub Releases once. You'll review the changelog and
+						approve <b>every</b> update before anything is downloaded — nothing is ever
+						installed automatically.
+					</div>
+				{:else}
+					<div class="backup-hint">
+						Off by default: Enclave is offline-first and never phones home.
+					</div>
+				{/if}
+
+				<div class="sentinel-card">
+					<div class="sentinel-title">🛰 Keep Enclave fully offline — monitor updates with <b>Sentinel</b></div>
+					<div class="backup-hint">
+						Sentinel is a free, open-source CLI (Python 3.11+, zero dependencies) that
+						watches GitHub releases from your terminal, so Enclave itself never needs
+						internet access:
+						<pre class="sentinel-cmd">sentinel add github Pranesh-Selvaraj/Enclave --monitor release
+sentinel check</pre>
+						It remembers what it watched, tells you exactly what changed, and only you
+						decide when (or whether) to update. See
+						github.com/Pranesh-Selvaraj/Sentinel.
+					</div>
+				</div>
+				<UpdateDialog bind:open={updateDialogOpen} />
 			</div>
 
 			<div class="settings-section">
@@ -218,7 +345,7 @@
 			<div class="settings-section">
 				<h3>About</h3>
 				<div class="about-info">
-					<div class="about-row"><span>Version</span><span class="about-value">{appVersion}</span></div>
+					<div class="about-row"><span>Version</span><span class="about-value">{appVersion || '…'}</span></div>
 					<div class="about-row"><span>Vault</span><span class="about-value">{vaultPath || '~/.local/share/com.enclave.app/'}</span></div>
 				</div>
 			</div>
@@ -245,8 +372,12 @@
 		border: 1px solid var(--color-border);
 		border-radius: 12px;
 		width: 420px;
+		max-width: 100%;
+		max-height: min(90vh, 760px);
+		overflow-y: auto;
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
 	}
+
 	.settings-header {
 		display: flex;
 		align-items: center;
@@ -269,13 +400,8 @@
 	}
 	.setting-row {
 		display: flex; align-items: center; justify-content: space-between; font-size: 14px;
+		margin: 10px 0;
 	}
-	.theme-toggle {
-		background: var(--color-surface-hover); border: 1px solid var(--color-border);
-		border-radius: var(--radius-md); color: var(--color-text);
-		padding: 4px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
-	}
-	.setting-row { margin: 10px 0; }
 	.swatch-row { display: flex; gap: 6px; }
 	.swatch {
 		width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
@@ -322,6 +448,27 @@
 		background: var(--color-surface-hover); border: 1px solid var(--color-border);
 		border-radius: 3px; padding: 0 4px; font-size: 11px; font-family: var(--font-mono);
 	}
+	.sentinel-card {
+		margin-top: 10px;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 10px 12px;
+	}
+	.sentinel-title { font-size: 13px; color: var(--color-text); line-height: 1.5; }
+	.sentinel-cmd {
+		background: var(--color-surface-hover);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		padding: 8px 10px;
+		margin: 8px 0;
+		font-size: 11px;
+		line-height: 1.6;
+		font-family: var(--font-mono);
+		color: var(--color-text-muted);
+		overflow-x: auto;
+		white-space: pre;
+	}
 	.shortcut-row {
 		display: flex; align-items: center; gap: 6px;
 		font-size: 13px; color: var(--color-text-muted); margin: 6px 0;
@@ -335,5 +482,18 @@
 	.about-value { color: var(--color-text); font-family: var(--font-mono); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 	.settings-footer {
 		padding: 14px 20px; display: flex; justify-content: flex-end;
+	}
+
+	/* Full-screen sheet on phones — the panel is long and a centered modal
+	 * overflows (and clips) on small screens. */
+	@media (max-width: 768px) {
+		.modal-backdrop { align-items: flex-end; padding: 0; }
+		.settings-panel {
+			width: 100%;
+			max-width: 100%;
+			max-height: 92vh;
+			border-radius: 16px 16px 0 0;
+			border-bottom: none;
+		}
 	}
 </style>

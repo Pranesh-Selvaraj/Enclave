@@ -259,4 +259,8 @@
 		color: var(--color-text-muted);
 		font-size: 14px;
 	}
+
+	@media (max-width: 768px) {
+		.graph-page { padding: 16px 12px; }
+	}
 </style>

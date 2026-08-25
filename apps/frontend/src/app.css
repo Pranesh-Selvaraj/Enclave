@@ -63,6 +63,39 @@
 [data-font="serif"] { --font-sans: Georgia, 'Times New Roman', serif; }
 [data-font="mono"] { --font-sans: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
 
+/* OLED true-black dark mode — pure black pixels, better battery on AMOLED */
+[data-true-black][data-theme="dark"] {
+	--color-bg: #000000;
+	--color-surface: #0a0a0b;
+	--color-surface-hover: #131315;
+	--color-surface-active: #1a1a1d;
+	--color-border: #1b1b1e;
+	--color-border-strong: #2a2a2f;
+}
+
+/* Reduced motion — kill transitions/animations globally */
+[data-reduce-motion] *,
+[data-reduce-motion] *::before,
+[data-reduce-motion] *::after {
+	transition-duration: 0s !important;
+	animation-duration: 0s !important;
+	animation-iteration-count: 1 !important;
+}
+
+/* Editor sizing presets (font size + page width) */
+:root {
+	--editor-font-size: 15px;
+	--page-width: 1100px;
+}
+[data-font-size="s"] { --editor-font-size: 13.5px; }
+[data-font-size="m"] { --editor-font-size: 15px; }
+[data-font-size="l"] { --editor-font-size: 17px; }
+[data-font-size="xl"] { --editor-font-size: 19px; }
+[data-page-width="compact"] { --page-width: 720px; }
+[data-page-width="wide"] { --page-width: 1100px; }
+[data-page-width="full"] { --page-width: 1600px; }
+.tiptap-editor .ProseMirror { font-size: var(--editor-font-size); }
+
 html, body {
 	height: 100%;
 	margin: 0;
@@ -74,6 +107,7 @@ html, body {
 	line-height: 1.6;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	-webkit-tap-highlight-color: transparent;
 	transition: background-color 0.2s, color 0.2s;
 }
 

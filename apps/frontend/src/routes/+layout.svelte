@@ -9,7 +9,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
-	import UpdateBanner from '$lib/UpdateBanner.svelte';
+	import { haptic } from '$lib/haptics.js';
 	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
 
 	let { children } = $props();
@@ -22,6 +22,95 @@
 	let documents = $state<Document[]>([]);
 	let archivedDocs = $state<Document[]>([]);
 	let sidebarOpen = $state(true);
+	// Phone layout: the sidebar becomes a slide-in drawer behind a hamburger.
+	let isMobile = $state(false);
+	$effect(() => {
+		const mq = window.matchMedia('(max-width: 768px)');
+		isMobile = mq.matches;
+		sidebarOpen = !mq.matches;
+		const onChange = (e: MediaQueryListEvent) => {
+			isMobile = e.matches;
+			sidebarOpen = !e.matches;
+		};
+		mq.addEventListener('change', onChange);
+		return () => mq.removeEventListener('change', onChange);
+	});
+	// Close the drawer after navigating so the page isn't half-covered.
+	$effect(() => {
+		const _p = $page.url.pathname;
+		if (isMobile) sidebarOpen = false;
+	});
+
+	// ── Android back button: closing the topmost overlay first ──
+	// Opening an overlay pushes a same-URL history entry; the system back
+	// gesture pops it and we close the overlay instead of leaving the app.
+	// Desktop is untouched (isMobile guard).
+	let uiStack = $state<string[]>([]);
+	function openUI(name: 'drawer' | 'palette' | 'settings') {
+		if (name === 'drawer') sidebarOpen = true;
+		else if (name === 'palette') commandPaletteOpen = true;
+		else settingsOpen = true;
+		if (isMobile && !uiStack.includes(name)) {
+			uiStack = [...uiStack, name];
+			try { history.pushState({ enclave: name }, ''); } catch { /* custom scheme may reject pushState */ }
+		}
+	}
+	$effect(() => {
+		const onPop = () => {
+			if (!isMobile || uiStack.length === 0) return;
+			const top = uiStack[uiStack.length - 1];
+			uiStack = uiStack.slice(0, -1);
+			if (top === 'drawer') sidebarOpen = false;
+			else if (top === 'palette') commandPaletteOpen = false;
+			else settingsOpen = false;
+		};
+		window.addEventListener('popstate', onPop);
+		return () => window.removeEventListener('popstate', onPop);
+	});
+	// Overlays also close via Escape/backdrop clicks — drop their stack entry
+	// so a later back press doesn't land on a stale no-op entry.
+	$effect(() => {
+		const open = (n: string) => (n === 'drawer' ? sidebarOpen : n === 'palette' ? commandPaletteOpen : settingsOpen);
+		const filtered = uiStack.filter(open);
+		if (filtered.length !== uiStack.length) uiStack = filtered;
+	});
+
+	// ── Auto-lock after inactivity (privacy on a phone in your pocket) ──
+	// Plain let, not $state: the interval only reads the latest value; making it
+	// reactive would tear down and recreate the interval on every keystroke.
+	let lastActivity = Date.now();
+	$effect(() => {
+		const bump = () => (lastActivity = Date.now());
+		window.addEventListener('pointerdown', bump);
+		window.addEventListener('keydown', bump);
+		window.addEventListener('touchstart', bump);
+		return () => {
+			window.removeEventListener('pointerdown', bump);
+			window.removeEventListener('keydown', bump);
+			window.removeEventListener('touchstart', bump);
+		};
+	});
+	$effect(() => {
+		if (!vaultUnlocked || theme.lockAfter <= 0) return;
+		const t = setInterval(() => {
+			if (Date.now() - lastActivity > theme.lockAfter * 60_000) {
+				invoke('lock_vault').then(() => (vaultUnlocked = false)).catch(() => {});
+			}
+		}, 15_000);
+		return () => clearInterval(t);
+	});
+
+	// ── Snackbar (toast + optional undo) — replaces native confirm() for
+	// non-destructive actions. Modern Android feedback. ──
+	let snackbar = $state<{ msg: string; undoLabel?: string; undo?: () => void } | null>(null);
+	let snackTimer: ReturnType<typeof setTimeout>;
+	function showSnack(msg: string, undo?: () => void, undoLabel = 'Undo') {
+		snackbar = { msg, undo, undoLabel };
+		clearTimeout(snackTimer);
+		snackTimer = setTimeout(() => (snackbar = null), 5000);
+	}
+	/** Permanent deletes go through this in-app confirm dialog (no native alert). */
+	let confirmDelete = $state<Document | null>(null);
 	let commandPaletteOpen = $state(false);
 	let searchQuery = $state('');
 	let debouncedQuery = $state('');
@@ -98,11 +187,10 @@
 	}
 
 	async function deleteDocumentPermanently(id: string) {
-		const doc = archivedDocs.find(d => d.id === id);
-		if (!confirm(`Permanently delete "${doc?.title || 'Untitled'}"? This cannot be undone.`)) return;
 		try {
 			await invoke('delete_document', { id });
 			await loadArchived();
+			showSnack('Page permanently deleted');
 		} catch (e) {
 			console.error('Failed to delete document:', e);
 		}
@@ -140,14 +228,17 @@
 		}
 	}
 
+	// Trash flow: moving a page to trash is undoable — no scary native confirm,
+	// just a snackbar with Undo (Notion-style). Only the permanent delete below
+	// asks for explicit confirmation.
 	async function deleteDocument(id: string) {
 		const doc = documents.find(d => d.id === id);
-		if (!confirm(`Move "${doc?.title || 'Untitled'}" to trash?`)) return;
 		try {
 			await invoke('archive_document', { id });
 			await loadDocuments();
 			await loadArchived();
 			loadTags();
+			showSnack(`Moved "${doc?.title || 'Untitled'}" to trash`, () => restoreDocument(id));
 		} catch (e) {
 			console.error('Failed to archive document:', e);
 		}
@@ -185,7 +276,13 @@
 
 	function showContextMenu(e: MouseEvent, doc: Document) {
 		e.preventDefault();
-		contextMenu = { doc, x: e.clientX, y: e.clientY };
+		// Clamp to the viewport — unclamped, a tap near the edge renders the
+		// menu off-screen (unusable on phones).
+		contextMenu = {
+			doc,
+			x: Math.min(e.clientX, window.innerWidth - 190),
+			y: Math.min(e.clientY, window.innerHeight - 150),
+		};
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -265,6 +362,11 @@
 
 	let favorites = $derived(filteredDocs.filter(d => d.is_favorite));
 	let regularPages = $derived(filteredDocs.filter(d => !d.is_favorite));
+	// Window the page tree: rendering thousands of rows at once is the
+	// slowest thing on a big vault. Cap it; one tap reveals the rest.
+	const PAGE_CAP = 120;
+	let showAllPages = $state(false);
+	const visiblePages = $derived(showAllPages ? regularPages : regularPages.slice(0, PAGE_CAP));
 
 	$effect(() => {
 		if (vaultUnlocked) {
@@ -312,8 +414,8 @@
 	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
 {:else}
 <div class="app-shell">
-	<!-- Left Sidebar -->
-	<aside class="sidebar" class:collapsed={!sidebarOpen}>
+	<!-- Left Sidebar (drawer on phones) -->
+	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen}>
 		<div class="sidebar-header">
 			<a href="/" class="sidebar-brand" title="Enclave home">
 				<span class="brand-mark">
@@ -368,7 +470,7 @@
 						{/each}
 					{/if}
 
-					{#each regularPages as doc (doc.id)}
+					{#each visiblePages as doc (doc.id)}
 						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
 							oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
 							<span class="tree-item-icon">
@@ -385,6 +487,12 @@
 							</span>
 						</a>
 					{/each}
+
+					{#if !showAllPages && regularPages.length > PAGE_CAP}
+						<button class="tree-show-all" onclick={() => (showAllPages = true)}>
+							Show all {regularPages.length} pages
+						</button>
+					{/if}
 
 					{#if documents.length === 0}
 						<div class="tree-empty">
@@ -436,7 +544,7 @@
 									<button class="row-btn" onclick={() => restoreDocument(doc.id)} title="Restore">
 										<Icon name="upload" size={13} />
 									</button>
-									<button class="row-btn danger-row" onclick={() => deleteDocumentPermanently(doc.id)} title="Delete permanently">
+									<button class="row-btn danger-row" onclick={() => (confirmDelete = doc)} title="Delete permanently">
 										<Icon name="trash" size={13} />
 									</button>
 								</span>
@@ -463,7 +571,7 @@
 						<button class="icon-btn" onclick={() => theme.toggle()} title="Toggle theme">
 							<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} />
 						</button>
-						<button class="icon-btn" onclick={() => (settingsOpen = true)} title="Settings">
+						<button class="icon-btn" onclick={() => openUI('settings')} title="Settings">
 							<Icon name="gear" size={15} />
 						</button>
 					</div>
@@ -515,13 +623,76 @@
 		</div>
 	{/if}
 
+	<!-- Tap-away backdrop for the phone drawer -->
+	{#if isMobile && sidebarOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="sidebar-backdrop" onclick={() => (sidebarOpen = false)}></div>
+	{/if}
+
 	<!-- Main Content Area -->
 	<div class="content-area">
-		<UpdateBanner />
+		<!-- Phone top bar (hidden on desktop): drawer trigger + search -->
+		<header class="mobile-topbar">
+			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Menu" title="Menu">
+				<Icon name="menu" size={18} />
+			</button>
+			<a href="/" class="topbar-brand">Enclave</a>
+			<div class="topbar-spacer"></div>
+			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
+				<Icon name="search" size={18} />
+			</button>
+		</header>
 		<div class="main-pane">
 			{@render children?.()}
 		</div>
 	</div>
+
+	<!-- Phone bottom navigation: Home / Graph / Settings -->
+	{#if isMobile && !currentDocId}
+		<nav class="bottom-nav" aria-label="Main">
+			<a href="/" class="nav-tab" class:active={currentPath === '/'} onclick={() => haptic()} aria-current={currentPath === '/' ? 'page' : undefined}>
+				<Icon name="home" size={20} />
+				<span>Home</span>
+			</a>
+			<a href="/graph" class="nav-tab" class:active={currentPath === '/graph'} onclick={() => haptic()} aria-current={currentPath === '/graph' ? 'page' : undefined}>
+				<Icon name="graph" size={20} />
+				<span>Graph</span>
+			</a>
+			<button class="nav-tab" class:active={settingsOpen} onclick={() => { openUI('settings'); haptic(); }}>
+				<Icon name="gear" size={20} />
+				<span>Settings</span>
+			</button>
+		</nav>
+	{/if}
+
+	<!-- Snackbar: transient feedback + undo -->
+	{#if snackbar}
+		<div class="snackbar" role="status">
+			<span class="snack-msg">{snackbar.msg}</span>
+			{#if snackbar.undo}
+				<button class="snack-undo" onclick={() => { snackbar!.undo?.(); snackbar = null; }}>{snackbar.undoLabel}</button>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- In-app confirm for permanent delete -->
+	{#if confirmDelete}
+		{@const doc = confirmDelete}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="confirm-backdrop" role="alertdialog" aria-modal="true" aria-label="Confirm permanent delete" onclick={() => (confirmDelete = null)}>
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="confirm-dialog" onclick={(e: MouseEvent) => e.stopPropagation()}>
+				<h3>Delete permanently?</h3>
+				<p>"{doc.title || 'Untitled'}" will be gone forever. This cannot be undone.</p>
+				<div class="confirm-actions">
+					<button class="confirm-btn secondary" onclick={() => (confirmDelete = null)}>Cancel</button>
+					<button class="confirm-btn danger" onclick={() => { deleteDocumentPermanently(doc.id); confirmDelete = null; }}>Delete permanently</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Command Palette Overlay -->
 	{#if commandPaletteOpen}
@@ -618,6 +789,45 @@
 		height: 100vh;
 		overflow: hidden;
 	}
+
+	/* ── Phone drawer backdrop + top bar (hidden on desktop) ── */
+	.sidebar-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 125;
+		background: var(--color-overlay);
+	}
+	.mobile-topbar {
+		display: none;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		padding-top: calc(8px + env(safe-area-inset-top));
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface);
+		flex-shrink: 0;
+	}
+	.topbar-brand {
+		font-size: 15px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		color: var(--color-text);
+		text-decoration: none;
+	}
+	.topbar-spacer { flex: 1; }
+	.topbar-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border: none;
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--color-text);
+		padding: 0;
+	}
+	.topbar-btn:active { background: var(--color-surface-hover); }
 
 	/* ── Sidebar ── */
 	.sidebar {
@@ -793,6 +1003,20 @@
 		font-size: 11px;
 		font-family: var(--font-mono);
 	}
+	.tree-show-all {
+		display: block;
+		width: 100%;
+		border: 1px dashed var(--color-border-strong);
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--color-text-muted);
+		font-size: 13px;
+		font-family: inherit;
+		padding: 8px;
+		margin-top: 6px;
+		cursor: pointer;
+	}
+	.tree-show-all:hover { color: var(--color-accent); border-color: var(--color-accent); }
 
 	.tag-list {
 		display: flex;
@@ -1072,5 +1296,154 @@
 		text-align: center;
 		color: var(--color-text-faint);
 		font-size: 13px;
+	}
+
+	/* ── Snackbar ── */
+	.bottom-nav { display: none; }
+	.snackbar {
+		position: fixed;
+		left: 50%;
+		transform: translateX(-50%);
+		bottom: 24px;
+		z-index: 500;
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		background: var(--color-text);
+		color: var(--color-bg);
+		border-radius: 999px;
+		padding: 10px 18px;
+		font-size: 13px;
+		box-shadow: var(--shadow-lg);
+		max-width: 90vw;
+	}
+	.snack-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.snack-undo {
+		background: none;
+		border: none;
+		color: var(--color-accent);
+		font-weight: 600;
+		font-size: 13px;
+		font-family: inherit;
+		cursor: pointer;
+		padding: 0;
+		flex-shrink: 0;
+	}
+
+	/* ── In-app confirm dialog (permanent delete) ── */
+	.confirm-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 450;
+		background: var(--color-overlay);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 20px;
+	}
+	.confirm-dialog {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 14px;
+		width: 360px;
+		max-width: 100%;
+		padding: 20px;
+		box-shadow: var(--shadow-lg);
+	}
+	.confirm-dialog h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+	.confirm-dialog p { font-size: 13px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 18px; word-break: break-word; }
+	.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+	.confirm-btn {
+		border: none;
+		border-radius: var(--radius-md);
+		padding: 8px 14px;
+		font-size: 13px;
+		font-weight: 500;
+		font-family: inherit;
+		cursor: pointer;
+	}
+	.confirm-btn.secondary { background: var(--color-surface-hover); color: var(--color-text); border: 1px solid var(--color-border); }
+	.confirm-btn.danger { background: var(--color-danger); color: #fff; }
+
+	/* ── Phone layout ── */
+	@media (max-width: 768px) {
+		.sidebar,
+		.sidebar.collapsed,
+		:global([data-density="narrow"]) .sidebar,
+		:global([data-density="wide"]) .sidebar {
+			position: fixed;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			z-index: 130;
+			width: 280px;
+			min-width: 280px;
+			transform: translateX(-105%);
+			transition: transform 0.22s ease;
+			box-shadow: var(--shadow-lg);
+		}
+		.sidebar.open { transform: translateX(0); }
+		.sidebar-toggle { display: none; }
+
+		.mobile-topbar { display: flex; }
+
+		/* Touch: no hover — row actions must be tappable without a long-press. */
+		.tree-item-actions { display: flex; }
+
+		/* Sidebar footer pads for gesture bar. */
+		.sidebar-footer { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+		/* Bottom navigation: Home / Graph / Settings. */
+		.bottom-nav {
+			display: flex;
+			position: fixed;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			z-index: 110;
+			background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+			border-top: 1px solid var(--color-border);
+			padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+		}
+		.nav-tab {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 2px;
+			background: none;
+			border: none;
+			color: var(--color-text-faint);
+			font-size: 11px;
+			font-family: inherit;
+			padding: 6px 0;
+			border-radius: var(--radius-md);
+			text-decoration: none;
+			cursor: pointer;
+			transition: color 0.15s;
+		}
+		.nav-tab.active { color: var(--color-accent); }
+		.nav-tab:active { background: var(--color-surface-hover); }
+
+		/* Keep page content clear of the fixed nav. */
+		.main-pane { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+		/* Snackbar floats above the nav. */
+		.snackbar {
+			bottom: calc(76px + env(safe-area-inset-bottom));
+			max-width: calc(100vw - 32px);
+		}
+
+		/* Command palette: near-full-screen, thumb-reachable. */
+		.overlay { padding-top: 8vh; align-items: flex-start; }
+		.command-palette {
+			width: 94vw;
+			max-width: 94vw;
+			max-height: 82vh;
+		}
+		.palette-input-wrap { padding: 14px 16px; }
+		.palette-item { padding: 12px 10px; }
 	}
 </style>
