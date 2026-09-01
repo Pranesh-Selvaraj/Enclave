@@ -57,15 +57,18 @@
 
 	.sheet {
 		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
+		left: 8px;
+		right: 8px;
+		bottom: 8px;
 		z-index: 401;
-		background: var(--color-surface);
-		border-top: 1px solid var(--color-border);
-		border-radius: 18px 18px 0 0;
-		padding: 8px 12px calc(14px + env(safe-area-inset-bottom));
-		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+		/* Liquid glass: translucent + heavy blur over the page. */
+		background: color-mix(in srgb, var(--color-surface) 62%, transparent);
+		backdrop-filter: blur(28px) saturate(170%);
+		-webkit-backdrop-filter: blur(28px) saturate(170%);
+		border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+		border-radius: 22px;
+		padding: 8px 10px calc(14px + env(safe-area-inset-bottom));
+		box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4);
 		animation: sheet-up 0.22s ease;
 	}
 

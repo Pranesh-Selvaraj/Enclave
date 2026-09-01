@@ -19,6 +19,8 @@ use uuid::Uuid;
 pub struct Peer {
     pub id: String,
     pub host: String,
+    #[serde(default)]
+    pub hosts: Vec<String>,
     pub port: u16,
     pub connected: bool,
     pub name: String,
@@ -140,41 +142,65 @@ impl NetworkState {
         });
 
         // mDNS browse → connect to discovered peers.
-        let (discovery_tx, mut discovery_rx) = mpsc::unbounded_channel::<(String, String, u16)>();
+        let (discovery_tx, mut discovery_rx) = mpsc::unbounded_channel::<(String, Vec<String>, u16)>();
         let mdns_handle = match mdns::start(peer_id.clone(), port, discovery_tx).await {
-            Ok(h) => h,
+            Ok(h) => Some(h),
             Err(e) => {
-                let _ = shutdown_tx.send(true);
-                inner.ws_shutdown = None;
-                inner.port = 0;
-                return Err(e);
+                // ponytail: mDNS is best-effort — some networks block it.
+                // Keep the WS server running so manual connect_peer still
+                // works; the UI surfaces the warning.
+                eprintln!("mDNS unavailable (manual peer connect still works): {e}");
+                None
             }
         };
-        inner.mdns_handle = Some(mdns_handle);
+        inner.mdns_handle = mdns_handle;
 
         let net = self.shared();
         tokio::spawn(async move {
-            while let Some((pid, host, port)) = discovery_rx.recv().await {
+            while let Some((pid, hosts, port)) = discovery_rx.recv().await {
                 {
                     let inner = net.inner().read().await;
                     if pid == inner.peer_id || inner.sessions.contains_key(&pid) {
                         continue;
                     }
                 }
+                let host = hosts.first().cloned().unwrap_or_default();
                 {
                     let mut inner = net.inner().write().await;
                     inner.peers.insert(
                         pid.clone(),
-                        Peer { id: pid.clone(), host: host.clone(), port, connected: false, name: String::new() },
+                        Peer { id: pid.clone(), host: host.clone(), hosts: hosts.clone(), port, connected: false, name: String::new() },
                     );
                 }
-                if let Err(e) = ws::connect(&pid, &host, port, net.clone()).await {
+                if let Err(e) = ws::connect(&pid, &hosts, &port, net.clone()).await {
                     eprintln!("WS connect to {pid}@{host}:{port} failed: {e}");
                 }
             }
         });
 
         Ok(())
+    }
+
+    /// Manually dial a peer by host:port (mDNS-blocked networks). Creates a
+    /// peer record so the UI shows it and the redial loop can keep it alive.
+    pub async fn connect_peer(self: &Arc<Self>, host: &str, port: u16) -> Result<(), String> {
+        let pid = {
+            let inner = self.inner().read().await;
+            if inner.mdns_handle.is_none() && inner.port == 0 {
+                return Err("Network is not running".into());
+            }
+            // A synthetic peer id: manual dials aren't discoverable via
+            // mDNS, so sessions key by host:port instead of a real id.
+            format!("manual:{host}:{port}")
+        };
+        {
+            let mut inner = self.inner().write().await;
+            inner.peers.insert(
+                pid.clone(),
+                Peer { id: pid.clone(), host: host.to_string(), hosts: vec![host.to_string()], port, connected: false, name: String::new() },
+            );
+        }
+        ws::connect(&pid, &[host.to_string()], &port, self.clone()).await
     }
 
     /// Send a raw JSON payload to a connected peer. No-op if not connected.
@@ -252,23 +278,58 @@ impl NetworkState {
                     } else if inner.sessions.contains_key(&pid) {
                         None
                     } else {
-                        inner.peers.get(&pid).map(|p| (p.host.clone(), p.port))
+                        inner.peers.get(&pid).map(|p| (p.hosts.clone(), p.port))
                     }
                 };
-                let Some((host, port)) = dial else { break };
-                let _ = ws::connect(&pid, &host, port, net.clone()).await;
+                let Some((hosts, port)) = dial else { break };
+                let _ = ws::connect(&pid, &hosts, &port, net.clone()).await;
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             }
         });
     }
 
-    /// Register an established session under the peer's id.
-    pub(crate) async fn register_session(&self, peer_id: &str, name: &str, tx: mpsc::UnboundedSender<String>) {
+    /// Register an established session under the peer's id (learned from its
+    /// hello). Creates/updates the peer record, and drops any stale manual
+    /// connect record for the same host:port so the UI shows no ghosts.
+    pub(crate) async fn register_session(
+        &self,
+        peer_id: &str,
+        name: &str,
+        host: &str,
+        port: u16,
+        tx: mpsc::UnboundedSender<String>,
+    ) {
         let mut inner = self.inner.write().await;
         inner.sessions.insert(peer_id.to_string(), tx);
-        if let Some(peer) = inner.peers.get_mut(peer_id) {
-            peer.connected = true;
-            peer.name = name.to_string();
+        let stale: Vec<String> = inner
+            .peers
+            .iter()
+            .filter(|(k, p)| k.starts_with("manual:") && p.host == host && p.port == port)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in stale {
+            inner.peers.remove(&k);
+        }
+        match inner.peers.get_mut(peer_id) {
+            Some(peer) => {
+                peer.connected = true;
+                peer.name = name.to_string();
+                peer.host = host.to_string();
+                peer.port = port;
+            }
+            None => {
+                inner.peers.insert(
+                    peer_id.to_string(),
+                    Peer {
+                        id: peer_id.to_string(),
+                        host: host.to_string(),
+                        hosts: vec![host.to_string()],
+                        port,
+                        connected: true,
+                        name: name.to_string(),
+                    },
+                );
+            }
         }
     }
 
@@ -306,7 +367,7 @@ mod tests {
         let b_id = b.status().await.local_peer_id.clone();
         b.start("bob", key).await.unwrap();
 
-        ws::connect(&a_id, "127.0.0.1", a_status.port, b.clone())
+        ws::connect(&a_id, &["127.0.0.1".to_string()], &a_status.port, b.clone())
             .await
             .expect("dial should succeed");
 
@@ -342,6 +403,42 @@ mod tests {
         a.stop().await.unwrap();
     }
 
+    /// The dial must fall through advertised addresses: an unroutable first
+    /// host must not prevent connecting via the second. (192.0.2.1 is
+    /// TEST-NET-1, documented non-routable — machines without a route to it
+    /// fail fast with ENETUNREACH; machines that route it would just time
+    /// out, hence the short dial timeout below.)
+    #[tokio::test]
+    async fn connect_falls_through_dead_hosts() {
+        let a = Arc::new(NetworkState::new());
+        let b = Arc::new(NetworkState::new());
+        let key = crate::crypto::derive_sync_key(b"same-vault-key");
+        a.start("alice", key).await.unwrap();
+        let a_status = a.status().await;
+        let a_id = a_status.local_peer_id.clone();
+        b.start("bob", key).await.unwrap();
+
+        ws::connect(
+            &a_id,
+            &["192.0.2.1".to_string(), "127.0.0.1".to_string()],
+            &a_status.port,
+            b.clone(),
+        )
+        .await
+        .expect("dial should succeed via the second host");
+
+        let hello = {
+            let mut rx = a.message_rx.lock().await;
+            rx.as_mut().unwrap().recv().await.unwrap()
+        };
+        let hello_json: serde_json::Value = serde_json::from_str(&hello.payload).unwrap();
+        assert_eq!(hello_json["kind"], "hello");
+        assert_eq!(hello_json["peer_id"], b.status().await.local_peer_id);
+
+        b.stop().await.unwrap();
+        a.stop().await.unwrap();
+    }
+
     /// A peer with a different vault key must be rejected: no session is
     /// registered on either side and no payload ever flows.
     #[tokio::test]
@@ -353,7 +450,7 @@ mod tests {
         let a_id = a_status.local_peer_id.clone();
         b.start("mallory", crate::crypto::derive_sync_key(b"vault-B")).await.unwrap();
 
-        ws::connect(&a_id, "127.0.0.1", a_status.port, b.clone())
+        ws::connect(&a_id, &["127.0.0.1".to_string()], &a_status.port, b.clone())
             .await
             .expect("dial should succeed");
 

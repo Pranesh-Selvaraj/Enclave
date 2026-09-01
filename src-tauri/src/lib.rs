@@ -491,6 +491,12 @@ async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.network.stop().await
 }
 
+/// Manual peer connect for networks where mDNS discovery is blocked.
+#[tauri::command(async)]
+async fn connect_peer(state: tauri::State<'_, AppState>, host: String, port: u16) -> Result<(), String> {
+    state.network.connect_peer(&host, port).await
+}
+
 #[tauri::command(async)]
 async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_network::NetworkStatus, String> {
     Ok(state.network.status().await)
@@ -815,6 +821,7 @@ pub fn run() {
             start_network,
             stop_network,
             network_status,
+            connect_peer,
             // desktop wallpaper widget
             #[cfg(desktop)]
             toggle_widget,

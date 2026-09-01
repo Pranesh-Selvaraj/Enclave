@@ -1447,13 +1447,19 @@
 			font-size: 24px;
 		}
 
-		/* Page-info popover becomes a bottom sheet on phones. */
+		/* Page-info popover becomes a glass bottom sheet on phones. */
 		.export-menu {
 			position: fixed;
 			left: 12px;
 			right: 12px;
 			bottom: calc(16px + env(safe-area-inset-bottom));
 			top: auto;
+			background: color-mix(in srgb, var(--color-surface) 62%, transparent);
+			backdrop-filter: blur(28px) saturate(170%);
+			-webkit-backdrop-filter: blur(28px) saturate(170%);
+			border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+			border-radius: 18px;
+			box-shadow: 0 8px 36px rgba(0, 0, 0, 0.4);
 		}
 		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
 		.doc-title-input { font-size: 24px; }
