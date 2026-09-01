@@ -20,6 +20,11 @@
 			visible = false;
 			return;
 		}
+		// Inside a table the TableMenu (row/column controls) takes over.
+		if (editor.isActive('table')) {
+			visible = false;
+			return;
+		}
 
 		// Hoist isActive reads out of the template: with the reactive editor
 		// proxy they'd re-subscribe on every transaction and rerender on each

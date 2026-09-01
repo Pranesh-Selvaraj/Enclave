@@ -80,12 +80,18 @@
 		// Move the caret to the click point so Insert/Paragraph/Format act
 		// where the user right-clicked (browsers don't move the caret on
 		// right-click in contenteditable). Don't disturb an existing selection.
-		const coords = ed.view.posAtCoords({ left: e.clientX, top: e.clientY });
-		if (coords) {
-			const { from, to } = ed.state.selection;
-			if (from >= coords.pos || coords.pos >= to) {
-				ed.chain().setTextSelection(coords.pos).run();
+		// ponytail: posAtCoords can be flaky in webviews — a failure here must
+		// never kill the menu; it just leaves the caret where it was.
+		try {
+			const coords = ed.view.posAtCoords({ left: e.clientX, top: e.clientY });
+			if (coords) {
+				const { from, to } = ed.state.selection;
+				if (from >= coords.pos || coords.pos >= to) {
+					ed.chain().setTextSelection(coords.pos).run();
+				}
 			}
+		} catch {
+			/* caret repositioning is best-effort */
 		}
 		const { empty, from: selFrom, to: selTo } = ed.state.selection;
 		canEdit = !empty && selFrom !== selTo && ed.state.doc.textBetween(selFrom, selTo, ' ').trim().length > 0;
