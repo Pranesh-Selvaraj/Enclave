@@ -107,35 +107,35 @@ import { makeReactive } from './reactivity.js';
 	}
 
 	:global(.tiptap-editor h1) {
-		font-size: 2em;
+		font-size: 1.8em;
 		font-weight: 700;
-		margin: 0.5em 0 0.25em;
+		margin: 0.4em 0 0.2em;
 	}
 
 	:global(.tiptap-editor h2) {
-		font-size: 1.5em;
-		font-weight: 600;
-		margin: 0.5em 0 0.25em;
-	}
-
-	:global(.tiptap-editor h3) {
-		font-size: 1.25em;
+		font-size: 1.35em;
 		font-weight: 600;
 		margin: 0.4em 0 0.2em;
 	}
 
+	:global(.tiptap-editor h3) {
+		font-size: 1.15em;
+		font-weight: 600;
+		margin: 0.3em 0 0.15em;
+	}
+
 	:global(.tiptap-editor p) {
-		margin: 0.25em 0;
-		line-height: 1.7;
+		margin: 0.2em 0;
+		line-height: 1.55;
 	}
 
 	:global(.tiptap-editor ul, .tiptap-editor ol) {
-		padding-left: 1.5em;
-		margin: 0.25em 0;
+		padding-left: 1.4em;
+		margin: 0.2em 0;
 	}
 
 	:global(.tiptap-editor li) {
-		margin: 0.15em 0;
+		margin: 0.1em 0;
 	}
 
 	:global(.tiptap-editor blockquote) {
@@ -157,8 +157,8 @@ import { makeReactive } from './reactivity.js';
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		padding: 1em;
-		margin: 0.5em 0;
+		padding: 0.8em;
+		margin: 0.4em 0;
 		overflow-x: auto;
 	}
 
@@ -170,20 +170,20 @@ import { makeReactive } from './reactivity.js';
 	:global(.tiptap-editor hr) {
 		border: none;
 		border-top: 1px solid var(--color-border);
-		margin: 1em 0;
+		margin: 0.7em 0;
 	}
 
 	/* ── Tables ── */
 	:global(.tiptap-editor table) {
 		border-collapse: collapse;
 		width: 100%;
-		margin: 0.5em 0;
+		margin: 0.4em 0;
 	}
 
 	:global(.tiptap-editor th),
 	:global(.tiptap-editor td) {
 		border: 1px solid var(--color-border);
-		padding: 6px 10px;
+		padding: 4px 8px;
 		text-align: left;
 		vertical-align: top;
 	}
@@ -281,8 +281,8 @@ import { makeReactive } from './reactivity.js';
 		border-left: 4px solid var(--color-accent);
 		background: color-mix(in srgb, var(--color-accent) 7%, transparent);
 		border-radius: var(--radius-md);
-		padding: 12px 16px;
-		margin: 0.75em 0;
+		padding: 9px 14px;
+		margin: 0.5em 0;
 	}
 
 	:global(.tiptap-editor [data-callout] > :first-child) { margin-top: 0; }
@@ -306,8 +306,8 @@ import { makeReactive } from './reactivity.js';
 	/* ── Blockquotes ── */
 	:global(.tiptap-editor blockquote) {
 		border-left: 3px solid var(--color-border-strong);
-		padding: 2px 16px;
-		margin: 0.75em 0;
+		padding: 1px 14px;
+		margin: 0.5em 0;
 		color: var(--color-text-muted);
 	}
 
@@ -315,8 +315,8 @@ import { makeReactive } from './reactivity.js';
 	:global(.tiptap-editor .toggle-block) {
 		display: flex;
 		align-items: flex-start;
-		gap: 6px;
-		margin: 0.35em 0;
+		gap: 4px;
+		margin: 0.2em 0;
 	}
 
 	:global(.tiptap-editor .toggle-chevron) {
