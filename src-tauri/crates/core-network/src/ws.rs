@@ -49,7 +49,7 @@ pub async fn accept_loop(
                                     return;
                                 }
                             };
-                            if let Err(e) = session(ws, net, addr.to_string()).await {
+                            if let Err(e) = session(ws, net, addr.to_string(), addr.ip().to_string(), addr.port()).await {
                                 eprintln!("WS peer {addr} error: {e}");
                             }
                         });
@@ -72,23 +72,40 @@ pub async fn accept_loop(
 /// returns as soon as the socket + handshake are up).
 pub async fn connect(
     peer_id: &str,
-    host: &str,
-    port: u16,
+    hosts: &[String],
+    port: &u16,
     net: std::sync::Arc<NetworkState>,
 ) -> Result<(), String> {
-    let url = format!("ws://{host}:{port}");
-    let ws = tokio_tungstenite::connect_async(&url)
-        .await
-        .map_err(|e| format!("{url}: {e}"))?
-        .0;
-    let net = net.clone();
-    let peer_addr = format!("{peer_id}@{url}");
-    tokio::spawn(async move {
-        if let Err(e) = session(ws, net, peer_addr.clone()).await {
-            eprintln!("WS peer {peer_addr} error: {e}");
+    // Try every advertised address — a multi-homed peer can resolve to a
+    // wrong-interface IP (VPN/docker), and mDNS won't re-fire, so the dial
+    // must fall through the list.
+    let mut last_err = "no addresses to try".to_string();
+    for host in hosts {
+        let url = format!("ws://{host}:{port}");
+        // Bound each dial: an unroutable/dead host must not stall discovery.
+        let dial = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio_tungstenite::connect_async(&url),
+        )
+        .await;
+        match dial {
+            Ok(Ok((ws, _))) => {
+                let net = net.clone();
+                let peer_addr = format!("{peer_id}@{url}");
+                let host = host.clone();
+                let port = *port;
+                tokio::spawn(async move {
+                    if let Err(e) = session(ws, net, peer_addr.clone(), host, port).await {
+                        eprintln!("WS peer {peer_addr} error: {e}");
+                    }
+                });
+                return Ok(());
+            }
+            Ok(Err(e)) => last_err = format!("{url}: {e}"),
+            Err(_) => last_err = format!("{url}: dial timed out"),
         }
-    });
-    Ok(())
+    }
+    Err(last_err)
 }
 
 /// One step of the handshake: wait for a frame of `kind`, returning its
@@ -141,6 +158,8 @@ async fn session<S>(
     ws: WebSocketStream<S>,
     net: std::sync::Arc<NetworkState>,
     peer_addr: String,
+    host: String,
+    port: u16,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -233,7 +252,7 @@ where
                         if let Some(v) = &parsed {
                             if v["kind"] == "hello" {
                                 if let (Some(pid), Some(name)) = (v["peer_id"].as_str(), v["name"].as_str()) {
-                                    net.register_session(pid, name, out_tx.clone()).await;
+                                    net.register_session(pid, name, &host, port, out_tx.clone()).await;
                                     registered = Some(pid.to_string());
                                     conn_id = pid.to_string();
                                 }

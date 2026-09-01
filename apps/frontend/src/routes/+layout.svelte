@@ -152,6 +152,22 @@
 	} | null>(null);
 	let lastSync = $state('');
 	const connectedCount = $derived(networkStatus?.peers.filter(p => p.connected).length ?? 0);
+	let peerHost = $state('');
+
+	async function addPeer() {
+		const input = peerHost.trim();
+		peerHost = '';
+		if (!input) return;
+		// Accept "host" (default port 4242) or "host:port".
+		const m = /^([^:]+)(?::(\d{1,5}))?$/.exec(input);
+		if (!m) return;
+		const port = m[2] ? Number(m[2]) : 4242;
+		try {
+			await invoke('connect_peer', { host: m[1], port });
+		} catch (e) {
+			console.error('Failed to connect to peer:', e);
+		}
+	}
 
 	function timeAgo(ts: number): string {
 		const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -541,6 +557,15 @@
 		return () => unlisten?.();
 	});
 
+	// Desktop widget → main window navigation. Guarded so the widget window
+	// itself (which loads this layout for /widget) doesn't navigate away.
+	$effect(() => {
+		if (currentPath.startsWith('/widget')) return;
+		let unlisten: (() => void) | undefined;
+		listen<string>('open-doc', (e) => goto(`/${e.payload}`)).then((fn) => (unlisten = fn));
+		return () => unlisten?.();
+	});
+
 	// Android: lock the vault when the app loses visibility (app switcher,
 	// screen off, another app on top). Desktop keeps its behavior — minimizing
 	// a window must not wipe the session (issue #2, docs/android-mobile.md).
@@ -560,7 +585,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if currentPath.startsWith('/capture')}
+{#if currentPath.startsWith('/capture') || currentPath.startsWith('/widget')}
 	{@render children?.()}
 {:else if !vaultUnlocked}
 	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
@@ -813,15 +838,32 @@
 					<div class="footer-actions">
 						<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
 							<Icon name="network" size={15} />
+							<span class="btn-label">Sync</span>
 						</button>
 						<button class="icon-btn" onclick={() => theme.toggle()} title="Toggle theme">
 							<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} />
+							<span class="btn-label">Theme</span>
 						</button>
 						<button class="icon-btn" onclick={() => openUI('settings')} title="Settings">
 							<Icon name="settings" size={15} />
+							<span class="btn-label">Settings</span>
 						</button>
 					</div>
 				</div>
+				{#if networkRunning}
+					<div class="peer-add">
+						<input
+							class="peer-add-input"
+							bind:value={peerHost}
+							placeholder="Add peer — 192.168.1.5:4242"
+							aria-label="Add peer by address"
+							onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addPeer(); } }}
+						/>
+						<button class="peer-add-btn" onclick={addPeer} title="Connect">
+							<Icon name="plus" size={13} />
+						</button>
+					</div>
+				{/if}
 				{#if networkStatus?.peers?.length}
 					<div class="peer-list">
 						{#each networkStatus.peers as peer}
@@ -959,7 +1001,7 @@
 			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Menu" title="Menu">
 				<Icon name="menu" size={18} />
 			</button>
-			<a href="/" class="topbar-brand"><Logo size={22} /> Enclave</a>
+			<a href="/" class="topbar-brand" title="Home"><Logo size={22} /></a>
 			<div class="topbar-spacer"></div>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
 				<Icon name="search" size={18} />
@@ -1117,7 +1159,7 @@
 </div>
 {/if}
 
-{#if !currentPath.startsWith('/capture')}
+{#if !currentPath.startsWith('/capture') && !currentPath.startsWith('/widget')}
 	<SettingsPanel bind:open={settingsOpen} onlock={() => (vaultUnlocked = false)} />
 
 	<ShortcutsDialog bind:open={shortcutsOpen} />
@@ -1624,6 +1666,38 @@
 		transition: background 0.1s, color 0.1s;
 	}
 	.icon-btn:hover { background: var(--color-surface-hover); color: var(--color-text); }
+	.btn-label { display: none; }
+
+	/* ── Manual peer connect (mDNS-blocked networks) ── */
+	.peer-add {
+		display: flex;
+		gap: 4px;
+	}
+	.peer-add-input {
+		flex: 1;
+		min-width: 0;
+		background: var(--color-surface-hover);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-text);
+		font-size: 11px;
+		font-family: inherit;
+		padding: 5px 8px;
+		outline: none;
+	}
+	.peer-add-input:focus { border-color: var(--color-accent); }
+	.peer-add-input::placeholder { color: var(--color-text-faint); }
+	.peer-add-btn {
+		border: none;
+		border-radius: var(--radius-sm);
+		background: var(--color-accent-subtle);
+		color: var(--color-accent);
+		cursor: pointer;
+		padding: 0 8px;
+		display: flex;
+		align-items: center;
+	}
+	.peer-add-btn:hover { background: var(--color-accent); color: #fff; }
 
 	.peer-list { display: flex; flex-direction: column; gap: 4px; }
 	.peer-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-faint); }
@@ -1855,6 +1929,45 @@
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
+		/* Liquid-glass shell: the topbar floats over scrolling content so the
+		   backdrop blur has something to refract; content pads below it. */
+		.mobile-topbar {
+			position: fixed;
+			top: 0;
+			left: 0;
+			right: 0;
+			z-index: 120;
+			background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+			backdrop-filter: blur(22px) saturate(170%);
+			-webkit-backdrop-filter: blur(22px) saturate(170%);
+			border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+		}
+		.main-pane {
+			padding-top: calc(52px + env(safe-area-inset-top));
+			padding-bottom: calc(76px + env(safe-area-inset-bottom));
+			/* Vibrant ambient blobs behind the glass (Liquid-Glass style). */
+			background:
+				radial-gradient(1100px 700px at 88% -8%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 60%),
+				radial-gradient(900px 640px at -12% 108%, color-mix(in srgb, #4fc3f7 15%, transparent), transparent 55%),
+				radial-gradient(700px 500px at 50% 45%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 70%),
+				var(--color-bg);
+		}
+
+		/* Floating glass bottom nav (pill). */
+		.bottom-nav {
+			left: 12px;
+			right: 12px;
+			bottom: calc(10px + env(safe-area-inset-bottom));
+			border-radius: 24px;
+			border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+			background: color-mix(in srgb, var(--color-surface) 62%, transparent);
+			backdrop-filter: blur(24px) saturate(170%);
+			-webkit-backdrop-filter: blur(24px) saturate(170%);
+			box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
+			padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+		}
+
+		/* Glass drawer — near-full-width sheet with mobile proportions. */
 		.sidebar,
 		.sidebar.collapsed,
 		:global([data-density="narrow"]) .sidebar,
@@ -1864,14 +1977,55 @@
 			bottom: 0;
 			left: 0;
 			z-index: 130;
-			width: 280px;
-			min-width: 280px;
+			width: min(88vw, 380px);
+			min-width: min(88vw, 380px);
 			transform: translateX(-105%);
-			transition: transform 0.22s ease;
+			transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
 			box-shadow: var(--shadow-lg);
+			background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+			backdrop-filter: blur(28px) saturate(170%);
+			-webkit-backdrop-filter: blur(28px) saturate(170%);
+			border-right: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
 		}
-		.sidebar.open { transform: translateX(0); }
+
+		/* Mobile drawer proportions: bigger rows, labeled actions. */
+		.sidebar-header {
+			padding: calc(12px + env(safe-area-inset-top)) 14px 10px;
+		}
+		.brand-name { font-size: 17px; }
+		.side-nav { gap: 4px; padding: 8px 10px; }
+		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); }
+		.section-title { font-size: 12px; }
+		.tree-item {
+			padding: 11px 12px;
+			min-height: 46px;
+			font-size: 15px;
+			border-radius: var(--radius-lg);
+		}
+		.folder-row { min-height: 44px; }
+		.folder-label { font-size: 15px; padding: 8px 6px; }
+		.tag-row { padding: 10px 12px; font-size: 14px; border-radius: var(--radius-lg); }
+		.new-page-btn { padding: 13px 14px; font-size: 15px; border-radius: var(--radius-lg); }
+
+		/* Labeled footer actions instead of a desktop icon cluster. */
+		.sidebar-footer { padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); gap: 10px; }
+		.footer-row { flex-wrap: wrap; }
+		.footer-actions { gap: 6px; flex: 1; }
+		.footer-actions .icon-btn {
+			flex: 1;
+			width: auto;
+			height: 44px;
+			gap: 6px;
+			border-radius: var(--radius-lg);
+			background: var(--color-surface-hover);
+		}
+		.btn-label { display: inline; font-size: 12px; }
+		.peer-add { padding: 0 2px; }
+		.peer-add-input { font-size: 13px; padding: 9px 10px; }
+		.peer-add-btn { padding: 0 14px; }
+
 		.sidebar-toggle { display: none; }
+		.sidebar.open { transform: translateX(0); }
 
 		.mobile-topbar { display: flex; }
 
@@ -1879,23 +2033,6 @@
 		.tree-item-actions { display: flex; }
 		.folder-row .tree-item-actions { display: flex; }
 
-		/* Sidebar footer pads for gesture bar. */
-		.sidebar-footer { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
-
-		/* Bottom navigation: Home / Graph / Settings. */
-		.bottom-nav {
-			display: flex;
-			position: fixed;
-			left: 0;
-			right: 0;
-			bottom: 0;
-			z-index: 110;
-			background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-			backdrop-filter: blur(12px);
-			-webkit-backdrop-filter: blur(12px);
-			border-top: 1px solid var(--color-border);
-			padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
-		}
 		.nav-tab {
 			flex: 1;
 			display: flex;
@@ -1923,8 +2060,7 @@
 		}
 		.nav-tab.active .nav-tab-pill { background: var(--color-accent-subtle); }
 
-		/* Keep page content clear of the fixed nav. */
-		.main-pane { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
 
 		/* Snackbar floats above the nav. */
 		.snackbar {

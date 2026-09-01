@@ -491,6 +491,12 @@ async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.network.stop().await
 }
 
+/// Manual peer connect for networks where mDNS discovery is blocked.
+#[tauri::command(async)]
+async fn connect_peer(state: tauri::State<'_, AppState>, host: String, port: u16) -> Result<(), String> {
+    state.network.connect_peer(&host, port).await
+}
+
 #[tauri::command(async)]
 async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_network::NetworkStatus, String> {
     Ok(state.network.status().await)
@@ -575,8 +581,9 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
     let show = MenuItem::with_id(app, "show", "Show Enclave", true, None::<&str>)?;
     let capture = MenuItem::with_id(app, "capture", "Quick Capture", true, None::<&str>)?;
+    let widget = MenuItem::with_id(app, "widget", "Wallpaper widget", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &capture, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &capture, &widget, &quit])?;
 
     let icon = app
         .default_window_icon()
@@ -596,6 +603,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 }
             }
             "capture" => open_capture_window(app),
+            "widget" => { let _ = toggle_widget(app.clone()); }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -625,6 +633,85 @@ fn open_capture_window(app: &tauri::AppHandle) {
     .inner_size(560.0, 300.0)
     .resizable(true)
     .build();
+}
+
+// ── Wallpaper widget (desktop) ──────────────────────────────────────────────
+// A small frameless, transparent, always-on-top panel pinned to the corner of
+// the primary monitor — the "desktop widget". The /widget route renders a
+// mini dashboard (recents + quick capture) with a transparent background.
+// ponytail: always_on_top (macOS-style floating widget) rather than a true
+// desktop-level window (below app windows) — that needs per-platform window
+// type hints; the floating panel is the portable v1.
+
+#[cfg(desktop)]
+fn widget_window(app: &tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("widget") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let window = tauri::WebviewWindowBuilder::new(app, "widget", tauri::WebviewUrl::App("/widget".into()))
+        .title("Enclave — Widget")
+        .inner_size(320.0, 460.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    // Dock it to the bottom-right of the primary monitor.
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        if let (Ok(scale), Ok(size)) = (window.scale_factor(), window.outer_size()) {
+            let w = (size.width as f64 * scale) as i32;
+            let h = (size.height as f64 * scale) as i32;
+            let area = monitor.work_area();
+            let _ = window.set_position(tauri::PhysicalPosition::new(
+                area.position.x + area.size.width as i32 - w - 24,
+                area.position.y + area.size.height as i32 - h - 24,
+            ));
+        }
+    }
+    let _ = window.show();
+    Ok(())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn toggle_widget(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("widget") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+        } else {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    } else {
+        widget_window(&app)?;
+    }
+    Ok(())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn hide_widget(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("widget") {
+        let _ = w.hide();
+    }
+    Ok(())
+}
+
+/// The widget's "open page" action: surface the main window and navigate it.
+#[cfg(desktop)]
+#[tauri::command]
+fn open_doc_from_widget(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+    app.emit("open-doc", id).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -734,6 +821,14 @@ pub fn run() {
             start_network,
             stop_network,
             network_status,
+            connect_peer,
+            // desktop wallpaper widget
+            #[cfg(desktop)]
+            toggle_widget,
+            #[cfg(desktop)]
+            hide_widget,
+            #[cfg(desktop)]
+            open_doc_from_widget,
             // self-update
             updater::app_version,
             updater::check_for_update,

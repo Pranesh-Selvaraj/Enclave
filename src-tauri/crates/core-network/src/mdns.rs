@@ -34,7 +34,7 @@ fn local_ip() -> Result<String, String> {
 pub async fn start(
     peer_id: String,
     port: u16,
-    discovery_tx: tokio::sync::mpsc::UnboundedSender<(String, String, u16)>,
+    discovery_tx: tokio::sync::mpsc::UnboundedSender<(String, Vec<String>, u16)>,
 ) -> Result<MdnsHandle, String> {
     let daemon = ServiceDaemon::new().map_err(|e| format!("mDNS daemon: {e}"))?;
 
@@ -68,19 +68,43 @@ pub async fn start(
                 let Some(id) = info.get_property_val_str("id").map(str::to_string) else {
                     continue;
                 };
-                let Some(host) = info.get_addresses().iter().next().map(|a| a.to_string()) else {
-                    continue;
-                };
                 let port = info.get_port();
                 // Ignore our own advertisement.
-                if id != peer_id {
-                    let _ = discovery_tx.send((id, host, port));
+                if id == peer_id {
+                    continue;
+                }
+                // Try every advertised address, private IPv4 first — a
+                // multi-homed device (WiFi + VPN/docker) can resolve to a
+                // wrong-interface IP, and mDNS does not reliably re-fire
+                // resolved events, so the dial must fall through the list.
+                let mut hosts: Vec<String> = info.get_addresses().iter().map(|a| a.to_string()).collect();
+                hosts.sort_by_key(|h| addr_priority(h));
+                if !hosts.is_empty() {
+                    let _ = discovery_tx.send((id, hosts, port));
                 }
             }
         }
     });
 
     Ok(MdnsHandle { daemon })
+}
+
+/// Prefer private IPv4 (RFC 1918), then other IPv4, then IPv6.
+fn addr_priority(addr: &str) -> u8 {
+    if let Ok(ip) = addr.parse::<IpAddr>() {
+        match ip {
+            IpAddr::V4(v4) => {
+                if v4.is_private() {
+                    0
+                } else {
+                    1
+                }
+            }
+            IpAddr::V6(_) => 2,
+        }
+    } else {
+        3
+    }
 }
 
 pub fn stop(handle: MdnsHandle) -> Result<(), String> {
