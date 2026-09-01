@@ -1,5 +1,6 @@
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
+import Link from '@tiptap/extension-link';
 import { mount, unmount } from 'svelte';
 import CodeBlockView from './blocks/CodeBlockView.svelte';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -28,6 +29,10 @@ export function editorExtensions() {
 		Placeholder,
 		TaskList,
 		TaskItem.configure({ nested: true }),
+		// External links: clickable <a> marks. openOnClick keeps the standard
+		// behavior (Cmd/Ctrl+click opens the system browser, plain click
+		// keeps the caret editable); linkOnPaste turns pasted URLs into links.
+		Link.configure({ openOnClick: true, linkOnPaste: true }),
 		Callout,
 		ToggleBlock,
 		ToggleSummary,

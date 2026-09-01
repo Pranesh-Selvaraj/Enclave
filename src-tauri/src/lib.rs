@@ -108,6 +108,52 @@ fn get_document_list(state: tauri::State<AppState>) -> Result<Vec<core_db::Docum
     with_db(&state, |db| core_db::query_documents(db).map_err(|e| e.to_string()))
 }
 
+// ── Folder Commands ─────────────────────────────────────────────────────────
+
+#[tauri::command(async)]
+fn get_folders(state: tauri::State<AppState>) -> Result<Vec<core_db::Folder>, String> {
+    with_db(&state, |db| core_db::query_folders(db).map_err(|e| e.to_string()))
+}
+
+#[tauri::command(async)]
+fn create_folder(state: tauri::State<AppState>, name: String) -> Result<core_db::Folder, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        let folder = core_db::Folder {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            created_at: now,
+        };
+        core_db::insert_folder(db, &folder).map_err(|e| e.to_string())?;
+        Ok(folder)
+    })
+}
+
+#[tauri::command(async)]
+fn rename_folder(state: tauri::State<AppState>, id: String, name: String) -> Result<(), String> {
+    with_db(&state, |db| core_db::rename_folder(db, &id, &name).map_err(|e| e.to_string()))
+}
+
+/// Deleting a folder never deletes its pages — they fall back to the root.
+#[tauri::command(async)]
+fn delete_folder(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    with_db(&state, |db| core_db::delete_folder(db, &id).map_err(|e| e.to_string()))
+}
+
+/// Move a page into a folder (folder_id null = root).
+#[tauri::command(async)]
+fn move_document(
+    state: tauri::State<AppState>,
+    id: String,
+    folder_id: Option<String>,
+) -> Result<core_db::Document, String> {
+    with_db(&state, |db| {
+        let now = chrono::Utc::now().to_rfc3339();
+        core_db::move_document(db, &id, folder_id.as_deref(), &now).map_err(|e| e.to_string())?;
+        core_db::query_document(db, &id).map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command(async)]
 fn get_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
     with_db(&state, |db| core_db::query_document(db, &id).map_err(|e| e.to_string()))
@@ -126,6 +172,7 @@ fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_
             is_archived: false,
             rev: 0,
             deleted_at: None,
+            folder_id: None,
         };
         core_db::insert_document(db, &doc).map_err(|e| e.to_string())?;
 
@@ -645,6 +692,12 @@ pub fn run() {
             restore_document,
             get_archived_documents,
             update_document_title,
+            // folders
+            get_folders,
+            create_folder,
+            rename_folder,
+            delete_folder,
+            move_document,
             // blocks
             get_blocks,
             upsert_block,

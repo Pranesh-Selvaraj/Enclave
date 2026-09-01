@@ -23,6 +23,16 @@ pub struct Document {
     /// Tombstone for permanent deletes; NULL while the doc is alive.
     #[serde(default)]
     pub deleted_at: Option<String>,
+    /// Parent folder id; NULL = root (no folder).
+    #[serde(default)]
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +97,11 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_blocks_document
          ON blocks(document_id, sort_order);
+        CREATE TABLE IF NOT EXISTS folders (
+            id           TEXT PRIMARY KEY,
+            name         TEXT NOT NULL,
+            created_at   TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS embeddings (
             block_id    TEXT PRIMARY KEY,
             document_id TEXT NOT NULL,
@@ -111,6 +126,7 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
     // columns to an existing database.
     ensure_column(conn, "documents", "rev", "ALTER TABLE documents ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(conn, "documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TEXT")?;
+    ensure_column(conn, "documents", "folder_id", "ALTER TABLE documents ADD COLUMN folder_id TEXT")?;
     Ok(())
 }
 
@@ -546,11 +562,12 @@ fn row_to_document(row: &rusqlite::Row) -> rusqlite::Result<Document> {
         is_archived: row.get::<_, i32>(5)? != 0,
         rev: row.get(6)?,
         deleted_at: row.get(7)?,
+        folder_id: row.get(8)?,
     })
 }
 
 const DOC_COLS: &str =
-    "SELECT id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at FROM documents";
+    "SELECT id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at, folder_id FROM documents";
 
 pub fn query_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
     let mut stmt = db.prepare(&format!(
@@ -570,15 +587,68 @@ pub fn query_document(db: &Connection, id: &str) -> rusqlite::Result<Document> {
 
 pub fn insert_document(db: &Connection, doc: &Document) -> rusqlite::Result<()> {
     db.execute(
-        "INSERT INTO documents (id, title, created_at, updated_at, is_favorite, is_archived)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO documents (id, title, created_at, updated_at, is_favorite, is_archived, folder_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             doc.id, doc.title, doc.created_at, doc.updated_at,
-            doc.is_favorite as i32, doc.is_archived as i32
+            doc.is_favorite as i32, doc.is_archived as i32, doc.folder_id
         ],
     )?;
     bump_rev(db, &doc.id, &doc.updated_at)?;
     fts_index_doc_title(db, &doc.id, &doc.title)
+}
+
+// ── Folders ──────────────────────────────────────────────────────────────────
+// Folders are vault-local organization (not synced): a peer receiving a doc
+// whose folder_id it doesn't know simply shows it at the root.
+
+pub fn query_folders(db: &Connection) -> rusqlite::Result<Vec<Folder>> {
+    let mut stmt = db.prepare("SELECT id, name, created_at FROM folders ORDER BY name COLLATE NOCASE")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Folder { id: r.get(0)?, name: r.get(1)?, created_at: r.get(2)? })
+    })?;
+    rows.collect()
+}
+
+pub fn insert_folder(db: &Connection, folder: &Folder) -> rusqlite::Result<()> {
+    db.execute(
+        "INSERT INTO folders (id, name, created_at) VALUES (?1, ?2, ?3)",
+        rusqlite::params![folder.id, folder.name, folder.created_at],
+    )
+    .map(|_| ())
+}
+
+pub fn rename_folder(db: &Connection, id: &str, name: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE folders SET name = ?1 WHERE id = ?2",
+        rusqlite::params![name, id],
+    )
+    .map(|_| ())
+}
+
+/// Delete a folder: its pages fall back to the root (folder_id cleared) —
+/// deleting a folder must never delete pages.
+pub fn delete_folder(db: &Connection, id: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET folder_id = NULL, rev = rev + 1 WHERE folder_id = ?1",
+        rusqlite::params![id],
+    )?;
+    db.execute("DELETE FROM folders WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
+}
+
+/// Move a page into a folder (None = root). Bumps rev so the move syncs.
+pub fn move_document(
+    db: &Connection,
+    id: &str,
+    folder_id: Option<&str>,
+    updated_at: &str,
+) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE documents SET folder_id = ?1, rev = rev + 1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![folder_id, updated_at, id],
+    )
+    .map(|_| ())
 }
 
 pub fn update_document_title(db: &Connection, id: &str, title: &str, updated_at: &str) -> rusqlite::Result<()> {
@@ -938,6 +1008,7 @@ pub fn find_or_create_document(db: &Connection, title: &str, now: &str) -> rusql
                 is_archived: false,
                 rev: 0,
                 deleted_at: None,
+                folder_id: None,
             };
             insert_document(db, &doc)?;
             let block = Block {
@@ -989,6 +1060,8 @@ pub fn duplicate_document(db: &Connection, id: &str, now: &str) -> rusqlite::Res
         is_archived: false,
         rev: 0,
         deleted_at: None,
+        // Duplicates stay in the same folder as the original.
+        folder_id: original.folder_id.clone(),
     };
     insert_document(db, &doc)?;
 
@@ -1084,19 +1157,20 @@ pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusql
         }
 
         db.execute(
-            "INSERT INTO documents (id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO documents (id, title, created_at, updated_at, is_favorite, is_archived, rev, deleted_at, folder_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(id) DO UPDATE SET
                  title = excluded.title,
                  updated_at = excluded.updated_at,
                  is_favorite = excluded.is_favorite,
                  is_archived = excluded.is_archived,
                  rev = excluded.rev,
-                 deleted_at = excluded.deleted_at",
+                 deleted_at = excluded.deleted_at,
+                 folder_id = excluded.folder_id",
             rusqlite::params![
                 doc.id, doc.title, doc.created_at, doc.updated_at,
                 doc.is_favorite as i32, doc.is_archived as i32,
-                doc.rev, doc.deleted_at
+                doc.rev, doc.deleted_at, doc.folder_id
             ],
         )?;
         stats.docs_changed += 1;
@@ -1110,6 +1184,51 @@ pub fn sync_merge(db: &Connection, docs: &[Document], blocks: &[Block]) -> rusql
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_crud_move_and_delete() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+
+        let f = Folder { id: "f1".into(), name: "Work".into(), created_at: "c".into() };
+        insert_folder(&conn, &f).unwrap();
+        assert_eq!(query_folders(&conn).unwrap().len(), 1);
+
+        rename_folder(&conn, "f1", "Projects").unwrap();
+        assert_eq!(query_folders(&conn).unwrap()[0].name, "Projects");
+
+        // Move two docs into the folder, one back out to root.
+        for id in ["d1", "d2"] {
+            let doc = Document {
+                id: id.into(),
+                title: id.into(),
+                created_at: "c".into(),
+                updated_at: "u".into(),
+                is_favorite: false,
+                is_archived: false,
+                rev: 0,
+                deleted_at: None,
+                folder_id: None,
+            };
+            insert_document(&conn, &doc).unwrap();
+        }
+        move_document(&conn, "d1", Some("f1"), "u1").unwrap();
+        move_document(&conn, "d2", Some("f1"), "u2").unwrap();
+        let docs = query_documents(&conn).unwrap();
+        assert_eq!(docs.iter().filter(|d| d.folder_id.as_deref() == Some("f1")).count(), 2);
+
+        move_document(&conn, "d1", None, "u3").unwrap();
+        let docs = query_documents(&conn).unwrap();
+        assert_eq!(docs.iter().filter(|d| d.folder_id.is_some()).count(), 1);
+        assert!(docs.iter().any(|d| d.id == "d1" && d.folder_id.is_none()));
+
+        // Deleting a folder clears its pages' folder_id; pages survive.
+        delete_folder(&conn, "f1").unwrap();
+        assert!(query_folders(&conn).unwrap().is_empty());
+        let docs = query_documents(&conn).unwrap();
+        assert_eq!(docs.len(), 2);
+        assert!(docs.iter().all(|d| d.folder_id.is_none()));
+    }
 
     #[test]
     fn like_escape_escapes_wildcards() {
@@ -1301,6 +1420,7 @@ mod tests {
             is_archived: false,
             rev: 0,
             deleted_at: None,
+            folder_id: None,
         };
         insert_document(&conn, &doc).unwrap();
         let block = Block {
@@ -1445,6 +1565,7 @@ mod tests {
                 is_archived: false,
                 rev: 0,
                 deleted_at: None,
+                folder_id: None,
             },
         )
         .unwrap();
@@ -1459,6 +1580,7 @@ mod tests {
                 is_archived: true,
                 rev: 0,
                 deleted_at: None,
+                folder_id: None,
             },
         )
         .unwrap();
@@ -1498,6 +1620,7 @@ mod tests {
                     is_archived: archived,
                     rev: 0,
                     deleted_at: None,
+                    folder_id: None,
                 },
             )
             .unwrap();
@@ -1567,6 +1690,7 @@ mod tests {
             is_archived: false,
             rev,
             deleted_at: None,
+            folder_id: None,
         };
 
         // Seed both sides with the same base doc.

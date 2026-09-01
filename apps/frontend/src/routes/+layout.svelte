@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { invoke, listen } from '$lib/backend.js';
-	import type { Document } from '@enclave/ui';
+	import type { Document, Folder } from '@enclave/ui';
 	import { theme, ShortcutsDialog, Icon, Logo } from '@enclave/ui';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
@@ -165,6 +165,15 @@
 	const currentPath = $derived($page.url.pathname);
 	let contextMenu = $state<{ doc: Document; x: number; y: number } | null>(null);
 
+	// ── Folders ──
+	let folders = $state<Folder[]>([]);
+	let collapsedFolders = $state<Set<string>>(new Set());
+	// Inline name editor: id null = creating a new folder, otherwise renaming.
+	let editingFolder = $state<{ id: string | null; name: string } | null>(null);
+	let folderMenu = $state<{ folder: Folder; x: number; y: number } | null>(null);
+	let confirmFolderDelete = $state<Folder | null>(null);
+	let editingInput: HTMLInputElement | undefined = $state();
+
 	let searchTimer: ReturnType<typeof setTimeout>;
 	let searchResults = $state<{ doc_id: string; doc_title: string; snippet: string }[] | null>(null);
 	let tagsByDoc = $state<Map<string, string[]>>(new Map());
@@ -254,6 +263,80 @@
 		} catch (e) {
 			console.error('Failed to duplicate document:', e);
 		}
+	}
+
+	async function loadFolders() {
+		try {
+			folders = await invoke<Folder[]>('get_folders');
+		} catch (e) {
+			console.error('Failed to load folders:', e);
+		}
+	}
+
+	function persistCollapsedFolders() {
+		try { localStorage.setItem('enclave-collapsed-folders', JSON.stringify([...collapsedFolders])); } catch { /* ignore */ }
+	}
+
+	function toggleFolder(folderId: string) {
+		const next = new Set(collapsedFolders);
+		if (next.has(folderId)) next.delete(folderId);
+		else next.add(folderId);
+		collapsedFolders = next;
+		persistCollapsedFolders();
+	}
+
+	function startCreateFolder() {
+		editingFolder = { id: null, name: '' };
+	}
+
+	function startRenameFolder(folder: Folder) {
+		editingFolder = { id: folder.id, name: folder.name };
+	}
+
+	async function commitFolderName() {
+		if (!editingFolder) return;
+		const target = editingFolder;
+		const name = target.name.trim();
+		editingFolder = null;
+		if (!name) return;
+		try {
+			if (target.id === null) await invoke('create_folder', { name });
+			else await invoke('rename_folder', { id: target.id, name });
+			await loadFolders();
+		} catch (e) {
+			console.error('Failed to save folder:', e);
+		}
+	}
+
+	async function deleteFolder(folder: Folder) {
+		try {
+			await invoke('delete_folder', { id: folder.id });
+			await loadFolders();
+			await loadDocuments();
+			showSnack(`Deleted folder "${folder.name}" — pages kept`);
+		} catch (e) {
+			console.error('Failed to delete folder:', e);
+		}
+	}
+
+	async function moveDocToFolder(docId: string, folderId: string | null) {
+		try {
+			await invoke('move_document', { id: docId, folderId });
+			await loadDocuments();
+			loadTags();
+		} catch (e) {
+			console.error('Failed to move document:', e);
+		}
+	}
+
+	function showFolderContextMenu(e: MouseEvent, folder: Folder) {
+		e.preventDefault();
+		e.stopPropagation();
+		folderMenu = {
+			folder,
+			x: Math.min(e.clientX, window.innerWidth - 190),
+			y: Math.min(e.clientY, window.innerHeight - 120),
+		};
 	}
 
 	// Trash flow: moving a page to trash is undoable — no scary native confirm,
@@ -355,6 +438,8 @@
 		if (e.key === 'Escape') {
 			commandPaletteOpen = false;
 			contextMenu = null;
+			folderMenu = null;
+			if (editingFolder) editingFolder = null;
 			shortcutsOpen = false;
 		}
 	}
@@ -408,17 +493,38 @@
 
 	let favorites = $derived(filteredDocs.filter(d => d.is_favorite));
 	let regularPages = $derived(filteredDocs.filter(d => !d.is_favorite));
+	// Folder grouping: a doc whose folder_id is unknown (e.g. synced from a
+	// peer without that folder) falls back to the root list.
+	let rootPages = $derived(regularPages.filter((d) => !d.folder_id || !folders.some((f) => f.id === d.folder_id)));
+	let docsByFolder = $derived((folderId: string) => regularPages.filter((d) => d.folder_id === folderId));
 	// Window the page tree: rendering thousands of rows at once is the
 	// slowest thing on a big vault. Cap it; one tap reveals the rest.
 	const PAGE_CAP = 120;
 	let showAllPages = $state(false);
-	const visiblePages = $derived(showAllPages ? regularPages : regularPages.slice(0, PAGE_CAP));
+	const visiblePages = $derived(showAllPages ? rootPages : rootPages.slice(0, PAGE_CAP));
 
 	$effect(() => {
 		if (vaultUnlocked) {
 			loadDocuments();
 			loadArchived();
 			loadTags();
+			loadFolders();
+		}
+	});
+
+	// Restore collapsed-folder state once on mount.
+	$effect(() => {
+		try {
+			const saved = JSON.parse(localStorage.getItem('enclave-collapsed-folders') ?? '[]');
+			collapsedFolders = new Set(Array.isArray(saved) ? saved.filter((x) => typeof x === 'string') : []);
+		} catch { /* ignore */ }
+	});
+
+	// Focus the folder name input when inline editing starts.
+	$effect(() => {
+		if (editingFolder) {
+			editingInput?.focus();
+			editingInput?.select();
 		}
 	});
 
@@ -491,7 +597,12 @@
 			<div class="pages-section">
 				<div class="section-head">
 					<span class="section-title">Pages</span>
-					<span class="page-count">{filteredDocs.length}</span>
+					<span class="head-actions">
+						<span class="page-count">{filteredDocs.length}</span>
+						<button class="row-btn" onclick={startCreateFolder} title="New folder">
+							<Icon name="folder" size={13} />
+						</button>
+					</span>
 				</div>
 
 				<div class="page-tree">
@@ -516,6 +627,86 @@
 						{/each}
 					{/if}
 
+					{#if folders.length > 0 || editingFolder?.id === null}
+						<div class="tree-section-title">Folders</div>
+						{#each folders as folder (folder.id)}
+							{@const fdocs = docsByFolder(folder.id)}
+							<div
+								class="folder-row"
+								class:collapsed={collapsedFolders.has(folder.id)}
+								oncontextmenu={(e: MouseEvent) => showFolderContextMenu(e, folder)}
+							>
+								<button class="folder-toggle" onclick={() => toggleFolder(folder.id)} aria-label="Toggle folder" title={collapsedFolders.has(folder.id) ? 'Expand' : 'Collapse'}>
+									<Icon name={collapsedFolders.has(folder.id) ? 'chevronRight' : 'chevronDown'} size={13} />
+								</button>
+								{#if editingFolder?.id === folder.id}
+									<input
+										class="folder-input"
+										bind:value={editingFolder.name}
+										placeholder="Folder name"
+										aria-label="Folder name"
+										bind:this={editingInput}
+										onkeydown={(e: KeyboardEvent) => {
+											if (e.key === 'Enter') { e.preventDefault(); commitFolderName(); }
+											else if (e.key === 'Escape') editingFolder = null;
+										}}
+										onblur={commitFolderName}
+									/>
+								{:else}
+									<button class="folder-label" onclick={() => toggleFolder(folder.id)} title={folder.name}>
+										<Icon name="folder" size={14} />
+										<span class="folder-name">{folder.name}</span>
+										<span class="folder-count">{fdocs.length}</span>
+									</button>
+									<span class="tree-item-actions">
+										<button class="row-btn" onclick={(e: MouseEvent) => { e.stopPropagation(); startRenameFolder(folder); }} title="Rename folder">
+											<Icon name="edit" size={13} />
+										</button>
+										<button class="row-btn danger-row" onclick={(e: MouseEvent) => { e.stopPropagation(); confirmFolderDelete = folder; }} title="Delete folder">
+											<Icon name="trash" size={13} />
+										</button>
+									</span>
+								{/if}
+							</div>
+							{#if !collapsedFolders.has(folder.id)}
+								{#each fdocs as doc (doc.id)}
+									<a href="/{doc.id}" class="tree-item folder-doc" class:active={currentDocId === doc.id}
+										oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
+										<span class="tree-item-icon">
+											<Icon name="page" size={14} />
+										</span>
+										<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+										<span class="tree-item-actions">
+											<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
+												<Icon name="star" size={13} />
+											</button>
+											<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
+												<Icon name="more" size={13} />
+											</button>
+										</span>
+									</a>
+								{/each}
+							{/if}
+						{/each}
+						{#if editingFolder?.id === null}
+							<div class="folder-row">
+								<input
+									class="folder-input"
+									bind:value={editingFolder.name}
+									placeholder="Folder name"
+									aria-label="Folder name"
+									bind:this={editingInput}
+									onkeydown={(e: KeyboardEvent) => {
+										if (e.key === 'Enter') { e.preventDefault(); commitFolderName(); }
+										else if (e.key === 'Escape') editingFolder = null;
+									}}
+									onblur={commitFolderName}
+								/>
+							</div>
+						{/if}
+					{/if}
+
+
 					{#each visiblePages as doc (doc.id)}
 						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
 							oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
@@ -534,9 +725,9 @@
 						</a>
 					{/each}
 
-					{#if !showAllPages && regularPages.length > PAGE_CAP}
+					{#if !showAllPages && rootPages.length > PAGE_CAP}
 						<button class="tree-show-all" onclick={() => (showAllPages = true)}>
-							Show all {regularPages.length} pages
+							Show all {rootPages.length} pages
 						</button>
 					{/if}
 
@@ -661,9 +852,42 @@
 					Duplicate
 				</button>
 				<div class="context-sep"></div>
+				<div class="context-group-label">Move to folder</div>
+				<button class="context-item" class:selected={!contextMenu.doc.folder_id} onclick={() => { moveDocToFolder(contextMenu!.doc.id, null); contextMenu = null; }}>
+					<Icon name="page" size={14} />
+					No folder
+				</button>
+				{#each folders as folder (folder.id)}
+					<button class="context-item" class:selected={contextMenu.doc.folder_id === folder.id} onclick={() => { moveDocToFolder(contextMenu!.doc.id, folder.id); contextMenu = null; }}>
+						<Icon name="folder" size={14} />
+						{folder.name}
+					</button>
+				{/each}
+				<div class="context-sep"></div>
 				<button class="context-item danger" onclick={() => { deleteDocument(contextMenu!.doc.id); contextMenu = null; }}>
 					<Icon name="trash" size={14} />
 					Delete
+				</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Folder Context Menu -->
+	{#if folderMenu}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="context-overlay" onclick={() => (folderMenu = null)}>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="context-menu" style="left:{folderMenu.x}px;top:{folderMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
+				<button class="context-item" onclick={() => { startRenameFolder(folderMenu!.folder); folderMenu = null; }}>
+					<Icon name="edit" size={14} />
+					Rename
+				</button>
+				<div class="context-sep"></div>
+				<button class="context-item danger" onclick={() => { confirmFolderDelete = folderMenu!.folder; folderMenu = null; }}>
+					<Icon name="trash" size={14} />
+					Delete folder
 				</button>
 			</div>
 		</div>
@@ -735,6 +959,24 @@
 				<div class="confirm-actions">
 					<button class="confirm-btn secondary" onclick={() => (confirmDelete = null)}>Cancel</button>
 					<button class="confirm-btn danger" onclick={() => { deleteDocumentPermanently(doc.id); confirmDelete = null; }}>Delete permanently</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- In-app confirm for folder delete (pages are kept, just ungrouped) -->
+	{#if confirmFolderDelete}
+		{@const fld = confirmFolderDelete}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="confirm-backdrop" role="alertdialog" aria-modal="true" aria-label="Confirm folder delete" onclick={() => (confirmFolderDelete = null)}>
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="confirm-dialog" onclick={(e: MouseEvent) => e.stopPropagation()}>
+				<h3>Delete folder?</h3>
+				<p>"{fld.name}" will be deleted. Pages inside it are kept and move to the root — nothing is lost.</p>
+				<div class="confirm-actions">
+					<button class="confirm-btn secondary" onclick={() => (confirmFolderDelete = null)}>Cancel</button>
+					<button class="confirm-btn danger" onclick={() => { deleteFolder(fld); confirmFolderDelete = null; }}>Delete folder</button>
 				</div>
 			</div>
 		</div>
@@ -980,6 +1222,86 @@
 		padding: 1px 7px;
 		border-radius: 10px;
 	}
+	.head-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	/* ── Folder rows ── */
+	.folder-row {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding: 2px 4px;
+		border-radius: var(--radius-md);
+		min-height: 28px;
+	}
+	.folder-row:hover { background: var(--color-surface-hover); }
+	.folder-row .tree-item-actions { display: none; }
+	.folder-row:hover .tree-item-actions { display: flex; }
+	.folder-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: none;
+		color: var(--color-text-faint);
+		cursor: pointer;
+		padding: 0;
+	}
+	.folder-toggle:hover { color: var(--color-text); }
+	.folder-label {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex: 1;
+		min-width: 0;
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		font-size: 14px;
+		font-family: inherit;
+		text-align: left;
+		padding: 3px 4px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+	.folder-label:hover { color: var(--color-text); }
+	.folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.folder-count {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		background: var(--color-surface-hover);
+		border-radius: 10px;
+		padding: 0 7px;
+		flex-shrink: 0;
+	}
+	.folder-doc { padding-left: 24px; }
+	.folder-input {
+		flex: 1;
+		min-width: 0;
+		border: 1px solid var(--color-accent);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font-size: 13px;
+		font-family: inherit;
+		padding: 3px 6px;
+		outline: none;
+	}
+	.context-group-label {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-faint);
+		padding: 6px 10px 2px;
+	}
+	.context-item.selected { color: var(--color-accent); }
 
 	.page-tree {
 		flex: 1;
@@ -1441,6 +1763,7 @@
 
 		/* Touch: no hover — row actions must be tappable without a long-press. */
 		.tree-item-actions { display: flex; }
+		.folder-row .tree-item-actions { display: flex; }
 
 		/* Sidebar footer pads for gesture bar. */
 		.sidebar-footer { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }

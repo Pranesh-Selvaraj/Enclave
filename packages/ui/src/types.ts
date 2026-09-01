@@ -8,6 +8,15 @@ export interface Document {
 	is_archived: boolean;
 	rev?: number;
 	deleted_at?: string | null;
+	/** Parent folder id; null/undefined = root (no folder). */
+	folder_id?: string | null;
+}
+
+/** A folder (page group) as returned by the Rust backend. */
+export interface Folder {
+	id: string;
+	name: string;
+	created_at: string;
 }
 
 /** A content block within a document. */

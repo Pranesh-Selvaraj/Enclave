@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { invoke } from '$lib/backend.js';
-	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu } from '@enclave/editor';
+	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu, EditorContextMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
 	import { htmlToMarkdown } from '@enclave/editor';
 	import { EmojiPicker } from '@enclave/ui';
@@ -742,6 +742,7 @@
 					<PageLinkMenu {editor} allPages={pageList} />
 					<MentionMenu {editor} allPages={pageList} />
 					<DragHandleMenu {editor} />
+					<EditorContextMenu {editor} allPages={pageList} />
 				</div>
 
 				{#if backlinks.length > 0}

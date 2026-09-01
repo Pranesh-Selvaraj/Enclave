@@ -5,4 +5,5 @@ export { default as PageLinkMenu } from './blocks/PageLinkMenu.svelte';
 export { default as MentionMenu } from './blocks/MentionMenu.svelte';
 export { default as TocPanel } from './blocks/TocPanel.svelte';
 export { default as DragHandleMenu } from './blocks/DragHandleMenu.svelte';
+export { default as EditorContextMenu } from './blocks/EditorContextMenu.svelte';
 export { htmlToMarkdown, markdownToJson, jsonToMarkdown } from './markdown.js';
