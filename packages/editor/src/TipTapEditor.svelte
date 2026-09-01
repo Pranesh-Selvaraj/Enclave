@@ -197,50 +197,163 @@ import { makeReactive } from './reactivity.js';
 		background: var(--color-accent-subtle);
 	}
 
-	/* ── Task Lists ── */
+	/* ── Task Lists (Obsidian-style checkboxes) ── */
 	:global(.tiptap-editor ul[data-type="taskList"]) {
 		list-style: none;
 		padding-left: 0;
+		margin: 0.25em 0;
 	}
 
 	:global(.tiptap-editor ul[data-type="taskList"] li) {
 		display: flex;
 		align-items: flex-start;
-		gap: 8px;
+		gap: 10px;
+		margin: 0.2em 0;
 	}
 
+	:global(.tiptap-editor ul[data-type="taskList"] li > div) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	/* Custom checkbox: the native input is invisible but keeps focus/click;
+	   the label's span is the visible box. */
 	:global(.tiptap-editor ul[data-type="taskList"] li label) {
-		margin-top: 2px;
+		position: relative;
+		width: 18px;
+		height: 18px;
+		margin-top: 3px;
+		flex-shrink: 0;
+		cursor: pointer;
 	}
 
-	:global(.tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div > p) {
+	:global(.tiptap-editor ul[data-type="taskList"] li input[type="checkbox"]) {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li label span) {
+		position: absolute;
+		inset: 0;
+		border: 1.5px solid var(--color-border-strong);
+		border-radius: 5px;
+		background: var(--color-surface);
+		transition: background 0.12s, border-color 0.12s;
+		pointer-events: none;
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li label span::after) {
+		content: '';
+		position: absolute;
+		left: 5px;
+		top: 2px;
+		width: 5px;
+		height: 9px;
+		border: solid #fff;
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg) scale(0);
+		transition: transform 0.12s;
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li input:checked + span) {
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li input:checked + span::after) {
+		transform: rotate(45deg) scale(1);
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li:hover input + span) {
+		border-color: var(--color-accent);
+	}
+
+	:global(.tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div) {
 		text-decoration: line-through;
 		color: var(--color-text-muted);
 	}
 
-	/* ── Callouts ── */
+	/* ── Callouts (Obsidian-style, colored per type) ── */
 	:global(.tiptap-editor [data-callout]) {
 		border-left: 4px solid var(--color-accent);
-		background: var(--color-accent-subtle);
+		background: color-mix(in srgb, var(--color-accent) 7%, transparent);
 		border-radius: var(--radius-md);
 		padding: 12px 16px;
 		margin: 0.75em 0;
 	}
 
-	/* ── Toggle Blocks ── */
-	:global(.tiptap-editor details[data-toggle]) {
-		margin: 0.5em 0;
+	:global(.tiptap-editor [data-callout] > :first-child) { margin-top: 0; }
+	:global(.tiptap-editor [data-callout] > :last-child) { margin-bottom: 0; }
+
+	:global(.tiptap-editor [data-callout][data-type="tip"]) {
+		border-color: var(--color-success);
+		background: color-mix(in srgb, var(--color-success) 8%, transparent);
 	}
 
-	:global(.tiptap-editor details[data-toggle] > summary) {
+	:global(.tiptap-editor [data-callout][data-type="warning"]) {
+		border-color: var(--color-warning);
+		background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+	}
+
+	:global(.tiptap-editor [data-callout][data-type="danger"]) {
+		border-color: var(--color-danger);
+		background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+	}
+
+	/* ── Blockquotes ── */
+	:global(.tiptap-editor blockquote) {
+		border-left: 3px solid var(--color-border-strong);
+		padding: 2px 16px;
+		margin: 0.75em 0;
+		color: var(--color-text-muted);
+	}
+
+	/* ── Toggle Blocks ── */
+	:global(.tiptap-editor .toggle-block) {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin: 0.35em 0;
+	}
+
+	:global(.tiptap-editor .toggle-chevron) {
+		flex-shrink: 0;
+		width: 24px;
+		height: 24px;
+		margin-top: 1px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		border-radius: 6px;
+		background: none;
+		color: var(--color-text-faint);
 		cursor: pointer;
+		padding: 0;
+		transition: background 0.1s, color 0.1s;
+	}
+
+	:global(.tiptap-editor .toggle-chevron:hover) {
+		background: var(--color-surface-hover);
+		color: var(--color-text);
+	}
+
+	:global(.tiptap-editor .toggle-body) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	:global(.tiptap-editor .toggle-summary) {
 		font-weight: 600;
-		padding: 4px 0;
+		padding: 3px 0;
 		outline: none;
 	}
 
-	:global(.tiptap-editor details[data-toggle] > summary::marker) {
-		color: var(--color-text-muted);
+	:global(.tiptap-editor .toggle-block.collapsed .toggle-body > :not(.toggle-summary)) {
+		display: none;
 	}
 
 	/* ── Mention chips ── */

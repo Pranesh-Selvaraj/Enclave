@@ -161,13 +161,6 @@ ed.chain().focus().addColumnAfter().run();
 const colsAfter = (JSON.stringify(ed.getJSON()).match(/"tableCell"/g) ?? []).length;
 assert.ok(colsAfter === colsBefore + 2, `addColumnAfter: ${colsBefore} → ${colsAfter}`);
 
-ed.destroy();
-if (failed > 0) {
-	console.log(`\n${failed} insert check(s) FAILED`);
-	process.exit(1);
-}
-console.log('\nAll insert checks passed');
-
 // The TableMenu shows when isActive('table') — verify the caret lands in a
 // cell right after insertTable.
 ed.commands.setContent('<p>x</p>');
@@ -175,3 +168,44 @@ clickAt(1);
 ed.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
 assert.ok(ed.isActive('table'), 'caret inside inserted table → TableMenu visible');
 console.log('ok   table menu visibility (isActive("table") after insertTable)');
+
+// ── Interaction: task checkbox click toggles the checked attribute ──
+ed.commands.setContent('<p>todo</p>');
+clickAt(1);
+ed.chain().focus().toggleTaskList().run();
+
+ed.commands.setContent('<p>todo</p>');
+clickAt(1);
+ed.chain().focus().toggleTaskList().run();
+const taskInput = ed.view.dom.querySelector('ul[data-type="taskList"] li input[type="checkbox"]') as HTMLInputElement | null;
+assert.ok(taskInput, 'task item renders a checkbox input');
+taskInput!.checked = true;
+taskInput!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+let json = JSON.stringify(ed.getJSON());
+assert.ok(json.includes('"checked":true'), `checkbox click should check the task: ${json.slice(0, 160)}`);
+taskInput!.checked = false;
+taskInput!.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+json = JSON.stringify(ed.getJSON());
+assert.ok(!json.includes('"checked":true'), 'second click unchecks the task');
+console.log('ok   task checkbox click toggles checked');
+
+// ── Interaction: toggle chevron click collapses/expands and persists ──
+ed.commands.setContent('<p>x</p>');
+clickAt(1);
+ed.chain().focus().setToggleBlock().run();
+const chevron = ed.view.dom.querySelector('.toggle-block .toggle-chevron') as HTMLButtonElement | null;
+assert.ok(chevron, 'toggle block renders a chevron button');
+chevron!.click();
+json = JSON.stringify(ed.getJSON());
+assert.ok(json.includes('"collapsed":true'), `chevron click should collapse the toggle: ${json.slice(0, 160)}`);
+chevron!.click();
+json = JSON.stringify(ed.getJSON());
+assert.ok(!json.includes('"collapsed":true'), 'second chevron click expands the toggle');
+console.log('ok   toggle chevron click collapses/expands (state persists in doc)');
+
+ed.destroy();
+if (failed > 0) {
+	console.log(`\n${failed} insert check(s) FAILED`);
+	process.exit(1);
+}
+console.log('\nAll insert checks passed');

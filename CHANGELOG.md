@@ -4,6 +4,25 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Toggle blocks** — replaced the native `<details>` (ugly disclosure
+  triangle, collapsed state lost on save, hidden content glitchy in
+  ProseMirror) with a custom node view: polished chevron button, collapse
+  state persisted in the document, summary stays editable, body hides via
+  CSS. Fixed a stale-closure bug that made consecutive chevron clicks
+  collapse-only.
+
+### Changed
+
+- **Obsidian-style editor polish** — task lists now use custom checkboxes
+  (visible box, accent checkmark, hover highlight, strikethrough when
+  done), callouts are tinted per type (info/tip/warning/danger) with
+  matching accent borders, blockquotes use the muted gray rail, toggles
+  render as a chevron row with a bold summary.
+
 ## [1.5.0] — 2026-08-25
 
 ### Added
