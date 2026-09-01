@@ -27,6 +27,7 @@
 	let groupBy = $state<string | null>(initial.groupBy);
 	let sort = $state<{ colId: string; dir: 'asc' | 'desc' } | null>(initial.sort);
 	let filters = $state<Record<string, string>>(initial.filters);
+	let density = $state<'comfortable' | 'compact'>(initial.density);
 
 	function parseData(json: string): {
 		columns: DBColumn[];
@@ -35,8 +36,9 @@
 		groupBy: string | null;
 		sort: { colId: string; dir: 'asc' | 'desc' } | null;
 		filters: Record<string, string>;
+		density: 'comfortable' | 'compact';
 	} {
-		let d: Partial<{ columns: DBColumn[]; rows: DBRow[]; view: View; groupBy: string | null; sort: typeof sort; filters: Record<string, string> }>;
+		let d: Partial<{ columns: DBColumn[]; rows: DBRow[]; view: View; groupBy: string | null; sort: typeof sort; filters: Record<string, string>; density: 'comfortable' | 'compact' }>;
 		try {
 			d = JSON.parse(json);
 		} catch {
@@ -49,6 +51,7 @@
 			groupBy: d.groupBy ?? null,
 			sort: d.sort ?? null,
 			filters: { ...(d.filters ?? {}) },
+			density: d.density ?? 'comfortable',
 		};
 	}
 
@@ -64,6 +67,7 @@
 		groupBy = next.groupBy;
 		sort = next.sort;
 		filters = next.filters;
+		density = next.density;
 	}
 	const TYPES = [
 		'text',
@@ -124,7 +128,7 @@
 		// pending emit flushes on unmount so the last edits are never lost.
 		clearTimeout(emitTimer);
 		emitTimer = setTimeout(() => {
-			onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters }));
+			onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters, density }));
 		}, 250);
 	}
 
@@ -132,7 +136,7 @@
 		if (readOnly || !emitTimer) return;
 		clearTimeout(emitTimer);
 		emitTimer = undefined;
-		onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters }));
+		onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters, density }));
 	}
 
 	let emitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -465,7 +469,7 @@
 	}
 </script>
 
-<div class="db" data-database oncontextmenu={onDbContextMenu}>
+<div class="db" data-database class:compact={density === 'compact'} oncontextmenu={onDbContextMenu}>
 	{#if readOnly}
 		<div class="db-linked-banner">Linked database — mirrored from the source block. Edit it there.</div>
 	{/if}
@@ -484,6 +488,13 @@
 			</select>
 		{/if}
 		<div class="db-toolbar-spacer"></div>
+		<button
+			class="db-density"
+			onclick={() => { density = density === 'compact' ? 'comfortable' : 'compact'; emit(); }}
+			title={density === 'compact' ? 'Switch to spacious rows' : 'Switch to compact rows'}
+		>
+			{density === 'compact' ? 'Spacious' : 'Compact'}
+		</button>
 		<span class="db-rowcount">{visibleRows.length} {visibleRows.length === 1 ? 'row' : 'rows'}</span>
 		<button class="db-filter-toggle" onclick={() => (filterOpen = !filterOpen)}>{filterOpen ? 'Hide filter' : 'Filter'}</button>
 		{#if !readOnly}
@@ -871,6 +882,22 @@
 		color: var(--color-text);
 	}
 
+	.db-density {
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: none;
+		color: var(--color-text-muted);
+		font-size: 11px;
+		font-family: inherit;
+		cursor: pointer;
+		padding: 2px 8px;
+		transition: border-color 0.1s, color 0.1s;
+	}
+	.db-density:hover {
+		border-color: var(--color-accent);
+		color: var(--color-text);
+	}
+
 	.db-header-row {
 		display: flex;
 		align-items: stretch;
@@ -937,9 +964,9 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		padding: 6px 8px;
+		padding: 5px 7px;
 		border-right: 1px solid var(--color-border);
-		min-width: 180px;
+		min-width: 150px;
 	}
 
 	.db-header-name {
@@ -1032,8 +1059,8 @@
 		background: none;
 		color: var(--color-text);
 		font-size: 12px;
-		padding: 5px 8px;
-		min-width: 180px;
+		padding: 4px 7px;
+		min-width: 150px;
 		outline: none;
 	}
 
@@ -1054,8 +1081,8 @@
 		background: none;
 		color: var(--color-text);
 		font-size: 13px;
-		padding: 6px 8px;
-		min-width: 180px;
+		padding: 5px 7px;
+		min-width: 150px;
 		outline: none;
 	}
 
@@ -1071,15 +1098,15 @@
 	.db-cell-check {
 		display: flex;
 		align-items: center;
-		padding: 6px 8px;
+		padding: 5px 7px;
 	}
 
 	.db-cell-progress {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 6px 8px;
-		min-width: 180px;
+		padding: 5px 7px;
+		min-width: 150px;
 		border-right: 1px solid var(--color-border);
 	}
 
@@ -1101,8 +1128,8 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 4px;
-		padding: 5px 8px;
-		min-width: 180px;
+		padding: 4px 7px;
+		min-width: 150px;
 		cursor: pointer;
 		border-right: 1px solid var(--color-border);
 	}
@@ -1116,8 +1143,8 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 5px 8px;
-		min-width: 180px;
+		padding: 4px 7px;
+		min-width: 150px;
 		cursor: pointer;
 		border-right: 1px solid var(--color-border);
 	}
@@ -1189,6 +1216,55 @@
 	.db-add-row-btn:hover {
 		border-color: var(--color-accent);
 		background: var(--color-accent-subtle);
+	}
+
+	/* ── Compact density ── */
+	.db.compact .db-toolbar {
+		padding: 3px 6px;
+	}
+	.db.compact .db-view-btn {
+		padding: 2px 8px;
+		font-size: 11px;
+	}
+	.db.compact .db-header {
+		padding: 2px 5px;
+		min-width: 120px;
+	}
+	.db.compact .db-header-name {
+		font-size: 10px;
+	}
+	.db.compact .db-header-type {
+		font-size: 10px;
+		padding: 1px 3px;
+	}
+	.db.compact .db-cell {
+		font-size: 12px;
+		padding: 2px 5px;
+		min-width: 120px;
+	}
+	.db.compact .db-cell-check {
+		padding: 2px 5px;
+	}
+	.db.compact .db-cell-progress {
+		padding: 2px 5px;
+		min-width: 120px;
+	}
+	.db.compact .db-cell-tags,
+	.db.compact .db-cell-rel {
+		padding: 2px 5px;
+		min-width: 120px;
+	}
+	.db.compact .db-filter-input {
+		padding: 2px 5px;
+		min-width: 120px;
+		font-size: 11px;
+	}
+	.db.compact .db-chip {
+		padding: 0 5px;
+		font-size: 11px;
+	}
+	.db.compact .db-remove {
+		font-size: 10px;
 	}
 
 	/* ── Kanban ── */

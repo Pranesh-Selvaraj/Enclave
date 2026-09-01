@@ -46,6 +46,8 @@ export interface DBData {
 	groupBy?: string | null;
 	sort?: { colId: string; dir: 'asc' | 'desc' } | null;
 	filters?: Record<string, string>;
+	/// Row density — persisted with the block so it survives reloads.
+	density?: 'comfortable' | 'compact';
 }
 
 function uid(): string {
@@ -58,6 +60,7 @@ export function defaultDatabaseData(): DBData {
 		id: uid(),
 		columns: [{ id: uid(), name: 'Name', type: 'text' }],
 		rows: [{ id: uid(), cells: {}, createdAt: now, updatedAt: now }],
+		density: 'comfortable',
 	};
 }
 
