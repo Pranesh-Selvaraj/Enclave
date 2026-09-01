@@ -144,7 +144,7 @@ for (const c of cases) {
 		failed++;
 		console.log(`FAIL ${c.label}: before=${before} after=${after} ${viewError ? '(view error: ' + String(viewError).slice(0, 80) + ')' : ''}`);
 	} else {
-		console.log(`ok   ${c.label}${viewError ? ' (doc changed; node view mount skipped)' : ''}`);
+		console.log(`ok   ${c.label}${viewError ? ' (doc changed; node view mount skipped: ' + String(viewError).slice(0,120) + ')' : ''}`);
 	}
 }
 
@@ -202,6 +202,48 @@ chevron!.click();
 json = JSON.stringify(ed.getJSON());
 assert.ok(!json.includes('"collapsed":true'), 'second chevron click expands the toggle');
 console.log('ok   toggle chevron click collapses/expands (state persists in doc)');
+
+
+// ── Backspace deletes an empty toggle (the user-reported bug) ──
+function pressBackspace() {
+	const ev = new dom.window.KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+	ed.view.dom.dispatchEvent(ev);
+}
+
+
+// Empty toggle: place the caret in the empty body paragraph, Backspace
+// deletes the whole toggle (the user-reported bug).
+ed.commands.setContent('<p>before</p><div data-toggle><div data-toggle-summary>Toggle</div><p></p></div>');
+let toggleBodyPos = 0;
+ed.state.doc.descendants((node, pos) => {
+	if (node.type.name === 'toggleBlock') {
+		toggleBodyPos = pos + 1 + node.child(0).nodeSize + 1; // inside the first body block
+		return false;
+	}
+	return true;
+});
+ed.commands.setTextSelection(toggleBodyPos);
+pressBackspace();
+json = JSON.stringify(ed.getJSON());
+assert.ok(!json.includes('toggleBlock'), `Backspace at empty toggle body start should delete it: ${json.slice(0, 200)}`);
+console.log('ok   backspace deletes an empty toggle');
+
+// ── Backspace at the summary start unwraps, keeping the body content ──
+ed.commands.setContent('<p>before</p><div data-toggle><div data-toggle-summary>Summary</div><p>Body text</p></div>');
+let summaryPos = 0;
+ed.state.doc.descendants((node, pos) => {
+	if (node.type.name === 'toggleSummary') {
+		summaryPos = pos + 1;
+		return false;
+	}
+	return true;
+});
+ed.commands.setTextSelection(summaryPos);
+pressBackspace();
+json = JSON.stringify(ed.getJSON());
+assert.ok(!json.includes('toggleBlock'), `Backspace at summary start should unwrap the toggle: ${json.slice(0, 200)}`);
+assert.ok(json.includes('Body text'), 'unwrapped toggle keeps its body content');
+console.log('ok   backspace at summary start unwraps the toggle (content kept)');
 
 ed.destroy();
 if (failed > 0) {

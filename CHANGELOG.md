@@ -8,20 +8,31 @@ All notable changes to Enclave are documented here. The format is based on
 
 ### Fixed
 
-- **Toggle blocks** — replaced the native `<details>` (ugly disclosure
-  triangle, collapsed state lost on save, hidden content glitchy in
-  ProseMirror) with a custom node view: polished chevron button, collapse
-  state persisted in the document, summary stays editable, body hides via
-  CSS. Fixed a stale-closure bug that made consecutive chevron clicks
-  collapse-only.
+- **Editor freezes / dead blocks** — the root cause across several reports:
+  Svelte 5's `mount()` does not return a `$set` method (Svelte 4 API), but
+  six node views (code block, database, image, file, page embed, bookmark)
+  called it in `update()`. The TypeError escaped ProseMirror's update
+  pipeline: the doc state committed while the DOM never synced, so the
+  editor appeared frozen. Replaced with Svelte 5 exports (`setLanguage`,
+  `applyData`) or a clean view recreation.
+- **Database was unresponsive** — a `$effect` that synced from the `data`
+  prop also read the local columns/rows state, so it re-ran on every edit
+  and reset the state to the stale prop (typed text reverted). The state is
+  now initialized once at mount; external sync (undo/redo, linked-db
+  mirror) goes through the exported `applyData()`.
+- **Toggle blocks couldn't be deleted** — `selectNodeBackward` grabbed the
+  summary node at the toggle boundary and swallowed Backspace. The summary
+  is now `selectable: false`, and the ToggleBlock extension handles
+  Backspace itself: at the summary start the toggle unwraps (content kept),
+  at an empty body it is deleted. (Raw `tr.replaceWith` is used — TipTap's
+  `chain().insertContentAt()` silently drops block content at document
+  boundaries.)
 
 ### Changed
 
-- **Obsidian-style editor polish** — task lists now use custom checkboxes
-  (visible box, accent checkmark, hover highlight, strikethrough when
-  done), callouts are tinted per type (info/tip/warning/danger) with
-  matching accent borders, blockquotes use the muted gray rail, toggles
-  render as a chevron row with a bold summary.
+- **Database UI polish** — fixed a broken `--color-hover` var (rules were
+  no-ops), pill-style view switcher, uppercase header labels, row hover
+  tint, accent focus ring on cells, accent-colored add-row/add-column.
 
 ## [1.5.0] — 2026-08-25
 

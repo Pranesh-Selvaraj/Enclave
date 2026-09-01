@@ -178,10 +178,8 @@ export const Database = Node.create({
 				update(newNode) {
 					if (newNode.attrs.data === current) return true;
 					current = newNode.attrs.data;
-					(view as unknown as { $set: (p: Record<string, unknown>) => void }).$set({
-						data: current,
-						readOnly: Boolean(newNode.attrs.sourceId),
-					});
+					// Svelte 5: no $set — components expose update functions.
+					(view as unknown as { applyData: (d: string) => void }).applyData(current);
 					return true;
 				},
 				destroy() {

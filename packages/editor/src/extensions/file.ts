@@ -77,8 +77,9 @@ export const File = Node.create({
 					const next = { path: newNode.attrs.path, name: newNode.attrs.name };
 					if (next.path === current.path && next.name === current.name) return true;
 					current = next;
-					(view as unknown as { $set: (p: Record<string, unknown>) => void }).$set(current);
-					return true;
+					// Svelte 5: no $set — returning false lets ProseMirror
+					// recreate the view with the new attrs (undo/redo/load).
+					return false;
 				},
 				destroy() {
 					unmount(view);

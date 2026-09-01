@@ -13,6 +13,14 @@
 		onLanguageChange: (lang: string) => void;
 	} = $props();
 
+	// Local copy so external updates (via setLanguage) can drive the select.
+	let lang = $state(language);
+
+	// Svelte 5 has no $set — node views push updates through exports.
+	export function setLanguage(next: string) {
+		lang = next;
+	}
+
 	let host: HTMLDivElement | undefined = $state();
 	let copied = $state(false);
 
@@ -37,7 +45,7 @@
 			<Icon name="code" size={13} />
 			<select
 				class="cb-lang"
-				value={language || 'plaintext'}
+				value={lang || 'plaintext'}
 				onchange={(e: Event) => onLanguageChange((e.currentTarget as HTMLSelectElement).value)}
 				aria-label="Code language"
 			>

@@ -13,6 +13,56 @@
 		onData: (json: string) => void;
 	} = $props();
 
+	// Parse the initial data ONCE at mount. NOTE: this must not live in a
+	// $effect that also reads the local state — it would re-run on every
+	// edit and reset columns/rows to the stale prop (the DB would appear
+	// dead). External updates come through applyData(), called by the node
+	// view when the doc changes for other reasons (undo/redo, linked mirror).
+	const initial = parseData(data);
+	let columns = $state<DBColumn[]>(initial.columns);
+	let rows = $state<DBRow[]>(initial.rows);
+	let view = $state<View>(initial.view);
+	let groupBy = $state<string | null>(initial.groupBy);
+	let sort = $state<{ colId: string; dir: 'asc' | 'desc' } | null>(initial.sort);
+	let filters = $state<Record<string, string>>(initial.filters);
+
+	function parseData(json: string): {
+		columns: DBColumn[];
+		rows: DBRow[];
+		view: View;
+		groupBy: string | null;
+		sort: { colId: string; dir: 'asc' | 'desc' } | null;
+		filters: Record<string, string>;
+	} {
+		let d: Partial<{ columns: DBColumn[]; rows: DBRow[]; view: View; groupBy: string | null; sort: typeof sort; filters: Record<string, string> }>;
+		try {
+			d = JSON.parse(json);
+		} catch {
+			d = {};
+		}
+		return {
+			columns: (d.columns ?? []).map((c) => ({ ...c, options: [...(c.options ?? [])] })),
+			rows: (d.rows ?? []).map((r) => ({ ...r, cells: { ...r.cells } })),
+			view: d.view ?? 'table',
+			groupBy: d.groupBy ?? null,
+			sort: d.sort ?? null,
+			filters: { ...(d.filters ?? {}) },
+		};
+	}
+
+	/** Node view → component: sync from the doc when it changes externally. */
+	export function applyData(json: string) {
+		const next = parseData(json);
+		const sig = JSON.stringify({ columns, rows, view, groupBy, sort, filters });
+		const incoming = JSON.stringify(next);
+		if (sig === incoming) return; // our own echo
+		columns = next.columns;
+		rows = next.rows;
+		view = next.view;
+		groupBy = next.groupBy;
+		sort = next.sort;
+		filters = next.filters;
+	}
 	const TYPES = [
 		'text',
 		'number',
@@ -31,12 +81,6 @@
 	const VIEWS = ['table', 'kanban', 'list', 'gallery', 'timeline'] as const;
 	type View = (typeof VIEWS)[number];
 
-	let columns = $state<DBColumn[]>([]);
-	let rows = $state<DBRow[]>([]);
-	let view = $state<View>('table');
-	let groupBy = $state<string | null>(null);
-	let sort = $state<{ colId: string; dir: 'asc' | 'desc' } | null>(null);
-	let filters = $state<Record<string, string>>({});
 	let filterOpen = $state(false);
 	let menu = $state<{ colId: string; rowId: string; x: number; y: number } | null>(null);
 	let newOption = $state('');
@@ -75,35 +119,6 @@
 		if (readOnly) return;
 		onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters }));
 	}
-
-	// Sync from node attribute (load, undo/redo, linked-db mirror) — skip when
-	// it's our own echo.
-	$effect(() => {
-		let parsed: Partial<{ columns: DBColumn[]; rows: DBRow[]; view: View; groupBy: string | null; sort: typeof sort; filters: Record<string, string> }>;
-		try {
-			parsed = JSON.parse(data);
-		} catch {
-			parsed = {};
-		}
-		const d = parsed;
-		const sig = JSON.stringify({ columns, rows, view, groupBy, sort, filters });
-		const incoming = JSON.stringify({
-			columns: d.columns ?? [],
-			rows: d.rows ?? [],
-			view: d.view ?? 'table',
-			groupBy: d.groupBy ?? null,
-			sort: d.sort ?? null,
-			filters: d.filters ?? {},
-		});
-		if (sig !== incoming) {
-			columns = (d.columns ?? []).map((c) => ({ ...c, options: [...(c.options ?? [])] }));
-			rows = (d.rows ?? []).map((r) => ({ ...r, cells: { ...r.cells } }));
-			view = d.view ?? 'table';
-			groupBy = d.groupBy ?? null;
-			sort = d.sort ?? null;
-			filters = { ...(d.filters ?? {}) };
-		}
-	});
 
 	function cellValue(row: DBRow, col: DBColumn): string | boolean | string[] {
 		if (col.type === 'createdAt') return row.createdAt ?? '';
@@ -684,9 +699,10 @@
 
 	.db-view-switch {
 		display: flex;
-		border: 1px solid var(--color-border);
+		gap: 2px;
+		background: var(--color-surface-hover);
 		border-radius: 8px;
-		overflow: hidden;
+		padding: 2px;
 	}
 
 	.db-view-btn {
@@ -699,8 +715,11 @@
 	}
 
 	.db-view-btn.active {
-		background: var(--color-hover);
+		background: var(--color-surface);
 		color: var(--color-text);
+		border-radius: 6px;
+		box-shadow: var(--shadow-sm);
+		font-weight: 500;
 	}
 
 	.db-groupby {
@@ -725,20 +744,30 @@
 		cursor: pointer;
 		padding: 2px 6px;
 		border-radius: 4px;
+		transition: background 0.1s, color 0.1s;
+	}
+
+	.db-add-row {
+		color: var(--color-accent);
+		font-weight: 500;
 	}
 
 	.db-filter-toggle:hover,
 	.db-add-row:hover {
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 		color: var(--color-text);
 	}
 
 	.db-header-row {
 		display: flex;
 		align-items: stretch;
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 		border-bottom: 1px solid var(--color-border);
 		overflow-x: auto;
+	}
+
+	.db-row:hover {
+		background: color-mix(in srgb, var(--color-accent) 3%, transparent);
 	}
 
 	.db-header {
@@ -755,10 +784,16 @@
 		min-width: 0;
 		border: none;
 		background: none;
-		color: var(--color-text);
-		font-size: 13px;
-		font-weight: 600;
+		color: var(--color-text-muted);
+		font-size: 11px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
 		outline: none;
+	}
+
+	.db-header-name:focus {
+		color: var(--color-text);
 	}
 
 	.db-header-name:disabled {
@@ -803,15 +838,16 @@
 	}
 
 	.db-remove:hover {
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 		color: #e5484d;
 	}
 
 	.db-add-col {
 		border: none;
 		background: none;
-		color: var(--color-text-muted);
+		color: var(--color-accent);
 		font-size: 12px;
+		font-weight: 500;
 		cursor: pointer;
 		padding: 0 12px;
 		white-space: nowrap;
@@ -859,7 +895,8 @@
 	}
 
 	.db-cell:focus {
-		background: var(--color-hover);
+		background: var(--color-accent-subtle);
+		box-shadow: inset 2px 0 0 var(--color-accent);
 	}
 
 	.db-cell:disabled {
@@ -1010,7 +1047,7 @@
 		margin-left: auto;
 		font-size: 11px;
 		color: var(--color-text-muted);
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 		border-radius: 999px;
 		padding: 0 8px;
 	}
@@ -1206,7 +1243,7 @@
 	}
 
 	.db-menu-opt:hover {
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 	}
 
 	.db-menu-opt:hover .db-menu-del {

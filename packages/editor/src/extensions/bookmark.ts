@@ -81,8 +81,9 @@ export const Bookmark = Node.create({
 				update(newNode) {
 					if (newNode.attrs.url === current.url && newNode.attrs.title === current.title) return true;
 					current = { url: newNode.attrs.url, title: newNode.attrs.title };
-					(view as unknown as { $set: (p: Record<string, unknown>) => void }).$set(current);
-					return true;
+					// Svelte 5: no $set — returning false lets ProseMirror
+					// recreate the view with the new attrs (undo/redo/load).
+					return false;
 				},
 				destroy() {
 					unmount(view);

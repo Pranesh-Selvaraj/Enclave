@@ -87,7 +87,8 @@ export function editorExtensions() {
 							const next = newNode.attrs.language ?? 'plaintext';
 							if (next === lang) return true;
 							lang = next;
-							(view as unknown as { $set: (p: Record<string, unknown>) => void }).$set({ language: next });
+							// Svelte 5: no $set — components expose update functions.
+							(view as unknown as { setLanguage: (l: string) => void }).setLanguage(next);
 							return true;
 						},
 						destroy() {
