@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { invoke } from '$lib/backend.js';
 	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu, EditorContextMenu, TableMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
@@ -614,6 +615,11 @@
 				<button class="icon-btn" class:active={fullWidth} onclick={toggleFullWidth} title="Toggle full width">
 					<Icon name="expand" size={15} />
 				</button>
+				{#if mode === 'paper'}
+					<button class="icon-btn split-btn" onclick={() => goto(`/split/${docId}`)} title="Split view (side-by-side pages)">
+						<Icon name="layout" size={15} />
+					</button>
+				{/if}
 				{#if mode === 'paper'}
 					<button class="icon-btn" class:active={sourceOpen} onclick={toggleSource} title="Markdown source">
 						<Icon name="code" size={15} />
@@ -1392,6 +1398,9 @@
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
+		/* Split view is a desktop workspace; the split route still works
+		   stacked on phones, reached via URL or Ctrl+Click. */
+		.split-btn { display: none; }
 		.document-page { padding: 0 14px; }
 		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
 		.doc-title-input { font-size: 24px; }

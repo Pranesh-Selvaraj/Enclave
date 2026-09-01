@@ -616,7 +616,8 @@
 						<div class="tree-section-title">Favorites</div>
 						{#each favorites as doc (doc.id)}
 							<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
-								oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
+								oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
+								onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
 								<span class="tree-item-icon">
 									<Icon name="star" size={14} />
 								</span>
@@ -677,7 +678,8 @@
 							{#if !collapsedFolders.has(folder.id)}
 								{#each fdocs as doc (doc.id)}
 									<a href="/{doc.id}" class="tree-item folder-doc" class:active={currentDocId === doc.id}
-										oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
+										oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
+										onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
 										<span class="tree-item-icon">
 											<Icon name="page" size={14} />
 										</span>
@@ -715,7 +717,8 @@
 
 					{#each visiblePages as doc (doc.id)}
 						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
-							oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}>
+							oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
+							onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
 							<span class="tree-item-icon">
 								<Icon name="page" size={14} />
 							</span>
