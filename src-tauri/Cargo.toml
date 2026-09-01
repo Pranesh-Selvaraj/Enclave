@@ -23,7 +23,7 @@ core-db = { path = "crates/core-db" }
 core-network = { path = "crates/core-network" }
 
 # ── Tauri v2 Core ──
-tauri = { version = "2", features = ["protocol-asset", "devtools", "tray-icon"] }
+tauri = { version = "2", features = ["protocol-asset", "devtools", "tray-icon", "macos-private-api"] }
 
 # ── Encrypted Local Database ──
 rusqlite = { version = "0.34", features = ["bundled-sqlcipher"] }
