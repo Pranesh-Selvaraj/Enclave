@@ -15,7 +15,9 @@ All data lives on your device first. The application functions fully offline —
 The vault database is encrypted with **SQLCipher** (AES-256-CBC with HMAC-SHA512) before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
 
 ### 3. Peer-to-Peer Sync
-When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync documents directly over **WebSocket**, merged with **doc-level last-write-wins** resolution. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary. Sync is **authenticated and encrypted**: peers must prove knowledge of the vault-derived sync key (challenge-response, so only devices of the same owner — same seed phrase — can join) and every frame is encrypted with XChaCha20-Poly1305. Other devices on the Wi-Fi see only challenges and ciphertext.
+When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync documents directly over **WebSocket**, merged with **doc-level last-write-wins** resolution. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary. Sync is **authenticated and encrypted**: peers must prove knowledge of the vault-derived sync key (challenge-response, so only devices of the same owner — same seed phrase — can join) and every frame is encrypted with XChaCha20-Poly1305. Other devices on the Wi-Fi see only challenges and ciphertext. If your
+network blocks mDNS (some routers, guest Wi-Fi, VPNs), add a peer manually
+by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
 
 ## Tech Stack
 
@@ -35,6 +37,12 @@ When devices are on the same local network, they discover each other via **mDNS*
 | **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM, or frontier APIs with a key |
 | **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
 | **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
+| **Workspace** | Split-screen view — two pages side by side with a draggable divider, autosaving panes |
+| **Organization** | Folders with collapsible sidebar tree, tags, favorites, trash |
+| **Markdown Source** | `</>` toggle renders the page as editable markdown (Ctrl+S round-trip) |
+| **Database** | Typed table/kanban/list/gallery/timeline views, per-block density (Compact/Spacious) |
+| **Widgets** | Desktop wallpaper widget (tray-toggleable glass panel: recents + quick capture) and Android home-screen widget |
+| **Mobile UI** | Liquid-glass design — frosted floating bars, vibrant gradient backdrop, bottom sheets |
 | **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download |
 | **Theming** | Auto / light / dark (follows system), 6 accents, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
