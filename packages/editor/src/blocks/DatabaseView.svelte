@@ -7,10 +7,12 @@
 		data,
 		readOnly = false,
 		onData,
+		onDeleteBlock,
 	}: {
 		data: string;
 		readOnly?: boolean;
 		onData: (json: string) => void;
+		onDeleteBlock?: () => void;
 	} = $props();
 
 	// Parse the initial data ONCE at mount. NOTE: this must not live in a
@@ -154,6 +156,17 @@
 		emit();
 	}
 
+	function insertColumnAt(colId: string, before: boolean) {
+		const col: DBColumn = { id: uid(), name: 'Column', type: 'text' };
+		const idx = columns.findIndex((c) => c.id === colId);
+		const next = [...columns];
+		if (idx === -1) next.push(col);
+		else next.splice(before ? idx : idx + 1, 0, col);
+		columns = next;
+		rows = rows.map((r) => ({ ...r, cells: { ...r.cells } }));
+		emit();
+	}
+
 	function removeColumn(colId: string) {
 		columns = columns.filter((c) => c.id !== colId);
 		rows = rows.map((r) => {
@@ -192,9 +205,57 @@
 		emit();
 	}
 
+	function insertRowAt(rowId: string, before: boolean) {
+		const now = new Date().toISOString();
+		const row: DBRow = { id: uid(), cells: {}, createdAt: now, updatedAt: now };
+		const idx = rows.findIndex((r) => r.id === rowId);
+		const next = [...rows];
+		if (idx === -1) next.push(row);
+		else next.splice(before ? idx : idx + 1, 0, row);
+		rows = next;
+		emit();
+	}
+
 	function removeRow(rowId: string) {
 		rows = rows.filter((r) => r.id !== rowId);
 		emit();
+	}
+
+	// ── Right-click context menu (row/column operations) ──
+	let ctxMenu = $state<{ colId: string | null; rowId: string | null; x: number; y: number } | null>(null);
+
+	function openCtx(e: MouseEvent, colId: string | null, rowId: string | null) {
+		e.preventDefault();
+		// Keep the editor's context menu out of the database widget.
+		e.stopPropagation();
+		ctxMenu = {
+			colId,
+			rowId,
+			x: Math.min(Math.max(e.clientX, 8), window.innerWidth - 210),
+			y: Math.min(Math.max(e.clientY, 8), Math.max(window.innerHeight - 300, 8)),
+		};
+	}
+
+	// Delegated handler on the widget root: resolve the clicked header/cell
+	// to its column and row via DOM position (no per-cell bindings needed).
+	function onDbContextMenu(e: MouseEvent) {
+		const t = e.target as HTMLElement;
+		const header = t.closest('.db-header') as HTMLElement | null;
+		if (header) {
+			const idx = Array.prototype.indexOf.call(header.parentElement?.children ?? [], header);
+			openCtx(e, columns[idx]?.id ?? null, null);
+			return;
+		}
+		const rowEl = t.closest('.db-row') as HTMLElement | null;
+		if (!rowEl) return;
+		const rowId = rowEl.dataset.rowId ?? null;
+		const cell = t.closest('.db-cell') as HTMLElement | null;
+		if (cell && rowEl.contains(cell)) {
+			const idx = Array.prototype.indexOf.call(rowEl.children, cell);
+			openCtx(e, columns[idx]?.id ?? null, rowId);
+		} else {
+			openCtx(e, null, rowId);
+		}
 	}
 
 	function cycleSort(colId: string) {
@@ -203,6 +264,7 @@
 		else sort = null;
 		emit();
 	}
+
 
 	function compare(a: string | boolean | string[], b: string | boolean | string[], col: DBColumn): number {
 		const av = Array.isArray(a) ? a.join(', ') : String(a);
@@ -386,7 +448,7 @@
 	}
 </script>
 
-<div class="db" data-database>
+<div class="db" data-database oncontextmenu={onDbContextMenu}>
 	{#if readOnly}
 		<div class="db-linked-banner">Linked database — mirrored from the source block. Edit it there.</div>
 	{/if}
@@ -456,7 +518,7 @@
 		</div>
 
 		{#each visibleRows as row (row.id)}
-			<div class="db-row">
+			<div class="db-row" data-row={row.id}>
 				{#each columns as col (col.id)}
 					{#if col.type === 'checkbox'}
 						<div class="db-cell db-cell-check">
@@ -672,6 +734,47 @@
 	</div>
 {/if}
 
+{#if ctxMenu}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="db-ctx-backdrop"
+		onclick={() => (ctxMenu = null)}
+		oncontextmenu={(e: MouseEvent) => { e.preventDefault(); ctxMenu = null; }}
+	></div>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="db-ctx"
+		style="left:{ctxMenu.x}px; top:{ctxMenu.y}px;"
+		role="menu"
+		aria-label="Database options"
+		tabindex="-1"
+		onclick={(e: MouseEvent) => e.stopPropagation()}
+		oncontextmenu={(e: MouseEvent) => e.preventDefault()}
+	>
+		{#if ctxMenu.rowId}
+			<button class="db-ctx-item" role="menuitem" onclick={() => { insertRowAt(ctxMenu!.rowId!, true); ctxMenu = null; }}>Insert row above</button>
+			<button class="db-ctx-item" role="menuitem" onclick={() => { insertRowAt(ctxMenu!.rowId!, false); ctxMenu = null; }}>Insert row below</button>
+		{/if}
+		{#if ctxMenu.colId}
+			<button class="db-ctx-item" role="menuitem" onclick={() => { insertColumnAt(ctxMenu!.colId!, true); ctxMenu = null; }}>Insert column left</button>
+			<button class="db-ctx-item" role="menuitem" onclick={() => { insertColumnAt(ctxMenu!.colId!, false); ctxMenu = null; }}>Insert column right</button>
+		{/if}
+		{#if ctxMenu.rowId || ctxMenu.colId}
+			<div class="db-ctx-sep"></div>
+		{/if}
+		{#if ctxMenu.rowId}
+			<button class="db-ctx-item danger" role="menuitem" onclick={() => { removeRow(ctxMenu!.rowId!); ctxMenu = null; }}>Delete row</button>
+		{/if}
+		{#if ctxMenu.colId}
+			<button class="db-ctx-item danger" role="menuitem" onclick={() => { removeColumn(ctxMenu!.colId!); ctxMenu = null; }}>Delete column</button>
+		{/if}
+		<div class="db-ctx-sep"></div>
+		<button class="db-ctx-item danger" role="menuitem" onclick={() => { onDeleteBlock?.(); ctxMenu = null; }}>Delete database</button>
+	</div>
+{/if}
+
 <style>
 	.db {
 		border: 1px solid var(--color-border);
@@ -770,6 +873,56 @@
 		background: color-mix(in srgb, var(--color-accent) 3%, transparent);
 	}
 
+	/* ── Right-click context menu ── */
+	.db-ctx-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 295;
+	}
+
+	.db-ctx {
+		position: fixed;
+		z-index: 296;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+		padding: 5px;
+		min-width: 170px;
+	}
+
+	.db-ctx-item {
+		display: block;
+		width: 100%;
+		border: none;
+		background: none;
+		color: var(--color-text);
+		font-size: 13px;
+		font-family: inherit;
+		text-align: left;
+		padding: 7px 10px;
+		border-radius: 6px;
+		cursor: pointer;
+	}
+
+	.db-ctx-item:hover {
+		background: var(--color-surface-hover);
+	}
+
+	.db-ctx-item.danger {
+		color: var(--color-danger);
+	}
+
+	.db-ctx-item.danger:hover {
+		background: rgba(229, 83, 75, 0.12);
+	}
+
+	.db-ctx-sep {
+		height: 1px;
+		background: var(--color-border);
+		margin: 4px 6px;
+	}
+
 	.db-header {
 		display: flex;
 		align-items: center;
@@ -826,7 +979,9 @@
 		font-size: 11px;
 		padding: 2px 4px;
 		border-radius: 4px;
-		opacity: 0;
+		/* Visible but subtle — right-click also offers delete. */
+		opacity: 0.45;
+		transition: opacity 0.1s, background 0.1s, color 0.1s;
 	}
 
 	.db-header:hover .db-remove,

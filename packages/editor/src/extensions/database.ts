@@ -132,6 +132,12 @@ export const Database = Node.create({
 				props: {
 					data: current,
 					readOnly: Boolean(node.attrs.sourceId),
+					onDeleteBlock: () => {
+						const pos = getPos();
+						if (pos == null) return;
+						const size = editor.state.doc.nodeAt(pos)?.nodeSize ?? node.nodeSize;
+						editor.view.dispatch(editor.state.tr.deleteRange(pos, pos + size));
+					},
 					onData: (json: string) => {
 						const pos = getPos();
 						if (pos == null) return;

@@ -34,6 +34,18 @@ All notable changes to Enclave are documented here. The format is based on
   no-ops), pill-style view switcher, uppercase header labels, row hover
   tint, accent focus ring on cells, accent-colored add-row/add-column.
 
+### Changed
+
+- **Database right-click menu** — right-click any cell, column header, or
+  row for insert row/column above/below/left/right, delete row, delete
+  column, delete database. The hover ✕ delete buttons are now visible
+  instead of hidden until hover.
+- **Collapsed sidebar redesigned** — instead of a bare 48px strip, the
+  collapsed sidebar is now an icon rail: logo + expand button on top,
+  Home / Graph / New page icons, folder icons with page-count badges
+  (clicking one expands the sidebar into that folder), and sync / theme /
+  settings at the bottom. Tooltips on every button.
+
 ## [1.5.0] — 2026-08-25
 
 ### Added

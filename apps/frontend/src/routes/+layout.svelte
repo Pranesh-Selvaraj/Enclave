@@ -568,7 +568,7 @@
 <div class="app-shell">
 	<!-- Left Sidebar (drawer on phones) -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen}>
-		<div class="sidebar-header">
+		<div class="sidebar-header" class:mini={!sidebarOpen}>
 			<a href="/" class="sidebar-brand" title="Enclave home">
 				<span class="brand-mark">
 					<Logo size={20} />
@@ -577,9 +577,15 @@
 					<span class="brand-name">Enclave</span>
 				{/if}
 			</a>
-			<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)} title="Toggle sidebar (Ctrl+B)">
-				<Icon name={sidebarOpen ? 'chevronLeft' : 'chevronRight'} size={14} />
-			</button>
+			{#if sidebarOpen}
+				<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)} title="Collapse sidebar (Ctrl+B)">
+					<Icon name="chevronLeft" size={14} />
+				</button>
+			{:else}
+				<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)} title="Expand sidebar (Ctrl+B)">
+					<Icon name="chevronRight" size={14} />
+				</button>
+			{/if}
 		</div>
 
 		{#if sidebarOpen}
@@ -831,6 +837,49 @@
 						{connectedCount}/{networkStatus.peers.length} peers online · last sync {timeAgo(networkStatus.last_sync_at)} ago
 					</div>
 				{/if}
+			</div>
+		{:else}
+			<!-- Collapsed sidebar: icon rail with the essentials. -->
+			<nav class="mini-nav" aria-label="Main">
+				<a href="/" class="mini-btn" class:active={currentPath === '/'} title="Home">
+					<Icon name="home" size={17} />
+				</a>
+				<a href="/graph" class="mini-btn" class:active={currentPath === '/graph'} title="Graph view">
+					<Icon name="graph" size={17} />
+				</a>
+				<button class="mini-btn" onclick={createDocument} title="New page (Ctrl+N)">
+					<Icon name="plus" size={17} />
+				</button>
+				{#if folders.length > 0}
+					<div class="mini-sep"></div>
+					{#each folders as folder (folder.id)}
+						<button
+							class="mini-btn"
+							title={folder.name}
+							onclick={() => {
+								sidebarOpen = true;
+								if (collapsedFolders.has(folder.id)) toggleFolder(folder.id);
+							}}
+						>
+							<Icon name="folder" size={17} />
+							{#if docsByFolder(folder.id).length > 0}
+								<span class="mini-badge">{docsByFolder(folder.id).length}</span>
+							{/if}
+						</button>
+					{/each}
+				{/if}
+			</nav>
+			<div class="mini-spacer"></div>
+			<div class="mini-footer">
+				<button class="mini-btn" class:online={networkRunning} onclick={toggleNetwork} title="Toggle P2P sync">
+					<Icon name="network" size={17} />
+				</button>
+				<button class="mini-btn" onclick={() => theme.toggle()} title="Toggle theme">
+					<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={17} />
+				</button>
+				<button class="mini-btn" onclick={() => openUI('settings')} title="Settings">
+					<Icon name="settings" size={17} />
+				</button>
 			</div>
 		{/if}
 	</aside>
@@ -1172,6 +1221,68 @@
 		display: flex;
 	}
 	.sidebar-toggle:hover { color: var(--color-text); background: var(--color-surface-hover); }
+
+	/* ── Collapsed (mini) sidebar: icon rail ── */
+	.sidebar-header.mini {
+		flex-direction: column;
+		gap: 6px;
+		padding: 12px 0 8px;
+	}
+	.sidebar-header.mini .sidebar-brand { justify-content: center; }
+
+	.mini-nav {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		padding: 8px 0;
+		border-bottom: 1px solid var(--color-border);
+	}
+	.mini-btn {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border: none;
+		border-radius: 10px;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		text-decoration: none;
+		transition: background 0.1s, color 0.1s;
+	}
+	.mini-btn:hover { background: var(--color-surface-hover); color: var(--color-text); }
+	.mini-btn.active { background: var(--color-accent-subtle); color: var(--color-accent); }
+	.mini-btn.online { color: var(--color-success); }
+	.mini-sep { width: 24px; height: 1px; background: var(--color-border); margin: 6px 0; }
+	.mini-spacer { flex: 1; }
+	.mini-footer {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		padding: 8px 0 10px;
+		border-top: 1px solid var(--color-border);
+	}
+	.mini-badge {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		min-width: 15px;
+		height: 15px;
+		padding: 0 4px;
+		border-radius: 999px;
+		background: var(--color-accent);
+		color: #fff;
+		font-size: 9px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+	}
 
 	/* ── Nav ── */
 	.side-nav {
