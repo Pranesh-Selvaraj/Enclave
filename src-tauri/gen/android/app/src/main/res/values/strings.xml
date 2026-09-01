@@ -1,4 +1,9 @@
 <resources>
     <string name="app_name">"Enclave"</string>
     <string name="main_activity_title">"Enclave"</string>
+    <string name="widget_tagline">local-first</string>
+    <string name="widget_subtitle">Your encrypted vault, one tap away.</string>
+    <string name="widget_new_note">+ New note</string>
+    <string name="widget_open">Open Enclave</string>
+    <string name="widget_description">Quick access to Enclave: open the app or capture a new note.</string>
 </resources>

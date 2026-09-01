@@ -8,6 +8,7 @@
 	import { EmojiPicker } from '@enclave/ui';
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import { saveWithRetry } from '$lib/saveRetry.js';
+	import ActionSheet from '$lib/ActionSheet.svelte';
 	import { Icon } from '@enclave/ui';
 	import Whiteboard from '$lib/Whiteboard.svelte';
 	import { loadAISettings, chatStream, embedText, embedLocal, type ChatMessage, type AISettings } from '$lib/ai.js';
@@ -50,6 +51,17 @@
 	let toastTimer: ReturnType<typeof setTimeout>;	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
 	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
 	let saveVersion = 0;
+	// Mobile action sheet: the topbar's icon cluster collapses into this.
+	let sheetOpen = $state(false);
+	const sheetItems = $derived<{ icon: string; label: string; danger?: boolean; action: () => void }[]>([
+		{ icon: 'star', label: document?.is_favorite ? 'Remove from favorites' : 'Add to favorites', action: toggleFavorite },
+		...(aiEnabled ? [{ icon: 'sparkles', label: 'Ask AI', action: () => (aiOpen = true) }] : []),
+		{ icon: 'download', label: 'Export Markdown…', action: exportMarkdown },
+		{ icon: 'download', label: 'Export HTML…', action: exportHtml },
+		{ icon: 'print', label: 'Print (PDF)…', action: printPage },
+		{ icon: 'info', label: 'Page info', action: () => (infoOpen = true) },
+		{ icon: 'trash', label: 'Delete page', danger: true, action: deleteDocument },
+	]);
 
 	const docId = $derived($page.params.id);
 
@@ -668,6 +680,9 @@
 			<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
 				<Icon name="trash" size={15} />
 			</button>
+			<button class="icon-btn more-btn" onclick={() => (sheetOpen = true)} title="More actions" aria-label="More actions">
+				<Icon name="more" size={18} />
+			</button>
 		</div>
 	</div>
 
@@ -854,6 +869,8 @@
 				<button class="toast-undo" onclick={undoArchive}>Undo</button>
 			</div>
 		{/if}
+
+		<ActionSheet bind:open={sheetOpen} title="Page actions" items={sheetItems} />
 	</div>
 {:else}
 	<div class="empty-state">
@@ -1396,12 +1413,48 @@
 	}
 	.empty-state a { color: var(--color-accent); text-decoration: none; }
 
+	.more-btn {
+		display: none;
+	}
+
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
 		/* Split view is a desktop workspace; the split route still works
 		   stacked on phones, reached via URL or Ctrl+Click. */
 		.split-btn { display: none; }
 		.document-page { padding: 0 14px; }
+
+		/* HCI: the topbar icon cluster is too cramped for thumbs — collapse
+		   everything but the essentials into the ⋯ action sheet. */
+		.doc-actions .save-status,
+		.doc-actions .icon-btn:not(.more-btn) {
+			display: none;
+		}
+		.doc-actions .more-btn {
+			display: flex;
+			width: 44px;
+			height: 44px;
+		}
+		.doc-actions {
+			margin-left: auto;
+			gap: 2px;
+		}
+		.mode-btn {
+			padding: 8px 12px;
+			font-size: 13px;
+		}
+		.doc-title-input {
+			font-size: 24px;
+		}
+
+		/* Page-info popover becomes a bottom sheet on phones. */
+		.export-menu {
+			position: fixed;
+			left: 12px;
+			right: 12px;
+			bottom: calc(16px + env(safe-area-inset-bottom));
+			top: auto;
+		}
 		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
 		.doc-title-input { font-size: 24px; }
 		.doc-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }

@@ -541,6 +541,15 @@
 		return () => unlisten?.();
 	});
 
+	// Desktop widget → main window navigation. Guarded so the widget window
+	// itself (which loads this layout for /widget) doesn't navigate away.
+	$effect(() => {
+		if (currentPath.startsWith('/widget')) return;
+		let unlisten: (() => void) | undefined;
+		listen<string>('open-doc', (e) => goto(`/${e.payload}`)).then((fn) => (unlisten = fn));
+		return () => unlisten?.();
+	});
+
 	// Android: lock the vault when the app loses visibility (app switcher,
 	// screen off, another app on top). Desktop keeps its behavior — minimizing
 	// a window must not wipe the session (issue #2, docs/android-mobile.md).
@@ -560,7 +569,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if currentPath.startsWith('/capture')}
+{#if currentPath.startsWith('/capture') || currentPath.startsWith('/widget')}
 	{@render children?.()}
 {:else if !vaultUnlocked}
 	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
@@ -1117,7 +1126,7 @@
 </div>
 {/if}
 
-{#if !currentPath.startsWith('/capture')}
+{#if !currentPath.startsWith('/capture') && !currentPath.startsWith('/widget')}
 	<SettingsPanel bind:open={settingsOpen} onlock={() => (vaultUnlocked = false)} />
 
 	<ShortcutsDialog bind:open={shortcutsOpen} />
