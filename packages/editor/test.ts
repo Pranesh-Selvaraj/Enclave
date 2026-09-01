@@ -33,6 +33,14 @@ assert.ok(md.includes('> A blockquote'), 'should have blockquote');
 assert.ok(md.includes('```'), 'should have code block');
 console.log('HTML → Markdown: PASS\n');
 
+// TipTap table (markdown table extension) → GFM markdown table
+const tableHtml = `<table><tbody><tr><th>Name</th><th>Age</th></tr><tr><td>Ada</td><td>36</td></tr><tr><td>Linus</td><td>54</td></tr></tbody></table>`;
+const tableMd = htmlToMarkdown(tableHtml);
+assert.ok(tableMd.includes('| Name | Age |'), 'header row');
+assert.ok(tableMd.includes('| --- | --- |'), 'separator row');
+assert.ok(tableMd.includes('| Ada | 36 |'), 'body row');
+console.log('Table → Markdown: PASS\n');
+
 // Database block → Markdown table
 const dbData = {
 	columns: [

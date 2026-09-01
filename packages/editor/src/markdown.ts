@@ -76,6 +76,13 @@ function convert(tokens: Token[], i: number): { out: string; next: number } {
 			i = r.next;
 			continue;
 		}
+		if (name === 'table') {
+			const r = renderTableTag(tokens, i);
+			if (out && !out.endsWith('\n')) out += '\n';
+			out += r.out;
+			i = r.next;
+			continue;
+		}
 		if (t.selfClosing) {
 			if (name === 'br') out += '\n';
 			else if (name === 'hr') out += '\n---\n';
@@ -90,6 +97,44 @@ function convert(tokens: Token[], i: number): { out: string; next: number } {
 		if (i < tokens.length) i++;
 	}
 	return { out, next: i };
+}
+
+/// TipTap table → GFM markdown table. First row is the header (TipTap inserts
+/// one by default); thead/tbody wrappers are skipped while walking rows.
+function renderTableTag(tokens: Token[], i: number): { out: string; next: number } {
+	const close = '/table';
+	let rows: string[][] = [];
+	let j = i + 1;
+	while (j < tokens.length && tokens[j].name !== close) {
+		const t = tokens[j];
+		if (t.kind === 'tag' && t.name === 'tr') {
+			const row: string[] = [];
+			let k = j + 1;
+			while (k < tokens.length && tokens[k].name !== '/tr') {
+				const c = tokens[k];
+				if (c.kind === 'tag' && (c.name === 'td' || c.name === 'th')) {
+					const inner = convert(tokens, k + 1);
+					row.push(inner.out.trim());
+					k = inner.next + 1;
+				} else {
+					k++;
+				}
+			}
+			if (row.length) rows.push(row);
+			j = k < tokens.length ? k + 1 : k;
+		} else {
+			j++;
+		}
+	}
+	const next = j < tokens.length ? j + 1 : j;
+	if (rows.length === 0) return { out: '', next };
+	// Pad ragged rows to the widest one so the GFM output stays rectangular.
+	const width = Math.max(...rows.map((r) => r.length));
+	const pad = (r: string[]) => [...r, ...Array(width - r.length).fill('')];
+	const esc = (s: string) => s.replace(/\|/g, '\\|');
+	const line = (cells: string[]) => '| ' + cells.map(esc).join(' | ') + ' |';
+	const out = '\n' + line(pad(rows[0])) + '\n' + line(pad(rows[0].map(() => '---'))) + (rows.length > 1 ? '\n' + rows.slice(1).map((r) => line(pad(r))).join('\n') : '') + '\n';
+	return { out, next };
 }
 
 function renderPre(tokens: Token[], i: number): { out: string; next: number } {

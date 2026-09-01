@@ -146,6 +146,14 @@
 			action: (ed) => ed.chain().focus().toggleCallout().run(),
 		},
 		{
+			id: 'markdownTable',
+			label: 'Markdown Table',
+			icon: 'table',
+			group: 'advanced',
+			description: 'Insert a simple markdown table',
+			action: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+		},
+		{
 			id: 'database',
 			label: 'Database',
 			icon: 'database',

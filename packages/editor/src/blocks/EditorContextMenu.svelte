@@ -36,10 +36,7 @@
 	);
 
 	const INSERT_ITEMS: MenuItem[] = [
-		{ label: 'Text', icon: 'text', action: (ed) => ed.chain().focus().setParagraph().run() },
-		{ label: 'Heading 1', icon: 'heading1', action: (ed) => ed.chain().focus().setHeading({ level: 1 }).run() },
-		{ label: 'Heading 2', icon: 'heading2', action: (ed) => ed.chain().focus().setHeading({ level: 2 }).run() },
-		{ label: 'Heading 3', icon: 'heading3', action: (ed) => ed.chain().focus().setHeading({ level: 3 }).run() },
+		{ label: 'Markdown Table', icon: 'table', action: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
 		{ label: 'Bullet List', icon: 'list', action: (ed) => ed.chain().focus().toggleBulletList().run() },
 		{ label: 'Numbered List', icon: 'listOrdered', action: (ed) => ed.chain().focus().toggleOrderedList().run() },
 		{ label: 'Task List', icon: 'listChecks', action: (ed) => ed.chain().focus().toggleTaskList().run() },
@@ -50,8 +47,13 @@
 		{ label: 'Code Block', icon: 'codeBlock', action: (ed) => ed.chain().focus().toggleCodeBlock().run() },
 	];
 
-	// "Paragraph" = turn-into block types.
-	const PARAGRAPH_ITEMS: MenuItem[] = INSERT_ITEMS.slice(0, 4);
+	// "Paragraph" = turn-into block types (Text + headings).
+	const PARAGRAPH_ITEMS: MenuItem[] = [
+		{ label: 'Text', icon: 'text', action: (ed) => ed.chain().focus().setParagraph().run() },
+		{ label: 'Heading 1', icon: 'heading1', action: (ed) => ed.chain().focus().setHeading({ level: 1 }).run() },
+		{ label: 'Heading 2', icon: 'heading2', action: (ed) => ed.chain().focus().setHeading({ level: 2 }).run() },
+		{ label: 'Heading 3', icon: 'heading3', action: (ed) => ed.chain().focus().setHeading({ level: 3 }).run() },
+	];
 
 	const FORMAT_ITEMS: MenuItem[] = [
 		{ label: 'Bold', icon: 'bold', action: (ed) => ed.chain().focus().toggleBold().run(), active: (ed) => ed.isActive('bold') },

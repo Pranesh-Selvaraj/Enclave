@@ -173,6 +173,30 @@ import { makeReactive } from './reactivity.js';
 		margin: 1em 0;
 	}
 
+	/* ── Tables ── */
+	:global(.tiptap-editor table) {
+		border-collapse: collapse;
+		width: 100%;
+		margin: 0.5em 0;
+	}
+
+	:global(.tiptap-editor th),
+	:global(.tiptap-editor td) {
+		border: 1px solid var(--color-border);
+		padding: 6px 10px;
+		text-align: left;
+		vertical-align: top;
+	}
+
+	:global(.tiptap-editor th) {
+		background: var(--color-surface-hover);
+		font-weight: 600;
+	}
+
+	:global(.tiptap-editor .selectedCell) {
+		background: var(--color-accent-subtle);
+	}
+
 	/* ── Task Lists ── */
 	:global(.tiptap-editor ul[data-type="taskList"]) {
 		list-style: none;

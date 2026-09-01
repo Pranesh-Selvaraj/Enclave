@@ -1,6 +1,10 @@
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
 import Link from '@tiptap/extension-link';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
 import { mount, unmount } from 'svelte';
 import CodeBlockView from './blocks/CodeBlockView.svelte';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -33,6 +37,11 @@ export function editorExtensions() {
 		// behavior (Cmd/Ctrl+click opens the system browser, plain click
 		// keeps the caret editable); linkOnPaste turns pasted URLs into links.
 		Link.configure({ openOnClick: true, linkOnPaste: true }),
+		// Simple markdown-style tables (GFM round-trip via marked).
+		Table.configure({ resizable: false }),
+		TableRow,
+		TableHeader,
+		TableCell,
 		Callout,
 		ToggleBlock,
 		ToggleSummary,
