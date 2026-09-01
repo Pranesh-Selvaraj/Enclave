@@ -4,73 +4,68 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.6.0] — 2026-09-01
+
+### Added
+
+- **Folders in the vault** — `folders` table + `documents.folder_id`
+  (migrated on existing vaults), commands for create/rename/delete/move;
+  the sidebar gains a collapsible folder tree with inline rename, page
+  counts, a right-click menu, and Move-to-folder on every page. Folder
+  moves sync (rev bump); folders themselves are vault-local. Deleting a
+  folder never deletes pages — they fall back to the root.
+- **Editor right-click context menu** — add link (page picker), add
+  external link, cut/copy/paste, undo/redo, select all, and Insert /
+  Paragraph / Format flyouts (flip at screen edges). The caret moves to
+  the click point unless it lands inside a selection.
+- **Markdown tables** — `@tiptap/extension-table` stack; insert a 3×3
+  table from the Insert flyout or slash menu, GFM round-trip in markdown
+  export/import, and a table toolbar (add/remove rows & columns) that
+  appears when the cursor is inside a table.
+- **Markdown source view** — `</>` toolbar button toggles the editor to an
+  editable markdown textarea (Ctrl+S applies); leaving source mode parses
+  it back through the markdown importer and autosaves.
+- **Database right-click menu** — insert row/column, delete row/column,
+  delete database from any cell, header, or row.
+- **TableMenu / insert test harness** — headless jsdom harness
+  (`npm run test:insert`) that creates the real editor with production
+  extensions and asserts every insert command, table row/column ops,
+  task checkbox toggling, toggle collapse/expand/backspace-delete, and
+  node-view `stopEvent` behavior.
+
+### Changed
+
+- **Sidebar redesigned** — the collapsed sidebar is now an icon rail
+  (logo, Home / Graph / New page, folder icons with page-count badges,
+  sync/theme/settings) instead of a bare strip; the extended sidebar keeps
+  its full tree, tags, trash, and footer.
+- **Database rework** — doc sync debounced (250ms, flushed on unmount),
+  toolbar with row count + + Row button, Obsidian-style polish (view
+  switcher, header labels, row hover, cell focus ring, accent buttons).
+- **Editor polish (Obsidian-style)** — custom task checkboxes, per-type
+  callout tints, muted blockquote rail, rebuilt toggle blocks (chevron
+  node view with persisted collapse state).
+- **App name** — installer/launcher and Android label now "Enclave".
 
 ### Fixed
 
-- **Editor freezes / dead blocks** — the root cause across several reports:
-  Svelte 5's `mount()` does not return a `$set` method (Svelte 4 API), but
-  six node views (code block, database, image, file, page embed, bookmark)
-  called it in `update()`. The TypeError escaped ProseMirror's update
-  pipeline: the doc state committed while the DOM never synced, so the
-  editor appeared frozen. Replaced with Svelte 5 exports (`setLanguage`,
-  `applyData`) or a clean view recreation.
-- **Database was unresponsive** — a `$effect` that synced from the `data`
-  prop also read the local columns/rows state, so it re-ran on every edit
-  and reset the state to the stale prop (typed text reverted). The state is
-  now initialized once at mount; external sync (undo/redo, linked-db
-  mirror) goes through the exported `applyData()`.
-- **Toggle blocks couldn't be deleted** — `selectNodeBackward` grabbed the
-  summary node at the toggle boundary and swallowed Backspace. The summary
-  is now `selectable: false`, and the ToggleBlock extension handles
-  Backspace itself: at the summary start the toggle unwraps (content kept),
-  at an empty body it is deleted. (Raw `tr.replaceWith` is used — TipTap's
-  `chain().insertContentAt()` silently drops block content at document
-  boundaries.)
-
-### Changed
-
-- **Database UI polish** — fixed a broken `--color-hover` var (rules were
-  no-ops), pill-style view switcher, uppercase header labels, row hover
-  tint, accent focus ring on cells, accent-colored add-row/add-column.
-
-### Changed
-
-- **Database right-click menu** — right-click any cell, column header, or
-  row for insert row/column above/below/left/right, delete row, delete
-  column, delete database. The hover ✕ delete buttons are now visible
-  instead of hidden until hover.
-- **Collapsed sidebar redesigned** — instead of a bare 48px strip, the
-  collapsed sidebar is now an icon rail: logo + expand button on top,
-  Home / Graph / New page icons, folder icons with page-count badges
-  (clicking one expands the sidebar into that folder), and sync / theme /
-  settings at the bottom. Tooltips on every button.
-
-## [Unreleased]
-
-### Fixed
-
-- **Blocks vanishing when typing inside them** — the database, bookmark,
-  image, file, and page-embed node views contain real `<input>` elements
-  inside ProseMirror. Without `stopEvent`, typing in one while the editor
-  selection sat on the block made PM's keypress handler replace the block
-  with the typed character (WebKitGTK still fires `keypress`). All five
-  views now implement `stopEvent` (the code block uses a conditional one
-  that only shields its toolbar), and the harness reproduces the exact
-  mechanism: a keystroke inside a node-view input deletes the block without
-  the guard, survives with it.
-
-### Changed
-
-- **Database rework** — doc sync is debounced (250ms, flushed on unmount):
-  typing edits local state instantly, the full-table JSON dispatch no
-  longer runs per keystroke. Toolbar now shows the row count, a prominent
-  + Row button (replacing the footer), and a Filter toggle. Context menu
-  from the previous round remains.
-- **Markdown source view** — new `</>` button in the page toolbar toggles
-  the editor to an editable markdown textarea (monospace, Ctrl+S applies).
-  Leaving source mode parses the text back into the document via the
-  existing markdown importer and autosaves.
+- **Editor freezes / dead blocks** — six node views called Svelte 4's
+  `$set` on Svelte 5 `mount()` exports; the TypeError escaped ProseMirror's
+  update pipeline and left the editor frozen. Replaced with Svelte 5
+  exports (`setLanguage`, `applyData`) or clean view recreation.
+- **Blocks vanishing when typing inside them** — inputs inside node views
+  (database, bookmark, image, file, page-embed) leaked keypress events to
+  ProseMirror, which replaced the block with the typed character. All
+  views now implement `stopEvent`.
+- **Database unresponsive** — the prop-sync `$effect` re-ran on every edit
+  and reset local state to the stale prop; state now initializes once and
+  syncs via the exported `applyData()`.
+- **Toggle blocks** — couldn't be deleted (Backspace now unwraps/deletes
+  them) and collapsed state wasn't persisted; rebuilt as a custom node
+  view with a stale-closure fix for consecutive chevron clicks.
+- **Toggle/list blocks styling** — custom checkboxes, callout colors, and
+  blockquote rails were using an undefined CSS var or native elements that
+  fought ProseMirror.
 
 ## [1.5.0] — 2026-08-25
 
