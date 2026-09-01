@@ -4,6 +4,42 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] — 2026-09-01
+
+### Added
+
+- **Split-screen view** — two pages side by side with a draggable divider
+  (ratio persisted), each pane with its own editor and autosave; open from
+  the page toolbar or Ctrl/Cmd+Click a sidebar page; panes stack on narrow
+  windows.
+- **Desktop wallpaper widget** — transparent glass panel (recents + quick
+  capture + date) docked to the monitor corner, toggled from the tray;
+  opening a page surfaces and navigates the main window.
+- **Android home-screen widget** — frosted card with New note (routes to
+  quick capture) and Open buttons. Launcher-only for now; a live recents
+  feed needs a Rust→Kotlin bridge (follow-up).
+- **Mobile rebuild round 1** — liquid-glass UI (floating frosted topbar
+  over a vibrant gradient, glass bottom-nav pill, glass drawer/sheets),
+  action sheet for page actions (favorite, exports, info, delete), 44–52px
+  touch targets, labeled footer actions, mobile-feel near-full-width
+  drawer.
+- **Manual peer connect** — "Add peer — host:port" in the sidebar for
+  networks where mDNS is blocked; manual sessions merge into the real peer
+  record and auto-redial.
+- **Database density** — Compact/Spacious toggle per block, persisted with
+  the document; compact mode: 120px columns, 2–3px cell padding.
+- **Tighter editor spacing everywhere** — line-height 1.55, reduced heading/
+  list/quote/callout/table/toggle margins.
+
+### Fixed
+
+- **P2P discovery** — only the first resolved mDNS address was dialed; on
+  multi-homed devices (WiFi + VPN/docker) that could be the wrong interface
+  with no fallback. Dials every advertised address (private IPv4 first)
+  with a 5s per-host timeout; mDNS failure no longer stops the sync server.
+- **macOS widget build** — transparency requires the macos-private-api
+  feature (enabled + allowlisted via app.macOSPrivateApi).
+
 ## [1.6.0] — 2026-09-01
 
 ### Added
