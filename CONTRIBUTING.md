@@ -180,7 +180,10 @@ MIT. By contributing, you agree that your contributions will be licensed under t
    `cd src-tauri && npx tauri android build --target aarch64` with
    `ANDROID_HOME`/`NDK_HOME`/`JAVA_HOME` set — confirms the Android config
    (versionCode auto-increment, manifests) is valid.
-4. **Commit on a release branch**, open a PR, merge. Tag + publish:
+4. **Never push directly to `main`** — branch protection requires a PR,
+   and the agent must honor that even when bypass rights exist. Commit on a
+   release branch, open a PR with the changelog entry in the description,
+   merge it, then tag + publish:
 
    ```bash
    git tag -a v<new> -m "v<new> — <summary>"
