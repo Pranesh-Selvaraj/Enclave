@@ -167,3 +167,11 @@ if (failed > 0) {
 	process.exit(1);
 }
 console.log('\nAll insert checks passed');
+
+// The TableMenu shows when isActive('table') — verify the caret lands in a
+// cell right after insertTable.
+ed.commands.setContent('<p>x</p>');
+clickAt(1);
+ed.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+assert.ok(ed.isActive('table'), 'caret inside inserted table → TableMenu visible');
+console.log('ok   table menu visibility (isActive("table") after insertTable)');
