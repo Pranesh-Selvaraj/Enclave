@@ -36,6 +36,38 @@
 	function closePaneB() {
 		goto(`/split/${a}`);
 	}
+
+	// ── Draggable divider: the user owns the split ratio ──
+	let splitPanesEl: HTMLDivElement | undefined = $state();
+	let ratio = $state(0.5);
+	let dragging = $state(false);
+
+	$effect(() => {
+		try {
+			const saved = Number(localStorage.getItem('enclave-split-ratio'));
+			if (saved >= 0.25 && saved <= 0.75) ratio = saved;
+		} catch { /* ignore */ }
+	});
+
+	function onDividerDown(e: PointerEvent) {
+		const el = splitPanesEl;
+		if (!el) return;
+		e.preventDefault();
+		dragging = true;
+		const rect = el.getBoundingClientRect();
+		const move = (ev: PointerEvent) => {
+			const x = Math.min(Math.max(ev.clientX - rect.left, 80), rect.width - 80);
+			ratio = x / rect.width;
+		};
+		const up = () => {
+			dragging = false;
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			try { localStorage.setItem('enclave-split-ratio', String(ratio)); } catch { /* ignore */ }
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+	}
 </script>
 
 <div class="split-page">
@@ -47,15 +79,18 @@
 		<span class="split-title">Split view</span>
 		{#if !b}
 			<button class="split-add" onclick={openPicker}>+ Add pane</button>
-		{:else}
-			<span class="split-hint">Ctrl+Click the sidebar to open another page here</span>
 		{/if}
 	</header>
 
-	<div class="split-panes">
-		<section class="split-pane" aria-label="Pane A">
+	<div class="split-panes" bind:this={splitPanesEl} class:dragging={dragging}>
+		<section class="split-pane" aria-label="Pane A" style="flex: {b ? ratio : 1} 1 0%;">
 			<div class="pane-bar">
 				<span class="pane-label">A</span>
+				{#if b}
+					<a href="/{a}" class="pane-link" title="Open pane A in a full tab">
+						<Icon name="externalLink" size={12} />
+					</a>
+				{/if}
 			</div>
 			<div class="pane-scroll">
 				<DocPane docId={a ?? ''} />
@@ -63,12 +98,26 @@
 		</section>
 
 		{#if b}
-			<section class="split-pane" aria-label="Pane B">
+			<div
+				class="split-divider"
+				class:active={dragging}
+				onpointerdown={onDividerDown}
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize panes"
+				title="Drag to resize"
+			></div>
+			<section class="split-pane" aria-label="Pane B" style="flex: {1 - ratio} 1 0%;">
 				<div class="pane-bar">
 					<span class="pane-label">B</span>
-					<button class="pane-close" onclick={closePaneB} title="Close pane B">
-						<Icon name="x" size={13} />
-					</button>
+					<div class="pane-bar-actions">
+						<a href="/{b}" class="pane-link" title="Open pane B in a full tab">
+							<Icon name="externalLink" size={12} />
+						</a>
+						<button class="pane-close" onclick={closePaneB} title="Close pane B">
+							<Icon name="x" size={13} />
+						</button>
+					</div>
 				</div>
 				<div class="pane-scroll">
 					<DocPane docId={b} />
@@ -110,14 +159,14 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		padding: 0 20px 20px;
+		padding: 0 12px 12px;
 	}
 
 	.split-header {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 14px 4px 10px;
+		gap: 10px;
+		padding: 8px 4px 6px;
 		flex-shrink: 0;
 	}
 	.split-back {
@@ -142,10 +191,6 @@
 		letter-spacing: 0.06em;
 		color: var(--color-text-faint);
 	}
-	.split-hint {
-		font-size: 12px;
-		color: var(--color-text-faint);
-	}
 	.split-add {
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
@@ -167,35 +212,79 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
-		gap: 14px;
 	}
 
 	.split-pane {
-		flex: 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
+		border-radius: var(--radius-md);
 		background: var(--color-surface);
 		overflow: hidden;
+	}
+
+	/* Draggable divider — the user owns the split ratio. */
+	.split-divider {
+		flex: 0 0 6px;
+		cursor: col-resize;
+		touch-action: none;
+		position: relative;
+		z-index: 2;
+	}
+	.split-divider::after {
+		content: '';
+		position: absolute;
+		left: 2px;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		border-radius: 2px;
+		background: transparent;
+		transition: background 0.12s;
+	}
+	.split-divider:hover::after,
+	.split-divider.active::after {
+		background: var(--color-accent);
+	}
+	.split-panes.dragging {
+		cursor: col-resize;
+		user-select: none;
 	}
 
 	.pane-bar {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 6px 12px;
+		padding: 3px 10px;
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-surface-hover);
 		flex-shrink: 0;
 	}
 	.pane-label {
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--color-text-faint);
+	}
+	.pane-bar-actions {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+	.pane-link {
+		display: flex;
+		border: none;
+		background: none;
+		color: var(--color-text-faint);
+		cursor: pointer;
+		padding: 4px;
+		border-radius: var(--radius-sm);
+	}
+	.pane-link:hover {
+		background: var(--color-surface-active);
+		color: var(--color-text);
 	}
 	.pane-close {
 		border: none;
@@ -218,7 +307,7 @@
 	}
 
 	.split-placeholder {
-		flex: 1;
+		flex: 1 1 0%;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
@@ -316,10 +405,14 @@
 		.split-panes {
 			flex-direction: column;
 			overflow-y: auto;
+			gap: 8px;
 		}
 		.split-pane {
-			flex: none;
+			flex: none !important;
 			min-height: 55vh;
+		}
+		.split-divider {
+			display: none;
 		}
 		.split-placeholder {
 			flex: none;

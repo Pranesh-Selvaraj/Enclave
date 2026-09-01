@@ -140,12 +140,12 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
-		padding: 0 28px 48px;
+		padding: 0 22px 32px;
 	}
 
 	.pane-title {
 		flex-shrink: 0;
-		font-size: 24px;
+		font-size: 19px;
 		font-weight: 700;
 		letter-spacing: -0.02em;
 		color: var(--color-text);
