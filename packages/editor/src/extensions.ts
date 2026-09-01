@@ -83,6 +83,10 @@ export function editorExtensions() {
 					return {
 						dom,
 						contentDOM,
+						// Keystrokes in the code content go through ProseMirror; events
+						// on the toolbar (language select, copy) must not — without
+						// this, changing the select would be eaten by the keymap.
+						stopEvent: (event) => !contentDOM.contains(event.target as Node),
 						update(newNode) {
 							const next = newNode.attrs.language ?? 'plaintext';
 							if (next === lang) return true;

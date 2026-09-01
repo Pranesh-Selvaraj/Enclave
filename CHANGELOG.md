@@ -46,6 +46,32 @@ All notable changes to Enclave are documented here. The format is based on
   (clicking one expands the sidebar into that folder), and sync / theme /
   settings at the bottom. Tooltips on every button.
 
+## [Unreleased]
+
+### Fixed
+
+- **Blocks vanishing when typing inside them** — the database, bookmark,
+  image, file, and page-embed node views contain real `<input>` elements
+  inside ProseMirror. Without `stopEvent`, typing in one while the editor
+  selection sat on the block made PM's keypress handler replace the block
+  with the typed character (WebKitGTK still fires `keypress`). All five
+  views now implement `stopEvent` (the code block uses a conditional one
+  that only shields its toolbar), and the harness reproduces the exact
+  mechanism: a keystroke inside a node-view input deletes the block without
+  the guard, survives with it.
+
+### Changed
+
+- **Database rework** — doc sync is debounced (250ms, flushed on unmount):
+  typing edits local state instantly, the full-table JSON dispatch no
+  longer runs per keystroke. Toolbar now shows the row count, a prominent
+  + Row button (replacing the footer), and a Filter toggle. Context menu
+  from the previous round remains.
+- **Markdown source view** — new `</>` button in the page toolbar toggles
+  the editor to an editable markdown textarea (monospace, Ctrl+S applies).
+  Leaving source mode parses the text back into the document via the
+  existing markdown importer and autosaves.
+
 ## [1.5.0] — 2026-08-25
 
 ### Added

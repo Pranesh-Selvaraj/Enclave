@@ -181,6 +181,11 @@ export const Database = Node.create({
 
 			return {
 				dom,
+				// All events from inside the widget are UI, not editor edits —
+				// without this, typing in a cell bubbles to ProseMirror, which
+				// replaces the database node with the typed text (the block
+				// "disappears").
+				stopEvent: () => true,
 				update(newNode) {
 					if (newNode.attrs.data === current) return true;
 					current = newNode.attrs.data;

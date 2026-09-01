@@ -73,6 +73,8 @@ export const PageEmbed = Node.create({
 			});
 			return {
 				dom,
+				// The page picker is UI, not an editor edit.
+				stopEvent: () => true,
 				update(newNode) {
 					if (newNode.attrs.docId === current.docId && newNode.attrs.title === current.title) return true;
 					current = { docId: newNode.attrs.docId, title: newNode.attrs.title };

@@ -81,6 +81,9 @@ export const Image = Node.create({
 			});
 			return {
 				dom,
+				// Caption input events must not reach ProseMirror (typing
+				// would replace the image node with the typed text).
+				stopEvent: () => true,
 				update(newNode) {
 					const next = { src: newNode.attrs.src, alt: newNode.attrs.alt, caption: newNode.attrs.caption ?? '' };
 					if (next.src === current.src && next.alt === current.alt && next.caption === current.caption) {

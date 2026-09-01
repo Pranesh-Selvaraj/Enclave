@@ -3,7 +3,7 @@
 	import { invoke } from '$lib/backend.js';
 	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu, EditorContextMenu, TableMenu } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
-	import { htmlToMarkdown } from '@enclave/editor';
+	import { htmlToMarkdown, markdownToJson } from '@enclave/editor';
 	import { EmojiPicker } from '@enclave/ui';
 	import { exportMarkdownDialog, exportHtmlDialog } from '$lib/importExport.js';
 	import { saveWithRetry } from '$lib/saveRetry.js';
@@ -22,6 +22,10 @@
 	let pageList = $state<{ id: string; title: string }[]>([]);
 	let mode = $state<'paper' | 'whiteboard'>('paper');	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
 	let hasWhiteboard = $state(false);
+	// Markdown source view: the page's content as editable markdown text.
+	let sourceOpen = $state(false);
+	let sourceText = $state('');
+	let sourceDirty = $state(false);
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
 	let comments = $state<{ id: string; text: string; at: string }[]>([]);
@@ -181,6 +185,32 @@
 	function toggleFullWidth() {
 		fullWidth = !fullWidth;
 		try { localStorage.setItem(`enclave-fullwidth-${docId}`, String(fullWidth)); } catch { /* ignore */ }
+	}
+
+	// ── Markdown source view ──
+	async function toggleSource() {
+		if (sourceOpen) {
+			await applySource();
+		} else if (editor) {
+			sourceText = htmlToMarkdown(editor.getHTML());
+			sourceDirty = false;
+		}
+		sourceOpen = !sourceOpen;
+	}
+
+	async function applySource() {
+		if (!sourceDirty || !editor) return;
+		sourceDirty = false;
+		try {
+			const json = await markdownToJson(sourceText);
+			// Only touch the doc when the source actually changed.
+			if (JSON.stringify(json) !== JSON.stringify(editor.getJSON())) {
+				editor.commands.setContent(json);
+				handleEditorChange();
+			}
+		} catch (e) {
+			console.error('Failed to parse markdown source:', e);
+		}
 	}
 
 	async function loadDocument() {
@@ -584,6 +614,11 @@
 				<button class="icon-btn" class:active={fullWidth} onclick={toggleFullWidth} title="Toggle full width">
 					<Icon name="expand" size={15} />
 				</button>
+				{#if mode === 'paper'}
+					<button class="icon-btn" class:active={sourceOpen} onclick={toggleSource} title="Markdown source">
+						<Icon name="code" size={15} />
+					</button>
+				{/if}
 				{#if aiEnabled}
 					<button class="icon-btn" class:active={aiOpen} onclick={() => (aiOpen = !aiOpen)} title="Ask AI (local)">
 						<Icon name="sparkles" size={15} />
@@ -729,6 +764,21 @@
 
 	{#if mode === 'paper'}
 		<div class="doc-body">
+			{#if sourceOpen}
+				<textarea
+					class="source-view"
+					bind:value={sourceText}
+					spellcheck="false"
+					aria-label="Markdown source"
+					oninput={() => (sourceDirty = true)}
+					onkeydown={(e: KeyboardEvent) => {
+						if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+							e.preventDefault();
+							applySource();
+						}
+					}}
+				></textarea>
+			{:else}
 				<div class="doc-editor">
 					<TipTapEditor
 						bind:editor
@@ -759,6 +809,7 @@
 				{/if}
 
 				<TocPanel {editor} />
+			{/if}
 			</div>
 		{:else}
 			<Whiteboard docId={docId!} />
@@ -1267,6 +1318,28 @@
 		min-width: 0;
 		overflow-y: auto;
 		padding-bottom: 80px;
+	}
+
+	/* ── Markdown source view ── */
+	.source-view {
+		flex: 1;
+		min-width: 0;
+		min-height: 100%;
+		width: 100%;
+		box-sizing: border-box;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		color: var(--color-text);
+		font-family: var(--font-mono);
+		font-size: 13px;
+		line-height: 1.65;
+		padding: 16px 18px;
+		resize: none;
+		outline: none;
+	}
+	.source-view:focus {
+		border-color: var(--color-accent);
 	}
 
 	.backlinks-panel {

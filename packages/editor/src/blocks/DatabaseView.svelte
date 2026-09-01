@@ -119,8 +119,25 @@
 
 	function emit() {
 		if (readOnly) return;
+		// ponytail: debounce the doc sync — the local state renders instantly,
+		// and a full-table JSON setNodeMarkup per keystroke is wasteful. The
+		// pending emit flushes on unmount so the last edits are never lost.
+		clearTimeout(emitTimer);
+		emitTimer = setTimeout(() => {
+			onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters }));
+		}, 250);
+	}
+
+	function flushEmit() {
+		if (readOnly || !emitTimer) return;
+		clearTimeout(emitTimer);
+		emitTimer = undefined;
 		onData(JSON.stringify({ columns, rows, view, groupBy, sort, filters }));
 	}
+
+	let emitTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => () => flushEmit());
 
 	function cellValue(row: DBRow, col: DBColumn): string | boolean | string[] {
 		if (col.type === 'createdAt') return row.createdAt ?? '';
@@ -467,7 +484,11 @@
 			</select>
 		{/if}
 		<div class="db-toolbar-spacer"></div>
-		<button class="db-filter-toggle" onclick={() => (filterOpen = !filterOpen)}>Filter</button>
+		<span class="db-rowcount">{visibleRows.length} {visibleRows.length === 1 ? 'row' : 'rows'}</span>
+		<button class="db-filter-toggle" onclick={() => (filterOpen = !filterOpen)}>{filterOpen ? 'Hide filter' : 'Filter'}</button>
+		{#if !readOnly}
+			<button class="db-add-row-btn" onclick={addRow} title="Add row">+ Row</button>
+		{/if}
 	</div>
 
 	{#if filterOpen}
@@ -675,12 +696,8 @@
 		</div>
 	{/if}
 
-	{#if !readOnly}
-		<div class="db-footer">
-			<button class="db-add-row" onclick={addRow}>+ Row</button>
-		</div>
-	{/if}
 </div>
+
 
 {#if relMenu}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -838,8 +855,7 @@
 		flex: 1;
 	}
 
-	.db-filter-toggle,
-	.db-add-row {
+	.db-filter-toggle {
 		border: none;
 		background: none;
 		color: var(--color-text-muted);
@@ -850,13 +866,7 @@
 		transition: background 0.1s, color 0.1s;
 	}
 
-	.db-add-row {
-		color: var(--color-accent);
-		font-weight: 500;
-	}
-
-	.db-filter-toggle:hover,
-	.db-add-row:hover {
+	.db-filter-toggle:hover {
 		background: var(--color-surface-hover);
 		color: var(--color-text);
 	}
@@ -1157,11 +1167,28 @@
 		white-space: nowrap;
 	}
 
-	.db-footer {
-		display: flex;
-		gap: 8px;
-		padding: 6px 8px;
-		border-top: 1px solid var(--color-border);
+	.db-rowcount {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		white-space: nowrap;
+	}
+
+	.db-add-row-btn {
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-surface);
+		color: var(--color-accent);
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+		padding: 3px 10px;
+		font-family: inherit;
+		transition: border-color 0.1s, background 0.1s;
+	}
+
+	.db-add-row-btn:hover {
+		border-color: var(--color-accent);
+		background: var(--color-accent-subtle);
 	}
 
 	/* ── Kanban ── */

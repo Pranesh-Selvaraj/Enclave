@@ -73,6 +73,8 @@ export const File = Node.create({
 			});
 			return {
 				dom,
+				// The open button is UI, not an editor edit.
+				stopEvent: () => true,
 				update(newNode) {
 					const next = { path: newNode.attrs.path, name: newNode.attrs.name };
 					if (next.path === current.path && next.name === current.name) return true;

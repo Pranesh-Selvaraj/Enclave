@@ -78,6 +78,9 @@ export const Bookmark = Node.create({
 			});
 			return {
 				dom,
+				// Title input events must not reach ProseMirror (typing would
+				// replace the bookmark node with the typed text).
+				stopEvent: () => true,
 				update(newNode) {
 					if (newNode.attrs.url === current.url && newNode.attrs.title === current.title) return true;
 					current = { url: newNode.attrs.url, title: newNode.attrs.title };

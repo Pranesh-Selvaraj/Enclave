@@ -24,7 +24,7 @@ for (const name of [
 	}
 }
 
-import { Editor } from '@tiptap/core';
+import { Editor, Node } from '@tiptap/core';
 import { editorExtensions } from './src/extensions.ts';
 
 const root = dom.window.document.getElementById('root')!;
@@ -244,6 +244,75 @@ json = JSON.stringify(ed.getJSON());
 assert.ok(!json.includes('toggleBlock'), `Backspace at summary start should unwrap the toggle: ${json.slice(0, 200)}`);
 assert.ok(json.includes('Body text'), 'unwrapped toggle keeps its body content');
 console.log('ok   backspace at summary start unwraps the toggle (content kept)');
+
+
+// ── Events from inside a node view must not reach ProseMirror ──
+// The database/bookmark/image views contain real inputs. Without stopEvent,
+// a keypress while the PM selection is a NodeSelection on the block
+// REPLACES the block with the typed character — the "block disappears when
+// I type" bug. Reproduce with a minimal atom node + input, then verify the
+// stopEvent version keeps the doc intact.
+function makeAtomEditor(withStopEvent: boolean) {
+	const atom = Node.create({
+		name: 'testAtom',
+		group: 'block',
+		atom: true,
+		parseHTML: () => [{ tag: 'div[data-test-atom]' }],
+		renderHTML: () => ['div', { 'data-test-atom': '' }] as never,
+		addNodeView() {
+			return () => {
+				const dom = document.createElement('div');
+				dom.setAttribute('data-test-atom', '');
+				const input = document.createElement('input');
+				input.type = 'text';
+				dom.appendChild(input);
+				const view = { dom };
+				if (withStopEvent) {
+					(view as { stopEvent?: () => boolean }).stopEvent = () => true;
+				}
+				return view;
+			};
+		},
+	});
+	const e = new Editor({ element: root as unknown as HTMLElement, extensions: [...editorExtensions(), atom] });
+	e.commands.setContent('<p>a</p><div data-test-atom></div><p>b</p>');
+	return e;
+}
+
+function pressKeyInInput(e: { view: { dom: HTMLElement } }) {
+	const input = e.view.dom.querySelector('input')!;
+	const kp = new dom.window.KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: 'x' });
+	Object.defineProperty(kp, 'charCode', { value: 120 });
+	Object.defineProperty(kp, 'keyCode', { value: 120 });
+	input.dispatchEvent(kp);
+}
+
+// Without stopEvent: the atom is replaced by the typed character.
+const edNoStop = makeAtomEditor(false);
+let atomPosNoStop = 0;
+edNoStop.state.doc.descendants((n, pos) => {
+	if (n.type.name === 'testAtom') { atomPosNoStop = pos; return false; }
+	return true;
+});
+edNoStop.commands.setNodeSelection(atomPosNoStop);
+pressKeyInInput(edNoStop);
+json = JSON.stringify(edNoStop.getJSON());
+assert.ok(!json.includes('testAtom'), `without stopEvent typing must delete the block: ${json.slice(0, 120)}`);
+edNoStop.destroy();
+
+// With stopEvent: the doc is untouched, the input keeps the keystroke.
+const edStop = makeAtomEditor(true);
+let atomPosStop = 0;
+edStop.state.doc.descendants((n, pos) => {
+	if (n.type.name === 'testAtom') { atomPosStop = pos; return false; }
+	return true;
+});
+edStop.commands.setNodeSelection(atomPosStop);
+pressKeyInInput(edStop);
+json = JSON.stringify(edStop.getJSON());
+assert.ok(json.includes('testAtom'), `with stopEvent the block must survive typing: ${json.slice(0, 120)}`);
+console.log('ok   stopEvent keeps blocks intact when typing in node-view inputs');
+edStop.destroy();
 
 ed.destroy();
 if (failed > 0) {
