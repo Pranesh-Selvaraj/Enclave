@@ -15,7 +15,9 @@
 	--color-text-muted: #a39b90;
 	--color-text-faint: #8e8678;
 	--color-accent: #8b7cf6;
-	--color-accent-hover: #9c90f7;
+	/* Hover shade is derived from the accent so custom accent colors get a
+	   matching hover automatically (lightened on dark themes). */
+	--color-accent-hover: color-mix(in srgb, var(--color-accent) 82%, #ffffff);
 	--color-accent-subtle: color-mix(in srgb, var(--color-accent) 15%, transparent);
 	--color-danger: #e0655b;
 	--color-warning: #d9a851;
@@ -48,7 +50,8 @@
 	--color-text-muted: #5d5549;
 	--color-text-faint: #6e6557;
 	--color-accent: #6b5ce7;
-	--color-accent-hover: #5a4bd6;
+	/* Darkened on the light theme so hover stays legible for any accent. */
+	--color-accent-hover: color-mix(in srgb, var(--color-accent) 78%, #000000);
 	--color-danger: #b64a3f;
 	--color-warning: #9a741c;
 	--color-success: #3f8f5f;
@@ -59,12 +62,36 @@
 	--color-overlay: rgba(45, 38, 28, 0.35);
 }
 
-/* Appearance presets — applied via data-* attributes on <html> */
-[data-accent="blue"] { --color-accent: #4f8ef7; --color-accent-hover: #6ba0f9; }
-[data-accent="green"] { --color-accent: #2fbf71; --color-accent-hover: #4cca88; }
-[data-accent="teal"] { --color-accent: #2bb6b6; --color-accent-hover: #45c6c6; }
-[data-accent="orange"] { --color-accent: #e8873a; --color-accent-hover: #ee9b58; }
-[data-accent="red"] { --color-accent: #e5534b; --color-accent-hover: #ea6d66; }
+/* Appearance presets — applied via data-* attributes on <html>.
+   Accent presets only need to set the base accent; hover/subtle derive from
+   it via color-mix, so a custom accent (set inline) gets those too. */
+[data-accent="blue"] { --color-accent: #4f8ef7; }
+[data-accent="green"] { --color-accent: #2fbf71; }
+[data-accent="teal"] { --color-accent: #2bb6b6; }
+[data-accent="orange"] { --color-accent: #e8873a; }
+[data-accent="red"] { --color-accent: #e5534b; }
+
+/* UI corner style presets — scale the shared radius tokens. */
+[data-corners="rounded"] {
+	--radius-sm: 9px;
+	--radius-md: 12px;
+	--radius-lg: 16px;
+	--radius-xl: 20px;
+}
+[data-corners="rounder"] {
+	--radius-sm: 12px;
+	--radius-md: 16px;
+	--radius-lg: 22px;
+	--radius-xl: 28px;
+}
+
+/* Whole-UI scale — applied as CSS zoom on <html> so every px-sized control
+   scales consistently. zoom is supported in every Enclave webview (WebKitGTK,
+   WKWebView, WebView2, Android WebView); fallback engines just ignore it.
+   ponytail: zoom is the lazy lever vs converting the codebase to rem. */
+[data-ui-scale="compact"] { zoom: 0.92; }
+[data-ui-scale="large"] { zoom: 1.08; }
+[data-ui-scale="xlarge"] { zoom: 1.18; }
 
 [data-font="system"] { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 [data-font="serif"] { --font-sans: Georgia, 'Times New Roman', serif; }

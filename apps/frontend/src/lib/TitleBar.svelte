@@ -7,6 +7,11 @@
 	import { isTauri } from '@tauri-apps/api/core';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 
+	// Resize direction identifiers accepted by startResizeDragging.
+	type ResizeDir =
+		| 'ResizeNorth' | 'ResizeSouth' | 'ResizeEast' | 'ResizeWest'
+		| 'ResizeNorthEast' | 'ResizeNorthWest' | 'ResizeSouthEast' | 'ResizeSouthWest';
+
 	let { onSearch }: { onSearch: () => void } = $props();
 
 	const win = isTauri() ? getCurrentWindow() : null;
@@ -15,6 +20,12 @@
 	function minimize() { win?.minimize(); }
 	function toggleMax() { win?.toggleMaximize(); }
 	function close() { win?.close(); }
+
+	// Frameless windows don't get OS resize borders — these invisible edges
+	// call into the native window manager so drag-resizing still works.
+	function startResize(dir: ResizeDir) {
+		(win as unknown as { startResizeDragging: (d: ResizeDir) => Promise<void> })?.startResizeDragging(dir).catch(() => {});
+	}
 
 	$effect(() => {
 		if (!win) return;
@@ -56,6 +67,30 @@
 		</button>
 	</div>
 </header>
+
+{#if win}
+	<!-- Invisible resize edges/corners for the frameless main window. -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="rz"
+		role="presentation"
+		aria-hidden="true"
+		onpointerdown={(e: PointerEvent) => {
+			const dir = (e.target as HTMLElement | null)?.dataset?.dir as ResizeDir | undefined;
+			if (dir) { e.preventDefault(); startResize(dir); }
+		}}
+	>
+		<span class="rz-t" data-dir="ResizeNorth"></span>
+		<span class="rz-b" data-dir="ResizeSouth"></span>
+		<span class="rz-l" data-dir="ResizeWest"></span>
+		<span class="rz-r" data-dir="ResizeEast"></span>
+		<span class="rz-nw" data-dir="ResizeNorthWest"></span>
+		<span class="rz-ne" data-dir="ResizeNorthEast"></span>
+		<span class="rz-sw" data-dir="ResizeSouthWest"></span>
+		<span class="rz-se" data-dir="ResizeSouthEast"></span>
+	</div>
+{/if}
 
 <style>
 	.titlebar {
@@ -150,4 +185,16 @@
 		.tb-search { min-width: 30px; width: 30px; justify-content: center; padding: 0; }
 		.tb-search-txt { display: none; }
 	}
+
+	/* ── Frameless resize edges (native OS resize borders are gone) ── */
+	.rz { position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
+	.rz span { position: fixed; pointer-events: auto; }
+	.rz-t { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+	.rz-b { bottom: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+	.rz-l { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+	.rz-r { right: 0; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+	.rz-nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+	.rz-ne { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+	.rz-sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+	.rz-se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
 </style>

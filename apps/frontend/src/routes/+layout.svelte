@@ -1275,6 +1275,18 @@
 	 * collapsed sidebar really collapses under any density. */
 	:global([data-density="narrow"]) .sidebar.collapsed,
 	:global([data-density="wide"]) .sidebar.collapsed { width: 48px; min-width: 48px; }
+	/* Density also tunes rows and chrome, not just sidebar width. */
+	:global([data-density="narrow"]) .side-nav { gap: 1px; }
+	:global([data-density="narrow"]) .nav-item { padding: 3px 8px; font-size: 13px; }
+	:global([data-density="narrow"]) .section-head { padding: 9px 12px 2px; }
+	:global([data-density="narrow"]) .tree-item { padding: 2px 6px; min-height: 24px; font-size: 13px; }
+	:global([data-density="narrow"]) .tree-section-title { padding: 6px 8px 2px; }
+	:global([data-density="narrow"]) .folder-row { min-height: 22px; }
+	:global([data-density="narrow"]) .folder-label { padding: 1px 4px; }
+	:global([data-density="narrow"]) .tag-row { padding: 2px 6px; }
+	:global([data-density="narrow"]) .mini-btn { width: 32px; height: 32px; }
+	:global([data-density="wide"]) .nav-item { padding: 8px 12px; }
+	:global([data-density="wide"]) .tree-item { min-height: 34px; }
 
 	/* Desktop chrome: the brand lives in the custom title bar above, so the
 	   expanded sidebar header is just the collapse toggle (right-aligned).

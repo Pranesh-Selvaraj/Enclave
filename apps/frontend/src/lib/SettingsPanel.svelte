@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import { Button, Icon } from '@enclave/ui';
-	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS } from '@enclave/ui';
+	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
 	import { loadUpdatePrefs, saveUpdatePrefs } from './updates.js';
 	import UpdateDialog from './UpdateDialog.svelte';
@@ -16,6 +16,11 @@
 
 	let vaultPath = $state('~/.local/share/com.enclave.app/enclave.db');
 	let appVersion = $state('');
+
+	// Effective accent color (preset hex or the user's custom hex).
+	const currentAccent = $derived(
+		ACCENTS.find((a) => a.id === theme.accent)?.color ?? (/^#[0-9a-f]{6}$/i.test(theme.accent) ? theme.accent : ACCENTS[0].color),
+	);
 
 	$effect(() => {
 		if (open && !appVersion) {
@@ -140,6 +145,33 @@
 					</div>
 				</div>
 				<div class="setting-row">
+					<span>Custom accent</span>
+					<label class="color-field" title="Pick any accent color">
+						<input
+							type="color"
+							value={currentAccent}
+							oninput={(e: Event) => { theme.accent = (e.currentTarget as HTMLInputElement).value; }}
+							aria-label="Custom accent color"
+						/>
+					</label>
+				</div>
+				<div class="setting-row">
+					<span>Corners</span>
+					<div class="seg-row">
+						{#each CORNERS as c (c)}
+							<button class="seg" class:active={theme.corners === c} onclick={() => (theme.corners = c)}>{c}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
+					<span>UI size</span>
+					<div class="seg-row">
+						{#each UI_SCALES as s (s)}
+							<button class="seg" class:active={theme.uiScale === s} onclick={() => (theme.uiScale = s)}>{s}</button>
+						{/each}
+					</div>
+				</div>
+				<div class="setting-row">
 					<span>Font</span>
 					<div class="seg-row">
 						{#each FONTS as f (f)}
@@ -164,7 +196,7 @@
 					</div>
 				</div>
 				<div class="setting-row">
-					<span>Sidebar width (desktop)</span>
+					<span>Interface density</span>
 					<div class="seg-row">
 						{#each DENSITIES as d (d)}
 							<button class="seg" class:active={theme.density === d} onclick={() => (theme.density = d)}>{d}</button>
@@ -418,14 +450,35 @@ sentinel check</pre>
 		display: flex; align-items: center; justify-content: space-between; font-size: 14px;
 		margin: 10px 0;
 	}
-	.swatch-row { display: flex; gap: 6px; }
+	.swatch-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 	.swatch {
 		width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
 		cursor: pointer; padding: 0;
 	}
 	.swatch.active { border-color: var(--color-text); }
 	.swatch:hover { transform: scale(1.15); }
-	.seg-row { display: flex; gap: 4px; }
+	.seg-row { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+	.color-field {
+		display: flex;
+		align-items: center;
+		width: 44px;
+		height: 30px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-surface-hover);
+		cursor: pointer;
+		overflow: hidden;
+	}
+	.color-field input[type="color"] {
+		width: 100%;
+		height: 100%;
+		border: none;
+		padding: 0;
+		background: none;
+		cursor: pointer;
+	}
+	.color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+	.color-field input[type="color"]::-webkit-color-swatch { border: none; border-radius: 6px; }
 	.seg {
 		background: var(--color-surface-hover); border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm); color: var(--color-text-muted);

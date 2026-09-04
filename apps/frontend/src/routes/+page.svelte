@@ -68,16 +68,6 @@
 			<h1 class="home-title">{greeting}</h1>
 			<p class="home-subtitle">Your encrypted workspace — everything stays on this device.</p>
 		</div>
-		<div class="quick-actions">
-			<button class="quick-btn" onclick={createJournal}>
-				<span class="quick-icon"><Icon name="check" size={15} /></span>
-				<span>Today's Journal</span>
-			</button>
-			<button class="quick-btn primary" onclick={createAndOpen}>
-				<span class="quick-icon"><Icon name="plus" size={15} /></span>
-				<span>New Page</span>
-			</button>
-		</div>
 	</div>
 
 	{#if documents.length === 0}
@@ -97,16 +87,18 @@
 			</div>
 		</div>
 	{:else}
-		{#if favorites.length > 0}
-			<section class="home-section">
+		<div class="home-grid">
+			<section class="home-main">
 				<div class="sec-head">
-					<h2 class="sec-title">Favorites</h2>
-					<span class="sec-count">{favorites.length}</span>
+					<h2 class="sec-title">Recent pages</h2>
+					<span class="sec-count">{recent.length}</span>
 				</div>
 				<div class="doc-panel">
-					{#each favorites as doc (doc.id)}
+					{#each recent as doc (doc.id)}
 						<a href="/{doc.id}" class="doc-row">
-							<span class="row-icon fav"><Icon name="star" size={14} /></span>
+							<span class="row-icon" class:fav={doc.is_favorite}>
+								<Icon name={doc.is_favorite ? 'star' : 'page'} size={14} />
+							</span>
 							<span class="row-title">{doc.title || 'Untitled'}</span>
 							<span class="row-meta">{timeAgo(doc.updated_at)}</span>
 							<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
@@ -114,58 +106,79 @@
 					{/each}
 				</div>
 			</section>
-		{/if}
 
-		<section class="home-section">
-			<div class="sec-head">
-				<h2 class="sec-title">Recent pages</h2>
-				<span class="sec-count">{recent.length}</span>
-			</div>
-			<div class="doc-panel">
-				{#each recent as doc (doc.id)}
-					<a href="/{doc.id}" class="doc-row">
-						<span class="row-icon" class:fav={doc.is_favorite}>
-							<Icon name={doc.is_favorite ? 'star' : 'page'} size={14} />
-						</span>
-						<span class="row-title">{doc.title || 'Untitled'}</span>
-						<span class="row-meta">{timeAgo(doc.updated_at)}</span>
-						<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
-					</a>
-				{/each}
-			</div>
-		</section>
+			<aside class="home-rail">
+				<div class="quick-actions">
+					<button class="quick-btn" onclick={createJournal}>
+						<span class="quick-icon"><Icon name="check" size={15} /></span>
+						<span>Today's Journal</span>
+					</button>
+					<button class="quick-btn primary" onclick={createAndOpen}>
+						<span class="quick-icon"><Icon name="plus" size={15} /></span>
+						<span>New Page</span>
+					</button>
+				</div>
+
+				{#if favorites.length > 0}
+					<div class="sec-head">
+						<h2 class="sec-title">Favorites</h2>
+						<span class="sec-count">{favorites.length}</span>
+					</div>
+					<div class="doc-panel">
+						{#each favorites as doc (doc.id)}
+							<a href="/{doc.id}" class="doc-row">
+								<span class="row-icon fav"><Icon name="star" size={14} /></span>
+								<span class="row-title">{doc.title || 'Untitled'}</span>
+								<span class="row-meta">{timeAgo(doc.updated_at)}</span>
+								<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			</aside>
+		</div>
 	{/if}
 </div>
 
 <style>
 	/* Dashboard layout — uses the desktop width like a proper workspace:
-	   greeting + quick actions in one header row, then dense matte panels. */
+	   recent pages lead on the left; quick actions + favorites rail on the
+	   right (collapses to a single column on phones). */
 	.home-page {
-		max-width: 1080px;
+		max-width: 1560px;
 		width: 100%;
 		box-sizing: border-box;
 		margin: 0 auto;
-		padding: 30px 36px 72px;
+		padding: 24px 28px 72px;
 	}
 
-	.home-head {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		gap: 20px;
-		margin-bottom: 26px;
-	}
+	.home-head { margin-bottom: 18px; }
 
 	.home-title { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
 	.home-subtitle { color: var(--color-text-muted); font-size: 13px; margin: 0; }
 
-	.quick-actions { display: flex; gap: 8px; flex-shrink: 0; }
+	.home-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: 22px;
+		align-items: start;
+	}
+	.home-main { min-width: 0; }
+
+	.quick-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 20px;
+	}
 
 	.quick-btn {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 8px 14px;
+		justify-content: flex-start;
+		gap: 10px;
+		width: 100%;
+		padding: 10px 14px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		background: var(--color-surface);
@@ -213,7 +226,6 @@
 	}
 
 	/* ── Dense matte panels ── */
-	.home-section { margin-bottom: 26px; }
 	.sec-head {
 		display: flex;
 		align-items: center;
@@ -275,14 +287,24 @@
 	.row-chev { display: flex; color: var(--color-text-faint); opacity: 0; transition: opacity 0.1s; flex-shrink: 0; }
 	.doc-row:hover .row-chev { opacity: 0.7; }
 
+	/* Density preset from Settings also governs the dashboard rows. */
+	:global([data-density="narrow"]) .doc-row { min-height: 34px; }
+	:global([data-density="narrow"]) .row-icon { width: 22px; height: 22px; }
+	:global([data-density="wide"]) .doc-row { min-height: 50px; }
+
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
 		.home-page { padding: 14px 14px 64px; }
-		.home-head { flex-direction: column; align-items: stretch; gap: 14px; margin-bottom: 20px; }
+		.home-head { margin-bottom: 16px; }
 		.home-title { font-size: 22px; }
 
-		/* Full-width, thumb-sized actions instead of a cramped row. */
-		.quick-actions { flex-direction: column; gap: 8px; }
+		/* Single column; rail (quick actions + favorites) sits above recents. */
+		.home-grid { grid-template-columns: 1fr; gap: 20px; }
+		.home-main { order: 2; }
+		.home-rail { order: 1; }
+		.quick-actions { margin-bottom: 18px; gap: 8px; }
+
+		/* Full-width, thumb-sized actions. */
 		.quick-btn {
 			justify-content: center;
 			padding: 14px 16px;
@@ -291,7 +313,6 @@
 			min-height: 48px;
 		}
 
-		.home-section { margin-bottom: 22px; }
 		.doc-row { min-height: 52px; }
 		.row-icon { width: 30px; height: 30px; }
 		.row-chev { opacity: 0.6; }
