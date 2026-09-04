@@ -54,6 +54,12 @@
 	// Mobile action sheet: the topbar's icon cluster collapses into this.
 	let sheetOpen = $state(false);
 	const sheetItems = $derived<{ icon: string; label: string; danger?: boolean; action: () => void }[]>([
+		...(mode === 'paper'
+			? [
+					{ icon: 'smile', label: 'Page icon & cover', action: () => (metaOpen = true) },
+					{ icon: 'layout', label: hasWhiteboard ? 'Whiteboard view' : 'Add whiteboard', action: () => setMode('whiteboard') },
+				]
+			: [{ icon: 'text', label: 'Paper view', action: () => setMode('paper') }]),
 		{ icon: 'star', label: document?.is_favorite ? 'Remove from favorites' : 'Add to favorites', action: toggleFavorite },
 		...(aiEnabled ? [{ icon: 'sparkles', label: 'Ask AI', action: () => (aiOpen = true) }] : []),
 		{ icon: 'download', label: 'Export Markdown…', action: exportMarkdown },
@@ -1439,34 +1445,52 @@
 			margin-left: auto;
 			gap: 2px;
 		}
-		.mode-btn {
-			padding: 8px 12px;
-			font-size: 13px;
+
+		.doc-topbar {
+			flex-wrap: wrap;
+			gap: 6px 10px;
+			padding: 10px 0 4px;
 		}
+		/* The emoji tile is decorative; on a phone it just steals title width.
+		   "Page icon & cover" and the Paper/Whiteboard switch stay reachable
+		   from the ⋯ action sheet. */
+		.doc-topbar .page-icon,
+		.doc-topbar .mode-toggle { display: none; }
 		.doc-title-input {
 			font-size: 24px;
+			line-height: 1.3;
+			min-height: 46px;
+			padding: 4px 0;
 		}
-
-		/* Page-info popover becomes a matte bottom sheet on phones. */
-		.export-menu {
-			position: fixed;
-			left: 12px;
-			right: 12px;
-			bottom: calc(16px + env(safe-area-inset-bottom));
-			top: auto;
-			background: var(--color-surface);
-			border: 1px solid var(--color-border);
-			border-radius: 16px;
-			box-shadow: var(--shadow-lg);
-		}
-		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
-		.doc-title-input { font-size: 24px; }
-		.doc-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+		.doc-actions { gap: 6px; }
 		.mode-toggle { margin-right: 0; }
+		.mode-btn {
+			padding: 6px 14px;
+			font-size: 13px;
+			min-height: 40px;
+			display: flex;
+			align-items: center;
+		}
 		.doc-cover { height: 96px; margin-top: 10px; }
 
-		.doc-tags { padding: 0 2px 4px; }
-		.doc-comments { padding: 0 2px; }
+		/* Tags: chips big enough to tap the ✕ off. */
+		.doc-tags { gap: 8px; padding: 2px 2px 6px; }
+		.tag-chip { font-size: 13px; padding: 5px 12px; min-height: 28px; }
+		.tag-x {
+			font-size: 13px;
+			width: 26px;
+			height: 26px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			border-radius: 50%;
+			margin-right: -6px;
+		}
+		.tag-input { font-size: 14px; min-height: 36px; }
+
+		.doc-comments { padding: 0 2px; gap: 10px; }
+		.comment-input { min-height: 44px; font-size: 15px; }
+		.comment-submit { min-height: 44px; padding: 0 18px; }
 
 		/* The 220px backlinks rail has no room on a phone. */
 		.backlinks-panel { display: none; }
@@ -1481,6 +1505,26 @@
 			padding-top: env(safe-area-inset-top);
 		}
 		.ai-compose { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+		/* Info/export popovers (opened from the ⋯ sheet) become a matte
+		   bottom sheet on phones. */
+		.export-menu,
+		.export-menu.info-menu {
+			position: fixed;
+			left: 12px;
+			right: 12px;
+			width: auto;
+			top: auto;
+			bottom: calc(16px + env(safe-area-inset-bottom));
+			background: var(--color-surface);
+			border: 1px solid var(--color-border);
+			border-radius: 16px;
+			box-shadow: var(--shadow-lg);
+			padding: 6px;
+		}
+		.export-item { padding: 12px 14px; font-size: 15px; border-radius: 10px; }
+		.info-menu { gap: 4px; }
+		.info-row { padding: 6px 6px; font-size: 13px; }
 
 		/* Page-icon popover: full-width instead of centered-overflowing. */
 		.meta-popover {

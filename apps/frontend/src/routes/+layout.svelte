@@ -1005,15 +1005,25 @@
 
 	<!-- Main Content Area -->
 	<div class="content-area">
-		<!-- Phone top bar (hidden on desktop): drawer trigger + search -->
+		<!-- Phone top bar (hidden on desktop). Back arrow replaces the drawer
+		     trigger while a page is open — standard Android navigation. -->
 		<header class="mobile-topbar">
-			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Menu" title="Menu">
-				<Icon name="menu" size={18} />
-			</button>
-			<a href="/" class="topbar-brand" title="Home"><Logo size={22} /></a>
+			{#if currentDocId}
+				<button class="topbar-btn" onclick={() => goto('/')} aria-label="Back to home" title="Back to home">
+					<Icon name="arrowLeft" size={20} />
+				</button>
+			{:else}
+				<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Open menu" title="Menu">
+					<Icon name="menu" size={20} />
+				</button>
+				<a href="/" class="topbar-brand" title="Enclave home">
+					<span class="topbar-logo"><Logo size={20} /></span>
+					<span class="topbar-word">Enclave</span>
+				</a>
+			{/if}
 			<div class="topbar-spacer"></div>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
-				<Icon name="search" size={18} />
+				<Icon name="search" size={20} />
 			</button>
 		</header>
 		<div class="main-pane">
@@ -1207,37 +1217,46 @@
 	.mobile-topbar {
 		display: none;
 		align-items: center;
-		gap: 8px;
-		padding: 8px 12px;
-		padding-top: calc(8px + env(safe-area-inset-top));
+		gap: 4px;
+		padding: 4px 10px;
+		padding-top: calc(4px + env(safe-area-inset-top));
+		padding-bottom: calc(4px + env(safe-area-inset-bottom));
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-surface);
 		flex-shrink: 0;
+		min-height: 52px;
+		box-sizing: border-box;
 	}
 	.topbar-brand {
-		font-size: 15px;
-		font-weight: 700;
-		letter-spacing: -0.01em;
-		color: var(--color-text);
-		text-decoration: none;
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
+		color: var(--color-text);
+		text-decoration: none;
+		padding: 2px 4px;
+	}
+	.topbar-logo { display: flex; color: var(--color-accent); }
+	.topbar-word {
+		font-size: 16px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
 	}
 	.topbar-spacer { flex: 1; }
 	.topbar-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 36px;
-		height: 36px;
+		width: 40px;
+		height: 40px;
 		border: none;
-		border-radius: var(--radius-md);
+		border-radius: 10px;
 		background: none;
 		color: var(--color-text);
 		padding: 0;
+		transition: background 0.12s;
 	}
-	.topbar-btn:active { background: var(--color-surface-hover); }
+	.topbar-btn:hover { background: var(--color-surface-hover); }
+	.topbar-btn:active { background: var(--color-surface-active); }
 
 	/* ── Sidebar ── */
 	.sidebar {
@@ -1969,7 +1988,7 @@
 			border-bottom: 1px solid var(--color-border);
 		}
 		.main-pane {
-			padding-top: calc(52px + env(safe-area-inset-top));
+			padding-top: calc(48px + env(safe-area-inset-top));
 			padding-bottom: calc(76px + env(safe-area-inset-bottom));
 			background: var(--color-bg);
 		}
@@ -1986,7 +2005,7 @@
 			border: 1px solid var(--color-border);
 			background: var(--color-surface);
 			box-shadow: var(--shadow-md);
-			padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+			padding: 4px 6px;
 		}
 
 		/* Drawer — solid matte sheet, full height. */
@@ -2011,24 +2030,35 @@
 		.sidebar-header:not(.mini) .sidebar-brand { display: flex; }
 		.sidebar-header { justify-content: space-between; }
 
-		/* Mobile drawer proportions: bigger rows, labeled actions. */
-		.sidebar-header {
-			padding: calc(12px + env(safe-area-inset-top)) 14px 10px;
-		}
-		.brand-name { font-size: 17px; }
-		.side-nav { gap: 4px; padding: 8px 10px; }
-		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); }
+		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
+		.sidebar-header { padding: calc(10px + env(safe-area-inset-top)) 16px 8px; }
+		.sidebar-header .brand-mark { width: 30px; height: 30px; border-radius: 9px; }
+		.brand-name { font-size: 18px; }
+		.side-nav { gap: 4px; padding: 10px; }
+		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
+		.section-head { padding: 14px 16px 6px; }
 		.section-title { font-size: 12px; }
+		.tree-section-title { padding: 12px 12px 2px; font-size: 12px; }
 		.tree-item {
-			padding: 11px 12px;
-			min-height: 46px;
+			gap: 10px;
+			padding: 10px 10px 10px 12px;
+			min-height: 48px;
 			font-size: 15px;
 			border-radius: var(--radius-lg);
 		}
-		.folder-row { min-height: 44px; }
-		.folder-label { font-size: 15px; padding: 8px 6px; }
-		.tag-row { padding: 10px 12px; font-size: 14px; border-radius: var(--radius-lg); }
-		.new-page-btn { padding: 13px 14px; font-size: 15px; border-radius: var(--radius-lg); }
+		.folder-row { min-height: 48px; }
+		.folder-toggle { width: 30px; height: 30px; flex-shrink: 0; }
+		.folder-label { font-size: 15px; padding: 8px 6px; min-height: 44px; }
+		.tag-row { padding: 11px 12px; font-size: 14px; border-radius: var(--radius-lg); min-height: 48px; }
+		.new-page-btn { padding: 13px 14px; min-height: 48px; font-size: 15px; border-radius: var(--radius-lg); }
+		/* Row actions need real touch targets, not desktop 22px ghosts. */
+		.tree-item-actions { gap: 6px; }
+		.tree-item-actions .row-btn {
+			width: 34px;
+			height: 34px;
+			border-radius: 9px;
+			color: var(--color-text-muted);
+		}
 
 		/* Labeled footer actions instead of a desktop icon cluster. */
 		.sidebar-footer { padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); gap: 10px; }
@@ -2061,23 +2091,26 @@
 			display: flex;
 			flex-direction: column;
 			align-items: center;
-			gap: 2px;
+			justify-content: center;
+			gap: 3px;
 			background: none;
 			border: none;
-			color: var(--color-text-faint);
-			font-size: 11px;
+			color: var(--color-text-muted);
+			font-size: 12px;
 			font-family: inherit;
+			font-weight: 500;
 			padding: 6px 0;
-			border-radius: var(--radius-md);
+			min-height: 52px;
+			border-radius: var(--radius-lg);
 			text-decoration: none;
 			cursor: pointer;
-			transition: color 0.15s;
+			transition: color 0.15s, background 0.15s;
 		}
-		.nav-tab.active { color: var(--color-accent); }
+		.nav-tab.active { color: var(--color-accent); font-weight: 600; }
 		.nav-tab:active { background: var(--color-surface-hover); }
 		.nav-tab-pill {
 			display: flex;
-			padding: 4px 20px;
+			padding: 5px 22px;
 			border-radius: 999px;
 			transition: background 0.15s;
 		}
@@ -2092,13 +2125,17 @@
 		}
 
 		/* Command palette: near-full-screen, thumb-reachable. */
-		.overlay { padding-top: 8vh; align-items: flex-start; }
+		.overlay { padding-top: 6vh; align-items: flex-start; }
 		.command-palette {
 			width: 94vw;
 			max-width: 94vw;
-			max-height: 82vh;
+			max-height: 84vh;
+			border-radius: 16px;
+			margin-top: 4px;
 		}
-		.palette-input-wrap { padding: 14px 16px; }
-		.palette-item { padding: 12px 10px; }
+		.palette-input-wrap { padding: 12px 16px; }
+		.palette-input { font-size: 16px; min-height: 28px; }
+		.palette-item { padding: 12px 10px; min-height: 48px; }
+		.palette-group-title { padding: 10px 10px 4px; }
 	}
 </style>

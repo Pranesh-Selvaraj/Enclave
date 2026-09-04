@@ -277,25 +277,29 @@
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
-		.home-page { padding: 20px 16px 56px; }
-		.home-head { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 22px; }
-		.home-title { font-size: 23px; }
+		.home-page { padding: 14px 14px 64px; }
+		.home-head { flex-direction: column; align-items: stretch; gap: 14px; margin-bottom: 20px; }
+		.home-title { font-size: 22px; }
 
 		/* Full-width, thumb-sized actions instead of a cramped row. */
-		.quick-actions { flex-direction: column; }
+		.quick-actions { flex-direction: column; gap: 8px; }
 		.quick-btn {
 			justify-content: center;
-			padding: 13px 16px;
+			padding: 14px 16px;
 			font-size: 15px;
-			border-radius: var(--radius-lg);
+			border-radius: 14px;
+			min-height: 48px;
 		}
 
-		.doc-row { min-height: 50px; }
+		.home-section { margin-bottom: 22px; }
+		.doc-row { min-height: 52px; }
+		.row-icon { width: 30px; height: 30px; }
 		.row-chev { opacity: 0.6; }
-		.doc-panel { border-radius: var(--radius-lg); }
+		.doc-panel { border-radius: 14px; }
 
 		/* Keyboard tips are meaningless on a phone. */
 		.home-tips { display: none; }
-		.home-empty { padding: 36px 20px; }
+		.home-empty { padding: 32px 20px; }
+		.home-empty p { font-size: 13.5px; }
 	}
 </style>

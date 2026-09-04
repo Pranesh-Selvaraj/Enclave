@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
-	import { Button } from '@enclave/ui';
+	import { Button, Icon } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
 	import { loadUpdatePrefs, saveUpdatePrefs } from './updates.js';
@@ -102,7 +102,9 @@
 		<div class="settings-panel" role="document" onclick={(e: MouseEvent) => e.stopPropagation()}>
 			<div class="settings-header">
 				<h2>Settings</h2>
-				<button class="settings-close" onclick={() => (open = false)}>✕</button>
+				<button class="settings-close" onclick={() => (open = false)} aria-label="Close settings" title="Close settings">
+					<Icon name="x" size={16} />
+				</button>
 			</div>
 
 			<div class="settings-section">
@@ -379,17 +381,31 @@ sentinel check</pre>
 	}
 
 	.settings-header {
+		position: sticky;
+		top: 0;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 16px 20px;
+		padding: 12px 12px 12px 20px;
 		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface);
 	}
 	.settings-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
 	.settings-close {
-		background: none; border: none; color: var(--color-text-muted);
-		cursor: pointer; font-size: 16px; padding: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border: none;
+		border-radius: 10px;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: background 0.12s, color 0.12s;
 	}
+	.settings-close:hover { background: var(--color-surface-hover); color: var(--color-text); }
 	.settings-section {
 		padding: 12px 20px;
 		border-bottom: 1px solid var(--color-border);
@@ -492,8 +508,22 @@ sentinel check</pre>
 			width: 100%;
 			max-width: 100%;
 			max-height: 92vh;
-			border-radius: 16px 16px 0 0;
+			border-radius: 18px 18px 0 0;
 			border-bottom: none;
 		}
+		.settings-header { padding-top: calc(8px + env(safe-area-inset-top)); }
+		.settings-section { padding: 12px 18px; }
+		.setting-row {
+			min-height: 44px;
+			flex-wrap: wrap;
+			gap: 4px 10px;
+		}
+		.seg { padding: 8px 14px; font-size: 13px; border-radius: 8px; }
+		.swatch { width: 28px; height: 28px; }
+		.switch { width: 46px; height: 26px; }
+		.switch-slider::before { width: 18px; height: 18px; left: 4px; top: 4px; }
+		.switch input:checked + .switch-slider::before { transform: translateX(20px); }
+		.ai-input { width: 100%; box-sizing: border-box; }
+		.settings-footer { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 	}
 </style>
