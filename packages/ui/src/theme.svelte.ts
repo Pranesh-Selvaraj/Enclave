@@ -9,7 +9,7 @@ const KEY = 'enclave-theme';
 const SKEY = 'enclave-settings';
 
 export const ACCENTS = [
-	{ id: 'violet', color: '#7c6cf0' },
+	{ id: 'violet', color: '#8b7cf6' },
 	{ id: 'blue', color: '#4f8ef7' },
 	{ id: 'green', color: '#2fbf71' },
 	{ id: 'teal', color: '#2bb6b6' },
@@ -23,12 +23,29 @@ export const FONT_SIZES = ['s', 'm', 'l', 'xl'] as const;
 export const PAGE_WIDTHS = ['compact', 'wide', 'full'] as const;
 export const HOME_SORTS = ['recent', 'created', 'title'] as const;
 export const LOCK_AFTERS = [0, 1, 5, 15, 60] as const;
+/** UI corner style presets (mapped to --radius-* overrides in app.css). */
+export const CORNERS = ['standard', 'rounded', 'rounder'] as const;
+/** Whole-UI scale presets — applied as CSS zoom on <html>. */
+export const UI_SCALES = ['compact', 'regular', 'large', 'xlarge'] as const;
+/** Background styles: solid matte, soft ambient gradient, or frosted glass. */
+export const BACKGROUNDS = ['matte', 'soft', 'glassy'] as const;
+
+// Resolve an accent preset id (or raw #rrggbb hex) to a concrete color.
+function accentHex(v: string): string {
+	const p = ACCENTS.find((a) => a.id === v);
+	if (p) return p.color;
+	if (/^#[0-9a-f]{6}$/i.test(v)) return v;
+	return ACCENTS[0].color;
+}
 
 let accent = $state<string>(ACCENTS[0].id);
 let font = $state<string>(FONTS[0]);
 let density = $state<string>(DENSITIES[1]);
 let fontSize = $state<string>(FONT_SIZES[1]);
 let pageWidth = $state<string>(PAGE_WIDTHS[1]);
+let corners = $state<string>(CORNERS[0]);
+let uiScale = $state<string>(UI_SCALES[1]);
+let background = $state<string>(BACKGROUNDS[0]);
 let trueBlack = $state(false);
 let reduceMotion = $state(false);
 let haptics = $state(true);
@@ -40,18 +57,24 @@ function apply() {
 	current = mode === 'auto' ? (systemDark ? 'dark' : 'light') : mode;
 	const root = document.documentElement;
 	root.setAttribute('data-theme', current);
-	root.setAttribute('data-accent', accent);
+	// Accent: preset ids keep the CSS preset path; raw hex values (and
+	// presets too) are also forced via an inline var so anything works.
+	root.setAttribute('data-accent', ACCENTS.some((a) => a.id === accent) ? accent : 'custom');
+	root.style.setProperty('--color-accent', accentHex(accent));
 	root.setAttribute('data-font', font);
 	root.setAttribute('data-density', density);
 	root.setAttribute('data-font-size', fontSize);
 	root.setAttribute('data-page-width', pageWidth);
+	root.setAttribute('data-corners', corners);
+	root.setAttribute('data-ui-scale', uiScale);
+	root.setAttribute('data-bg', background);
 	root.toggleAttribute('data-true-black', trueBlack);
 	root.toggleAttribute('data-reduce-motion', reduceMotion);
 	try {
 		localStorage.setItem(KEY, mode);
 		localStorage.setItem(
 			SKEY,
-			JSON.stringify({ accent, font, density, fontSize, pageWidth, trueBlack, reduceMotion, haptics, homeSort, lockAfter }),
+			JSON.stringify({ accent, font, density, fontSize, pageWidth, corners, uiScale, background, trueBlack, reduceMotion, haptics, homeSort, lockAfter }),
 		);
 	} catch { /* private browsing */ }
 }
@@ -76,6 +99,12 @@ export const theme = {
 	set fontSize(v: string) { fontSize = v; apply(); },
 	get pageWidth() { return pageWidth; },
 	set pageWidth(v: string) { pageWidth = v; apply(); },
+	get corners() { return corners; },
+	set corners(v: string) { corners = v; apply(); },
+	get uiScale() { return uiScale; },
+	set uiScale(v: string) { uiScale = v; apply(); },
+	get background() { return background; },
+	set background(v: string) { background = v; apply(); },
 	get trueBlack() { return trueBlack; },
 	set trueBlack(v: boolean) { trueBlack = v; apply(); },
 	get reduceMotion() { return reduceMotion; },
@@ -91,11 +120,14 @@ export const theme = {
 			const saved = localStorage.getItem(KEY);
 			if (saved === 'light' || saved === 'dark' || saved === 'auto') mode = saved;
 			const s = JSON.parse(localStorage.getItem(SKEY) || '{}');
-			if (ACCENTS.some((a) => a.id === s.accent)) accent = s.accent;
+			if (ACCENTS.some((a) => a.id === s.accent) || /^#[0-9a-f]{6}$/i.test(s.accent ?? '')) accent = s.accent;
 			if (FONTS.includes(s.font)) font = s.font;
 			if (DENSITIES.includes(s.density)) density = s.density;
 			if (FONT_SIZES.includes(s.fontSize)) fontSize = s.fontSize;
 			if (PAGE_WIDTHS.includes(s.pageWidth)) pageWidth = s.pageWidth;
+			if (CORNERS.includes(s.corners)) corners = s.corners;
+			if (UI_SCALES.includes(s.uiScale)) uiScale = s.uiScale;
+			if (BACKGROUNDS.includes(s.background)) background = s.background;
 			if (HOME_SORTS.includes(s.homeSort)) homeSort = s.homeSort;
 			if (typeof s.trueBlack === 'boolean') trueBlack = s.trueBlack;
 			if (typeof s.reduceMotion === 'boolean') reduceMotion = s.reduceMotion;

@@ -63,105 +63,134 @@
 </script>
 
 <div class="home-page">
-	<div class="home-header">
-		<h1 class="home-title">{greeting}</h1>
-		<p class="home-subtitle">Your encrypted workspace — everything stays on this device.</p>
+	<div class="home-head">
+		<div class="home-heading">
+			<h1 class="home-title">{greeting}</h1>
+			<p class="home-subtitle">Your encrypted workspace — everything stays on this device.</p>
+		</div>
 	</div>
 
-	<div class="quick-actions">
-		<button class="quick-btn" onclick={createJournal}>
-			<span class="quick-icon"><Icon name="check" size={15} /></span>
-			<span>Today's Journal</span>
-		</button>
-		<button class="quick-btn primary" onclick={createAndOpen}>
-			<span class="quick-icon"><Icon name="plus" size={15} /></span>
-			<span>New Page</span>
-		</button>
-	</div>
-
-	<div class="home-content">
-		{#if documents.length === 0}
-			<div class="home-empty">
-				<div class="home-empty-icon"><Logo size={40} /></div>
-				<h2>Welcome to Enclave</h2>
-				<p>
-					Create your first page or start today's journal. All data is encrypted
-					and stored locally on your device.
-				</p>
-				<div class="home-tips">
-					<div class="tip-row"><kbd>Ctrl+K</kbd> Command palette & search</div>
-					<div class="tip-row"><kbd>Ctrl+N</kbd> New page</div>
-					<div class="tip-row"><kbd>Ctrl+B</kbd> Toggle sidebar</div>
-					<div class="tip-row"><kbd>/</kbd> Block commands in editor</div>
-					<div class="tip-row"><kbd>[[</kbd> Link to another page</div>
-				</div>
+	{#if documents.length === 0}
+		<div class="home-empty">
+			<div class="home-empty-icon"><Logo size={40} /></div>
+			<h2>Welcome to Enclave</h2>
+			<p>
+				Create your first page or start today's journal. All data is encrypted
+				and stored locally on your device.
+			</p>
+			<div class="home-tips">
+				<div class="tip-row"><kbd>Ctrl+K</kbd> Command palette & search</div>
+				<div class="tip-row"><kbd>Ctrl+N</kbd> New page</div>
+				<div class="tip-row"><kbd>Ctrl+B</kbd> Toggle sidebar</div>
+				<div class="tip-row"><kbd>/</kbd> Block commands in editor</div>
+				<div class="tip-row"><kbd>[[</kbd> Link to another page</div>
 			</div>
-		{:else}
-			{#if favorites.length > 0}
-				<section class="home-section">
-					<h2 class="section-title">Favorites</h2>
-					<div class="recent-list">
-						{#each favorites as doc (doc.id)}
-							<a href="/{doc.id}" class="recent-item">
-								<span class="recent-icon fav"><Icon name="star" size={14} /></span>
-								<span class="recent-title">{doc.title || 'Untitled'}</span>
-								<span class="recent-date">{timeAgo(doc.updated_at)}</span>
-							</a>
-						{/each}
-					</div>
-				</section>
-			{/if}
-
-			<section class="home-section">
-				<h2 class="section-title">Recent pages</h2>
-				<div class="recent-list">
+		</div>
+	{:else}
+		<div class="home-grid">
+			<section class="home-main">
+				<div class="sec-head">
+					<h2 class="sec-title">Recent pages</h2>
+					<span class="sec-count">{recent.length}</span>
+				</div>
+				<div class="doc-panel">
 					{#each recent as doc (doc.id)}
-						<a href="/{doc.id}" class="recent-item">
-							<span class="recent-icon"><Icon name="page" size={14} /></span>
-							<span class="recent-title">{doc.title || 'Untitled'}</span>
-							<span class="recent-date">{timeAgo(doc.updated_at)}</span>
+						<a href="/{doc.id}" class="doc-row">
+							<span class="row-icon" class:fav={doc.is_favorite}>
+								<Icon name={doc.is_favorite ? 'star' : 'page'} size={14} />
+							</span>
+							<span class="row-title">{doc.title || 'Untitled'}</span>
+							<span class="row-meta">{timeAgo(doc.updated_at)}</span>
+							<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
 						</a>
 					{/each}
 				</div>
 			</section>
-		{/if}
-	</div>
+
+			<aside class="home-rail">
+				<div class="quick-actions">
+					<button class="quick-btn" onclick={createJournal}>
+						<span class="quick-icon"><Icon name="check" size={15} /></span>
+						<span>Today's Journal</span>
+					</button>
+					<button class="quick-btn primary" onclick={createAndOpen}>
+						<span class="quick-icon"><Icon name="plus" size={15} /></span>
+						<span>New Page</span>
+					</button>
+				</div>
+
+				{#if favorites.length > 0}
+					<div class="sec-head">
+						<h2 class="sec-title">Favorites</h2>
+						<span class="sec-count">{favorites.length}</span>
+					</div>
+					<div class="doc-panel">
+						{#each favorites as doc (doc.id)}
+							<a href="/{doc.id}" class="doc-row">
+								<span class="row-icon fav"><Icon name="star" size={14} /></span>
+								<span class="row-title">{doc.title || 'Untitled'}</span>
+								<span class="row-meta">{timeAgo(doc.updated_at)}</span>
+								<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			</aside>
+		</div>
+	{/if}
 </div>
 
 <style>
+	/* Dashboard layout — uses the desktop width like a proper workspace:
+	   recent pages lead on the left; quick actions + favorites rail on the
+	   right (collapses to a single column on phones). */
 	.home-page {
-		max-width: 680px;
+		max-width: 1560px;
+		width: 100%;
+		box-sizing: border-box;
 		margin: 0 auto;
-		padding: 56px 32px 80px;
+		padding: 24px 28px 72px;
 	}
 
-	.home-header { margin-bottom: 28px; }
-	.home-title { font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
-	.home-subtitle { color: var(--color-text-muted); font-size: 14px; margin: 0; }
+	.home-head { margin-bottom: 18px; }
+
+	.home-title { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
+	.home-subtitle { color: var(--color-text-muted); font-size: 13px; margin: 0; }
+
+	.home-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: 22px;
+		align-items: start;
+	}
+	.home-main { min-width: 0; }
 
 	.quick-actions {
 		display: flex;
-		gap: 10px;
-		margin-bottom: 36px;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 20px;
 	}
 
 	.quick-btn {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 9px 16px;
+		justify-content: flex-start;
+		gap: 10px;
+		width: 100%;
+		padding: 10px 14px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		background: var(--color-surface);
 		color: var(--color-text);
-		font-size: 14px;
+		font-size: 13px;
 		font-family: inherit;
 		cursor: pointer;
 		transition: background 0.15s, border-color 0.15s;
 	}
 	.quick-btn:hover { background: var(--color-surface-hover); border-color: var(--color-border-strong); }
 	.quick-btn.primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
-	.quick-btn.primary:hover { background: var(--color-accent-hover); }
+	.quick-btn.primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 	.quick-icon { display: flex; }
 
 	.home-empty {
@@ -196,77 +225,102 @@
 		font-family: var(--font-mono);
 	}
 
-	.home-section { margin-bottom: 28px; }
-	.section-title {
+	/* ── Dense matte panels ── */
+	.sec-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0 0 8px;
+	}
+	.sec-title {
 		font-size: 12px;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--color-text-faint);
-		margin: 0 0 10px;
+		margin: 0;
 	}
-	/* Cards instead of plain rows — reads better as a page picker. */
-	.recent-list {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
+	.sec-count {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		background: var(--color-surface-hover);
+		border-radius: 999px;
+		padding: 1px 8px;
 	}
-	.recent-item {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 12px 14px;
+
+	.doc-panel {
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 		background: var(--color-surface);
+		overflow: hidden;
+	}
+	.doc-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 42px;
+		padding: 0 12px 0 10px;
 		color: var(--color-text);
 		text-decoration: none;
-		transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+		transition: background 0.1s;
 	}
-	.recent-item:hover {
-		border-color: var(--color-border-strong);
-		box-shadow: var(--shadow-sm);
-		transform: translateY(-1px);
-	}
-	.recent-icon {
+	.doc-row + .doc-row { border-top: 1px solid var(--color-border); }
+	.doc-row:hover { background: var(--color-surface-hover); }
+
+	.row-icon {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 34px;
-		height: 34px;
-		border-radius: 9px;
+		width: 26px;
+		height: 26px;
+		border-radius: 7px;
 		background: var(--color-surface-hover);
 		color: var(--color-text-muted);
 		flex-shrink: 0;
 	}
-	.recent-icon.fav {
-		background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+	.row-icon.fav {
+		background: color-mix(in srgb, var(--color-warning) 15%, transparent);
 		color: var(--color-warning);
 	}
-	.recent-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.recent-date { font-size: 12px; color: var(--color-text-faint); flex-shrink: 0; }
+	.row-title { font-size: 13.5px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.row-meta { font-size: 12px; color: var(--color-text-faint); flex-shrink: 0; }
+	.row-chev { display: flex; color: var(--color-text-faint); opacity: 0; transition: opacity 0.1s; flex-shrink: 0; }
+	.doc-row:hover .row-chev { opacity: 0.7; }
+
+	/* Density preset from Settings also governs the dashboard rows. */
+	:global([data-density="narrow"]) .doc-row { min-height: 34px; }
+	:global([data-density="narrow"]) .row-icon { width: 22px; height: 22px; }
+	:global([data-density="wide"]) .doc-row { min-height: 50px; }
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
-		.home-page { padding: 24px 16px 48px; }
-		.home-title { font-size: 24px; }
-		.home-subtitle { font-size: 13px; }
+		.home-page { padding: 14px 14px 64px; }
+		.home-head { margin-bottom: 16px; }
+		.home-title { font-size: 22px; }
 
-		/* Full-width, thumb-sized actions instead of a cramped row. */
-		.quick-actions { flex-direction: column; margin-bottom: 28px; }
+		/* Single column; rail (quick actions + favorites) sits above recents. */
+		.home-grid { grid-template-columns: 1fr; gap: 20px; }
+		.home-main { order: 2; }
+		.home-rail { order: 1; }
+		.quick-actions { margin-bottom: 18px; gap: 8px; }
+
+		/* Full-width, thumb-sized actions. */
 		.quick-btn {
 			justify-content: center;
 			padding: 14px 16px;
 			font-size: 15px;
-			border-radius: var(--radius-lg);
+			border-radius: 14px;
+			min-height: 48px;
 		}
 
-		.recent-item { padding: 13px 12px; min-height: 48px; }
-		.recent-date { flex-shrink: 0; }
-		.recent-list { grid-template-columns: 1fr; }
+		.doc-row { min-height: 52px; }
+		.row-icon { width: 30px; height: 30px; }
+		.row-chev { opacity: 0.6; }
+		.doc-panel { border-radius: 14px; }
 
 		/* Keyboard tips are meaningless on a phone. */
 		.home-tips { display: none; }
-		.home-empty { padding: 36px 20px; }
+		.home-empty { padding: 32px 20px; }
+		.home-empty p { font-size: 13.5px; }
 	}
 </style>

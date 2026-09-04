@@ -110,7 +110,7 @@
 		font-size: 14px; text-align: left; font-family: inherit;
 		transition: background-color 0.1s;
 	}
-	.mention-item:hover, .mention-item.selected { background-color: rgba(124, 111, 240, 0.12); }
+	.mention-item:hover, .mention-item.selected { background-color: color-mix(in srgb, var(--color-accent) 14%, transparent); }
 	.mention-item-icon {
 		display: flex; align-items: center; justify-content: center;
 		width: 20px; height: 20px; border-radius: 50%;

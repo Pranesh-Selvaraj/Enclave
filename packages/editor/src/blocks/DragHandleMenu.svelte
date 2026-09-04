@@ -184,7 +184,7 @@
 	}
 
 	.dh-item.danger:hover {
-		background: rgba(229, 83, 75, 0.12);
+		background: color-mix(in srgb, var(--color-danger) 12%, transparent);
 	}
 
 	.dh-sep {

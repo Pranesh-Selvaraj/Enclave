@@ -587,10 +587,14 @@
 
 {#if currentPath.startsWith('/capture') || currentPath.startsWith('/widget')}
 	{@render children?.()}
-{:else if !vaultUnlocked}
-	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
 {:else}
-<div class="app-shell">
+<div class="app-frame">
+	{#if !vaultUnlocked}
+		<div class="vault-wrap">
+			<VaultGuard onunlock={() => (vaultUnlocked = true)} />
+		</div>
+	{:else}
+	<div class="app-shell">
 	<!-- Left Sidebar (drawer on phones) -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen}>
 		<div class="sidebar-header" class:mini={!sidebarOpen}>
@@ -996,15 +1000,25 @@
 
 	<!-- Main Content Area -->
 	<div class="content-area">
-		<!-- Phone top bar (hidden on desktop): drawer trigger + search -->
+		<!-- Phone top bar (hidden on desktop). Back arrow replaces the drawer
+		     trigger while a page is open — standard Android navigation. -->
 		<header class="mobile-topbar">
-			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Menu" title="Menu">
-				<Icon name="menu" size={18} />
-			</button>
-			<a href="/" class="topbar-brand" title="Home"><Logo size={22} /></a>
+			{#if currentDocId}
+				<button class="topbar-btn" onclick={() => goto('/')} aria-label="Back to home" title="Back to home">
+					<Icon name="arrowLeft" size={20} />
+				</button>
+			{:else}
+				<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Open menu" title="Menu">
+					<Icon name="menu" size={20} />
+				</button>
+				<a href="/" class="topbar-brand" title="Enclave home">
+					<span class="topbar-logo"><Logo size={20} /></span>
+					<span class="topbar-word">Enclave</span>
+				</a>
+			{/if}
 			<div class="topbar-spacer"></div>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
-				<Icon name="search" size={18} />
+				<Icon name="search" size={20} />
 			</button>
 		</header>
 		<div class="main-pane">
@@ -1156,6 +1170,8 @@
 			</div>
 		</div>
 	{/if}
+	</div>
+	{/if}
 </div>
 {/if}
 
@@ -1166,10 +1182,24 @@
 {/if}
 
 <style>
+	/* Custom title bar (desktop) + shell below it. */
+	.app-frame {
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
 	.app-shell {
 		display: flex;
-		height: 100vh;
+		flex: 1;
+		min-height: 0;
 		overflow: hidden;
+	}
+	.vault-wrap {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	/* ── Phone drawer backdrop + top bar (hidden on desktop) ── */
@@ -1182,37 +1212,46 @@
 	.mobile-topbar {
 		display: none;
 		align-items: center;
-		gap: 8px;
-		padding: 8px 12px;
-		padding-top: calc(8px + env(safe-area-inset-top));
+		gap: 4px;
+		padding: 4px 10px;
+		padding-top: calc(4px + env(safe-area-inset-top));
+		padding-bottom: calc(4px + env(safe-area-inset-bottom));
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-surface);
 		flex-shrink: 0;
+		min-height: 52px;
+		box-sizing: border-box;
 	}
 	.topbar-brand {
-		font-size: 15px;
-		font-weight: 700;
-		letter-spacing: -0.01em;
-		color: var(--color-text);
-		text-decoration: none;
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
+		color: var(--color-text);
+		text-decoration: none;
+		padding: 2px 4px;
+	}
+	.topbar-logo { display: flex; color: var(--color-accent); }
+	.topbar-word {
+		font-size: 16px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
 	}
 	.topbar-spacer { flex: 1; }
 	.topbar-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 36px;
-		height: 36px;
+		width: 40px;
+		height: 40px;
 		border: none;
-		border-radius: var(--radius-md);
+		border-radius: 10px;
 		background: none;
 		color: var(--color-text);
 		padding: 0;
+		transition: background 0.12s;
 	}
-	.topbar-btn:active { background: var(--color-surface-hover); }
+	.topbar-btn:hover { background: var(--color-surface-hover); }
+	.topbar-btn:active { background: var(--color-surface-active); }
 
 	/* ── Sidebar ── */
 	.sidebar {
@@ -1231,7 +1270,20 @@
 	 * collapsed sidebar really collapses under any density. */
 	:global([data-density="narrow"]) .sidebar.collapsed,
 	:global([data-density="wide"]) .sidebar.collapsed { width: 48px; min-width: 48px; }
+	/* Density also tunes rows and chrome, not just sidebar width. */
+	:global([data-density="narrow"]) .side-nav { gap: 1px; }
+	:global([data-density="narrow"]) .nav-item { padding: 3px 8px; font-size: 13px; }
+	:global([data-density="narrow"]) .section-head { padding: 9px 12px 2px; }
+	:global([data-density="narrow"]) .tree-item { padding: 2px 6px; min-height: 24px; font-size: 13px; }
+	:global([data-density="narrow"]) .tree-section-title { padding: 6px 8px 2px; }
+	:global([data-density="narrow"]) .folder-row { min-height: 22px; }
+	:global([data-density="narrow"]) .folder-label { padding: 1px 4px; }
+	:global([data-density="narrow"]) .tag-row { padding: 2px 6px; }
+	:global([data-density="narrow"]) .mini-btn { width: 32px; height: 32px; }
+	:global([data-density="wide"]) .nav-item { padding: 8px 12px; }
+	:global([data-density="wide"]) .tree-item { min-height: 34px; }
 
+	/* Native OS window chrome is back, so the sidebar owns the brand again. */
 	.sidebar-header {
 		display: flex;
 		align-items: center;
@@ -1516,7 +1568,7 @@
 		padding: 0;
 	}
 	.row-btn:hover { background: var(--color-surface-active); color: var(--color-text); }
-	.row-btn.danger-row:hover { color: var(--color-danger); background: rgba(229, 83, 75, 0.1); }
+	.row-btn.danger-row:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 
 	.tree-empty {
 		font-size: 13px;
@@ -1570,11 +1622,11 @@
 
 	.tag-row:hover,
 	.tag-row.active {
-		background: rgba(124, 111, 240, 0.12);
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 	}
 
 	.tag-row-hash {
-		color: #9d8cff;
+		color: var(--color-accent);
 		font-weight: 600;
 	}
 
@@ -1739,7 +1791,7 @@
 	}
 	.context-item:hover { background: var(--color-surface-hover); }
 	.context-item.danger { color: var(--color-danger); }
-	.context-item.danger:hover { background: rgba(229, 83, 75, 0.12); }
+	.context-item.danger:hover { background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 	.context-sep { height: 1px; background: var(--color-border); margin: 4px 6px; }
 
 	/* ── Main Pane ── */
@@ -1764,7 +1816,6 @@
 		display: flex;
 		justify-content: center;
 		padding-top: 14vh;
-		backdrop-filter: blur(2px);
 	}
 	.command-palette {
 		width: 560px;
@@ -1929,45 +1980,38 @@
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
-		/* Liquid-glass shell: the topbar floats over scrolling content so the
-		   backdrop blur has something to refract; content pads below it. */
+		/* Matte mobile chrome: solid surfaces, no translucency/blur. */
 		.mobile-topbar {
 			position: fixed;
 			top: 0;
 			left: 0;
 			right: 0;
 			z-index: 120;
-			background: color-mix(in srgb, var(--color-surface) 55%, transparent);
-			backdrop-filter: blur(22px) saturate(170%);
-			-webkit-backdrop-filter: blur(22px) saturate(170%);
-			border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+			background: var(--color-surface);
+			border-bottom: 1px solid var(--color-border);
 		}
 		.main-pane {
-			padding-top: calc(52px + env(safe-area-inset-top));
+			padding-top: calc(48px + env(safe-area-inset-top));
 			padding-bottom: calc(76px + env(safe-area-inset-bottom));
-			/* Vibrant ambient blobs behind the glass (Liquid-Glass style). */
-			background:
-				radial-gradient(1100px 700px at 88% -8%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 60%),
-				radial-gradient(900px 640px at -12% 108%, color-mix(in srgb, #4fc3f7 15%, transparent), transparent 55%),
-				radial-gradient(700px 500px at 50% 45%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 70%),
-				var(--color-bg);
+			background: var(--color-bg);
 		}
 
-		/* Floating glass bottom nav (pill). */
+		/* Bottom nav — matte surface bar fixed above the gesture area. */
 		.bottom-nav {
+			display: flex;
+			position: fixed;
 			left: 12px;
 			right: 12px;
 			bottom: calc(10px + env(safe-area-inset-bottom));
-			border-radius: 24px;
-			border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
-			background: color-mix(in srgb, var(--color-surface) 62%, transparent);
-			backdrop-filter: blur(24px) saturate(170%);
-			-webkit-backdrop-filter: blur(24px) saturate(170%);
-			box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
-			padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+			z-index: 120;
+			border-radius: 16px;
+			border: 1px solid var(--color-border);
+			background: var(--color-surface);
+			box-shadow: var(--shadow-md);
+			padding: 4px 6px;
 		}
 
-		/* Glass drawer — near-full-width sheet with mobile proportions. */
+		/* Drawer — solid matte sheet, full height. */
 		.sidebar,
 		.sidebar.collapsed,
 		:global([data-density="narrow"]) .sidebar,
@@ -1982,30 +2026,38 @@
 			transform: translateX(-105%);
 			transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
 			box-shadow: var(--shadow-lg);
-			background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-			backdrop-filter: blur(28px) saturate(170%);
-			-webkit-backdrop-filter: blur(28px) saturate(170%);
-			border-right: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+			background: var(--color-surface);
+			border-right: 1px solid var(--color-border);
 		}
-
-		/* Mobile drawer proportions: bigger rows, labeled actions. */
-		.sidebar-header {
-			padding: calc(12px + env(safe-area-inset-top)) 14px 10px;
-		}
-		.brand-name { font-size: 17px; }
-		.side-nav { gap: 4px; padding: 8px 10px; }
-		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); }
+		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
+		.sidebar-header { padding: calc(10px + env(safe-area-inset-top)) 16px 8px; }
+		.sidebar-header .brand-mark { width: 30px; height: 30px; border-radius: 9px; }
+		.brand-name { font-size: 18px; }
+		.side-nav { gap: 4px; padding: 10px; }
+		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
+		.section-head { padding: 14px 16px 6px; }
 		.section-title { font-size: 12px; }
+		.tree-section-title { padding: 12px 12px 2px; font-size: 12px; }
 		.tree-item {
-			padding: 11px 12px;
-			min-height: 46px;
+			gap: 10px;
+			padding: 10px 10px 10px 12px;
+			min-height: 48px;
 			font-size: 15px;
 			border-radius: var(--radius-lg);
 		}
-		.folder-row { min-height: 44px; }
-		.folder-label { font-size: 15px; padding: 8px 6px; }
-		.tag-row { padding: 10px 12px; font-size: 14px; border-radius: var(--radius-lg); }
-		.new-page-btn { padding: 13px 14px; font-size: 15px; border-radius: var(--radius-lg); }
+		.folder-row { min-height: 48px; }
+		.folder-toggle { width: 30px; height: 30px; flex-shrink: 0; }
+		.folder-label { font-size: 15px; padding: 8px 6px; min-height: 44px; }
+		.tag-row { padding: 11px 12px; font-size: 14px; border-radius: var(--radius-lg); min-height: 48px; }
+		.new-page-btn { padding: 13px 14px; min-height: 48px; font-size: 15px; border-radius: var(--radius-lg); }
+		/* Row actions need real touch targets, not desktop 22px ghosts. */
+		.tree-item-actions { gap: 6px; }
+		.tree-item-actions .row-btn {
+			width: 34px;
+			height: 34px;
+			border-radius: 9px;
+			color: var(--color-text-muted);
+		}
 
 		/* Labeled footer actions instead of a desktop icon cluster. */
 		.sidebar-footer { padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); gap: 10px; }
@@ -2038,23 +2090,26 @@
 			display: flex;
 			flex-direction: column;
 			align-items: center;
-			gap: 2px;
+			justify-content: center;
+			gap: 3px;
 			background: none;
 			border: none;
-			color: var(--color-text-faint);
-			font-size: 11px;
+			color: var(--color-text-muted);
+			font-size: 12px;
 			font-family: inherit;
+			font-weight: 500;
 			padding: 6px 0;
-			border-radius: var(--radius-md);
+			min-height: 52px;
+			border-radius: var(--radius-lg);
 			text-decoration: none;
 			cursor: pointer;
-			transition: color 0.15s;
+			transition: color 0.15s, background 0.15s;
 		}
-		.nav-tab.active { color: var(--color-accent); }
+		.nav-tab.active { color: var(--color-accent); font-weight: 600; }
 		.nav-tab:active { background: var(--color-surface-hover); }
 		.nav-tab-pill {
 			display: flex;
-			padding: 4px 20px;
+			padding: 5px 22px;
 			border-radius: 999px;
 			transition: background 0.15s;
 		}
@@ -2069,13 +2124,17 @@
 		}
 
 		/* Command palette: near-full-screen, thumb-reachable. */
-		.overlay { padding-top: 8vh; align-items: flex-start; }
+		.overlay { padding-top: 6vh; align-items: flex-start; }
 		.command-palette {
 			width: 94vw;
 			max-width: 94vw;
-			max-height: 82vh;
+			max-height: 84vh;
+			border-radius: 16px;
+			margin-top: 4px;
 		}
-		.palette-input-wrap { padding: 14px 16px; }
-		.palette-item { padding: 12px 10px; }
+		.palette-input-wrap { padding: 12px 16px; }
+		.palette-input { font-size: 16px; min-height: 28px; }
+		.palette-item { padding: 12px 10px; min-height: 48px; }
+		.palette-group-title { padding: 10px 10px 4px; }
 	}
 </style>

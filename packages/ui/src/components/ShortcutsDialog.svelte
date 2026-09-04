@@ -68,7 +68,6 @@
 		justify-content: center;
 		align-items: flex-start;
 		padding-top: 12vh;
-		backdrop-filter: blur(2px);
 	}
 
 	.sd-dialog {

@@ -967,7 +967,7 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-lg);
 		padding: 6px;
 		width: 260px;
 		max-height: 280px;

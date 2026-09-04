@@ -1,20 +1,27 @@
-/* Enclave — AFFiNE-inspired design tokens (dark default) */
+/* Enclave — matte "warm charcoal" design tokens (dark default).
+   Matte = opaque, flat, low-gloss. Warm neutrals, hairline borders and
+   diffused shadows. No translucency or backdrop blur is used anywhere by
+   design — surfaces are solid so contrast stays crisp on every screen. */
 :root {
-	--color-bg: #141416;
-	--color-surface: #1c1c1f;
-	--color-surface-hover: #26262a;
-	--color-surface-active: #2e2e33;
-	--color-border: #2c2c31;
-	--color-border-strong: #3a3a40;
-	--color-text: #e8e8ec;
-	--color-text-muted: #9a9aa2;
-	--color-text-faint: #6a6a72;
-	--color-accent: #7c6cf0;
-	--color-accent-hover: #8d7ff2;
-	--color-accent-subtle: color-mix(in srgb, var(--color-accent) 13%, transparent);
-	--color-danger: #e5534b;
-	--color-warning: #d9a53f;
-	--color-success: #3ec97e;
+	--color-bg: #16130f;          /* window base — deep warm charcoal */
+	--color-surface: #201c17;     /* sidebar, panels, cards */
+	--color-surface-hover: #2a251f;
+	--color-surface-active: #332d26;
+	--color-titlebar: #1a1713;    /* custom window chrome */
+	--color-inset: #100e0b;       /* sunken wells (search, inputs) */
+	--color-border: #2f2a23;
+	--color-border-strong: #3f3830;
+	--color-text: #ece7df;
+	--color-text-muted: #a39b90;
+	--color-text-faint: #8e8678;
+	--color-accent: #8b7cf6;
+	/* Hover shade is derived from the accent so custom accent colors get a
+	   matching hover automatically (lightened on dark themes). */
+	--color-accent-hover: color-mix(in srgb, var(--color-accent) 82%, #ffffff);
+	--color-accent-subtle: color-mix(in srgb, var(--color-accent) 15%, transparent);
+	--color-danger: #e0655b;
+	--color-warning: #d9a851;
+	--color-success: #6fb986;
 
 	--font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	--font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -23,54 +30,131 @@
 	--radius-lg: 12px;
 	--radius-xl: 16px;
 
-	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
-	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
-	--color-overlay: rgba(0, 0, 0, 0.55);
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.26), 0 1px 2px rgba(0, 0, 0, 0.2);
+	--shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.34), 0 2px 6px rgba(0, 0, 0, 0.22);
+	--color-overlay: rgba(8, 6, 4, 0.55);
 }
 
-/* Light theme */
+/* Warm-paper matte light theme */
 [data-theme="light"] {
-	--color-bg: #fafaf8;
-	--color-surface: #ffffff;
-	--color-surface-hover: #f2f2ef;
-	--color-surface-active: #eaeae6;
-	--color-border: #e6e6e2;
-	--color-border-strong: #d4d4cf;
-	--color-text: #1b1b1f;
-	--color-text-muted: #8a8a90;
-	--color-text-faint: #b0b0b6;
+	--color-bg: #f1ede5;
+	--color-surface: #faf7f1;
+	--color-surface-hover: #ebe5db;
+	--color-surface-active: #e2dbcf;
+	--color-titlebar: #f6f2ea;
+	--color-inset: #e6e0d5;
+	--color-border: #ddd6c9;
+	--color-border-strong: #c8c0b0;
+	--color-text: #211d17;
+	--color-text-muted: #5d5549;
+	--color-text-faint: #6e6557;
 	--color-accent: #6b5ce7;
-	--color-accent-hover: #5a4bd6;
-	--color-danger: #d3382f;
-	--color-warning: #a8780e;
-	--color-success: #2e8f57;
+	/* Darkened on the light theme so hover stays legible for any accent. */
+	--color-accent-hover: color-mix(in srgb, var(--color-accent) 78%, #000000);
+	--color-danger: #b64a3f;
+	--color-warning: #9a741c;
+	--color-success: #3f8f5f;
 
-	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-	--shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.14);
-	--color-overlay: rgba(0, 0, 0, 0.35);
+	--shadow-sm: 0 1px 2px rgba(60, 50, 35, 0.06);
+	--shadow-md: 0 2px 8px rgba(60, 50, 35, 0.08), 0 1px 2px rgba(60, 50, 35, 0.05);
+	--shadow-lg: 0 8px 24px rgba(60, 50, 35, 0.14), 0 2px 6px rgba(60, 50, 35, 0.08);
+	--color-overlay: rgba(45, 38, 28, 0.35);
 }
 
-/* Appearance presets — applied via data-* attributes on <html> */
-[data-accent="blue"] { --color-accent: #4f8ef7; --color-accent-hover: #6ba0f9; }
-[data-accent="green"] { --color-accent: #2fbf71; --color-accent-hover: #4cca88; }
-[data-accent="teal"] { --color-accent: #2bb6b6; --color-accent-hover: #45c6c6; }
-[data-accent="orange"] { --color-accent: #e8873a; --color-accent-hover: #ee9b58; }
-[data-accent="red"] { --color-accent: #e5534b; --color-accent-hover: #ea6d66; }
+/* Appearance presets — applied via data-* attributes on <html>.
+   Accent presets only need to set the base accent; hover/subtle derive from
+   it via color-mix, so a custom accent (set inline) gets those too. */
+[data-accent="blue"] { --color-accent: #4f8ef7; }
+[data-accent="green"] { --color-accent: #2fbf71; }
+[data-accent="teal"] { --color-accent: #2bb6b6; }
+[data-accent="orange"] { --color-accent: #e8873a; }
+[data-accent="red"] { --color-accent: #e5534b; }
+
+/* UI corner style presets — scale the shared radius tokens. */
+[data-corners="rounded"] {
+	--radius-sm: 9px;
+	--radius-md: 12px;
+	--radius-lg: 16px;
+	--radius-xl: 20px;
+}
+[data-corners="rounder"] {
+	--radius-sm: 12px;
+	--radius-md: 16px;
+	--radius-lg: 22px;
+	--radius-xl: 28px;
+}
+
+/* Whole-UI scale — applied as CSS zoom on <html> so every px-sized control
+   scales consistently. zoom is supported in every Enclave webview (WebKitGTK,
+   WKWebView, WebView2, Android WebView); fallback engines just ignore it.
+   ponytail: zoom is the lazy lever vs converting the codebase to rem. */
+[data-ui-scale="compact"] { zoom: 0.92; }
+[data-ui-scale="large"] { zoom: 1.08; }
+[data-ui-scale="xlarge"] { zoom: 1.18; }
+
+/* ── Background styles: matte (default) · soft gradient · frosted glass ──
+   The ambient blobs are accent-aware — changing the accent color re-tints
+   the background. 'soft' keeps every surface opaque; 'glassy' additionally
+   frosts the chrome (sidebar, bars, menus, sheets) with translucency. */
+:root {
+	--ambient-a: color-mix(in srgb, var(--color-accent) 22%, transparent);
+	--ambient-b: color-mix(in srgb, #47a8b8 17%, transparent);
+	--ambient-c: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+[data-theme="light"] {
+	--ambient-a: color-mix(in srgb, var(--color-accent) 15%, transparent);
+	--ambient-b: color-mix(in srgb, #4a9fb0 12%, transparent);
+	--ambient-c: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+[data-bg="soft"] body,
+[data-bg="glassy"] body,
+html[data-bg="soft"] .main-pane,
+html[data-bg="glassy"] .main-pane {
+	background-image:
+		radial-gradient(1100px 700px at 88% -8%, var(--ambient-a), transparent 62%),
+		radial-gradient(900px 640px at -12% 110%, var(--ambient-b), transparent 55%),
+		radial-gradient(760px 520px at 55% 45%, var(--ambient-c), transparent 70%);
+	background-color: var(--color-bg);
+	background-attachment: fixed;
+}
+
+/* Frosted chrome for the glassy style. Content panels stay solid (readable);
+   only bars, the sidebar, and floating chrome become translucent/blurred. */
+html[data-bg="glassy"] .sidebar,
+html[data-bg="glassy"] .mobile-topbar,
+html[data-bg="glassy"] .bottom-nav,
+html[data-bg="glassy"] .command-palette,
+html[data-bg="glassy"] .context-menu,
+html[data-bg="glassy"] .settings-panel,
+html[data-bg="glassy"] .sd-dialog,
+html[data-bg="glassy"] .sheet,
+html[data-bg="glassy"] .picker,
+html[data-bg="glassy"] .export-menu,
+html[data-bg="glassy"] .meta-popover,
+html[data-bg="glassy"] .ai-panel,
+html[data-bg="glassy"] .confirm-dialog {
+	background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+	backdrop-filter: blur(24px) saturate(160%);
+	-webkit-backdrop-filter: blur(24px) saturate(160%);
+}
 
 [data-font="system"] { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 [data-font="serif"] { --font-sans: Georgia, 'Times New Roman', serif; }
 [data-font="mono"] { --font-sans: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
 
-/* OLED true-black dark mode — pure black pixels, better battery on AMOLED */
+/* OLED true-black dark mode — pure black pixels, better battery on AMOLED
+   (kept warm-tinted so it still reads as matte charcoal, not blue-black) */
 [data-true-black][data-theme="dark"] {
 	--color-bg: #000000;
-	--color-surface: #0a0a0b;
-	--color-surface-hover: #131315;
-	--color-surface-active: #1a1a1d;
-	--color-border: #1b1b1e;
-	--color-border-strong: #2a2a2f;
+	--color-surface: #0d0b09;
+	--color-surface-hover: #15120f;
+	--color-surface-active: #1c1814;
+	--color-titlebar: #070605;
+	--color-inset: #060504;
+	--color-border: #1d1915;
+	--color-border-strong: #2c2620;
 }
 
 /* Reduced motion — kill transitions/animations globally */

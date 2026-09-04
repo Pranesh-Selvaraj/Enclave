@@ -30,8 +30,6 @@
 	let sourceDirty = $state(false);
 	let tags = $state<string[]>([]);
 	let tagInput = $state('');
-	let comments = $state<{ id: string; text: string; at: string }[]>([]);
-	let commentInput = $state('');
 	let aiEnabled = $state(false);
 	let aiOpen = $state(false);
 	let aiMessages = $state<ChatMessage[]>([]);
@@ -54,6 +52,12 @@
 	// Mobile action sheet: the topbar's icon cluster collapses into this.
 	let sheetOpen = $state(false);
 	const sheetItems = $derived<{ icon: string; label: string; danger?: boolean; action: () => void }[]>([
+		...(mode === 'paper'
+			? [
+					{ icon: 'smile', label: 'Page icon & cover', action: () => (metaOpen = true) },
+					{ icon: 'layout', label: hasWhiteboard ? 'Whiteboard view' : 'Add whiteboard', action: () => setMode('whiteboard') },
+				]
+			: [{ icon: 'text', label: 'Paper view', action: () => setMode('paper') }]),
 		{ icon: 'star', label: document?.is_favorite ? 'Remove from favorites' : 'Add to favorites', action: toggleFavorite },
 		...(aiEnabled ? [{ icon: 'sparkles', label: 'Ask AI', action: () => (aiOpen = true) }] : []),
 		{ icon: 'download', label: 'Export Markdown…', action: exportMarkdown },
@@ -121,33 +125,6 @@
 		} catch (e) {
 			console.error('Failed to save tags:', e);
 		}
-	}
-
-	function saveComments() {
-		try {
-			invoke('upsert_block', {
-				id: `${docId}-comments`,
-				documentId: docId,
-				blockType: 'comments',
-				content: { comments },
-				sortOrder: 4,
-			});
-		} catch (e) {
-			console.error('Failed to save comments:', e);
-		}
-	}
-
-	function addComment() {
-		const text = commentInput.trim();
-		if (!text) return;
-		comments = [...comments, { id: crypto.randomUUID(), text, at: new Date().toISOString() }];
-		commentInput = '';
-		saveComments();
-	}
-
-	function removeComment(id: string) {
-		comments = comments.filter((c) => c.id !== id);
-		saveComments();
 	}
 
 	function addTag() {
@@ -247,11 +224,6 @@
 			icon = meta.icon ?? '';
 			cover = meta.cover ?? '';
 			hasWhiteboard = blocks.some(b => b.type === 'whiteboard');
-			const commentsBlock = blocks.find(b => b.type === 'comments');
-			if (commentsBlock?.content && Array.isArray((commentsBlock.content as any).comments)) {
-				comments = ((commentsBlock.content as any).comments as { id: string; text: string; at: string }[])
-					.filter((c) => c && typeof c.text === 'string');
-			}
 			try { fullWidth = localStorage.getItem(`enclave-fullwidth-${docId}`) === 'true'; } catch { fullWidth = false; }
 			if (blocks.length > 0) {
 				const contentBlock = blocks.find(b => {
@@ -836,33 +808,6 @@
 			<Whiteboard docId={docId!} />
 		{/if}
 
-		<!-- Comments moved below the editor: they annotate the page, they
-		     shouldn't sit between the title and the content. -->
-		<div class="doc-comments">
-			{#each comments as c (c.id)}
-				<div class="comment-item">
-					<div class="comment-text">{c.text}</div>
-					<div class="comment-meta">
-						<span>{new Date(c.at).toLocaleString()}</span>
-						<button class="comment-del" aria-label="Delete comment" onclick={() => removeComment(c.id)}>✕</button>
-					</div>
-				</div>
-			{/each}
-			{#if comments.length === 0}
-				<div class="comments-empty">No comments yet.</div>
-			{/if}
-			<div class="comment-add">
-				<input
-					class="comment-input"
-					bind:value={commentInput}
-					placeholder="Write a comment…"
-					aria-label="Write a comment"
-					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addComment(); } }}
-				/>
-				<button class="comment-submit" onclick={addComment} disabled={!commentInput.trim()}>Add</button>
-			</div>
-		</div>
-
 		{#if toast}
 			<div class="toast" role="status">
 				<span>{toast}</span>
@@ -893,7 +838,7 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 6px;
-		padding: 0 40px 4px;
+		padding: 0 0 4px;
 	}
 
 	.tag-chip {
@@ -901,8 +846,8 @@
 		align-items: center;
 		gap: 4px;
 		border-radius: 999px;
-		background: rgba(124, 111, 240, 0.12);
-		color: #9d8cff;
+		background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+		color: var(--color-accent);
 		font-size: 12px;
 		padding: 2px 10px;
 	}
@@ -937,7 +882,9 @@
 	.document-page {
 		max-width: var(--page-width, 1100px);
 		margin: 0 auto;
-		padding: 0 48px;
+		/* Gutter scales with the window — modest on laptops, airy on huge
+		   monitors — instead of a fixed 96px of dead side space. */
+		padding: 0 clamp(20px, 4vw, 48px);
 		height: 100%;
 		display: flex;
 		flex-direction: column;
@@ -1051,7 +998,7 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-lg);
 		padding: 5px;
 		min-width: 150px;
 	}
@@ -1138,7 +1085,7 @@
 	}
 
 	.doc-topbar {
-		padding: 20px 0 10px;
+		padding: 14px 0 8px;
 		display: flex;
 		align-items: center;
 		gap: 16px;
@@ -1215,58 +1162,7 @@
 	}
 	.icon-btn:hover { background: var(--color-surface-hover); color: var(--color-text); }
 	.icon-btn.faved { color: var(--color-warning); }
-	.icon-btn.danger:hover { color: var(--color-danger); background: rgba(229, 83, 75, 0.1); }
-
-	.doc-comments {
-		max-width: 720px;
-		margin: 0 auto 24px;
-		padding: 0 40px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.comments-head {
-		font-size: 12px; font-weight: 600; text-transform: uppercase;
-		letter-spacing: 0.05em; color: var(--color-text-faint);
-		margin-top: 12px;
-	}
-	.comment-item {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		padding: 10px 12px;
-	}
-	.comment-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-	.comment-meta {
-		display: flex; justify-content: space-between; align-items: center;
-		margin-top: 6px; font-size: 11px; color: var(--color-text-faint);
-	}
-	.comment-del {
-		background: none; border: none; color: var(--color-text-faint);
-		cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 4px;
-	}
-	.comment-del:hover { background: rgba(229, 83, 75, 0.12); color: var(--color-danger); }
-	.comments-empty { font-size: 13px; color: var(--color-text-faint); }
-	.comment-add { display: flex; gap: 8px; }
-	.comment-input {
-		flex: 1;
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		color: var(--color-text);
-		font-size: 14px;
-		font-family: inherit;
-		padding: 8px 12px;
-		outline: none;
-	}
-	.comment-input:focus { border-color: var(--color-accent); }
-	.comment-submit {
-		background: var(--color-accent); color: #fff;
-		border: none; border-radius: var(--radius-md);
-		padding: 8px 16px; font-size: 13px; font-weight: 500;
-		cursor: pointer; font-family: inherit;
-	}
-	.comment-submit:disabled { opacity: 0.5; cursor: default; }
+	.icon-btn.danger:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 
 	/* ── Ask AI panel ── */
 	.ai-backdrop {
@@ -1330,10 +1226,21 @@
 	.ai-send:disabled { opacity: 0.5; cursor: default; }
 	.ai-stop { background: var(--color-surface-active); color: var(--color-text); }
 
-	.doc-body {		display: flex;
-		gap: 32px;
+	/* Side rails (backlinks + TOC) shrink the reading column dramatically on
+	   common window sizes, so give the editor the width back when there isn't
+	   room: backlinks collapse first, then the TOC. */
+	.doc-body {
+		container-type: inline-size;
+		display: flex;
+		gap: 24px;
 		flex: 1;
 		min-height: 0;
+	}
+	@container (max-width: 980px) {
+		.backlinks-panel { display: none; }
+	}
+	@container (max-width: 700px) {
+		:global(.toc-panel) { display: none; }
 	}
 
 	.doc-editor {
@@ -1366,10 +1273,10 @@
 	}
 
 	.backlinks-panel {
-		width: 220px;
+		width: 190px;
 		flex-shrink: 0;
 		border-left: 1px solid var(--color-border);
-		padding-left: 20px;
+		padding-left: 18px;
 		padding-top: 12px;
 		overflow-y: auto;
 	}
@@ -1439,41 +1346,51 @@
 			margin-left: auto;
 			gap: 2px;
 		}
-		.mode-btn {
-			padding: 8px 12px;
-			font-size: 13px;
+
+		.doc-topbar {
+			flex-wrap: wrap;
+			gap: 6px 10px;
+			padding: 10px 0 4px;
 		}
+		/* The emoji tile is decorative; on a phone it just steals title width.
+		   "Page icon & cover" and the Paper/Whiteboard switch stay reachable
+		   from the ⋯ action sheet. */
+		.doc-topbar .page-icon,
+		.doc-topbar .mode-toggle { display: none; }
 		.doc-title-input {
 			font-size: 24px;
+			line-height: 1.3;
+			min-height: 46px;
+			padding: 4px 0;
 		}
-
-		/* Page-info popover becomes a glass bottom sheet on phones. */
-		.export-menu {
-			position: fixed;
-			left: 12px;
-			right: 12px;
-			bottom: calc(16px + env(safe-area-inset-bottom));
-			top: auto;
-			background: color-mix(in srgb, var(--color-surface) 62%, transparent);
-			backdrop-filter: blur(28px) saturate(170%);
-			-webkit-backdrop-filter: blur(28px) saturate(170%);
-			border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
-			border-radius: 18px;
-			box-shadow: 0 8px 36px rgba(0, 0, 0, 0.4);
-		}
-		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
-		.doc-title-input { font-size: 24px; }
-		.doc-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+		.doc-actions { gap: 6px; }
 		.mode-toggle { margin-right: 0; }
+		.mode-btn {
+			padding: 6px 14px;
+			font-size: 13px;
+			min-height: 40px;
+			display: flex;
+			align-items: center;
+		}
 		.doc-cover { height: 96px; margin-top: 10px; }
 
-		.doc-tags { padding: 0 2px 4px; }
-		.doc-comments { padding: 0 2px; }
+		/* Tags: chips big enough to tap the ✕ off. */
+		.doc-tags { gap: 8px; padding: 2px 2px 6px; }
+		.tag-chip { font-size: 13px; padding: 5px 12px; min-height: 28px; }
+		.tag-x {
+			font-size: 13px;
+			width: 26px;
+			height: 26px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			border-radius: 50%;
+			margin-right: -6px;
+		}
+		.tag-input { font-size: 14px; min-height: 36px; }
 
 		/* The 220px backlinks rail has no room on a phone. */
 		.backlinks-panel { display: none; }
-
-		/* Ask-AI panel becomes a full-screen sheet. */
 		.ai-panel {
 			inset: 0;
 			width: 100%;
@@ -1483,6 +1400,26 @@
 			padding-top: env(safe-area-inset-top);
 		}
 		.ai-compose { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+		/* Info/export popovers (opened from the ⋯ sheet) become a matte
+		   bottom sheet on phones. */
+		.export-menu,
+		.export-menu.info-menu {
+			position: fixed;
+			left: 12px;
+			right: 12px;
+			width: auto;
+			top: auto;
+			bottom: calc(16px + env(safe-area-inset-bottom));
+			background: var(--color-surface);
+			border: 1px solid var(--color-border);
+			border-radius: 16px;
+			box-shadow: var(--shadow-lg);
+			padding: 6px;
+		}
+		.export-item { padding: 12px 14px; font-size: 15px; border-radius: 10px; }
+		.info-menu { gap: 4px; }
+		.info-row { padding: 6px 6px; font-size: 13px; }
 
 		/* Page-icon popover: full-width instead of centered-overflowing. */
 		.meta-popover {

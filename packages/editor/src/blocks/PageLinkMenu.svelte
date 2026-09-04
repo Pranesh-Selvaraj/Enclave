@@ -110,7 +110,7 @@
 		font-size: 14px; text-align: left; font-family: inherit;
 		transition: background-color 0.1s;
 	}
-	.link-item:hover, .link-item.selected { background-color: rgba(124, 111, 240, 0.12); }
+	.link-item:hover, .link-item.selected { background-color: color-mix(in srgb, var(--color-accent) 14%, transparent); }
 	.link-item-icon { font-size: 16px; }
 	.link-item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.link-menu-empty { font-size: 12px; color: var(--color-text-muted); padding: 10px; text-align: center; }
