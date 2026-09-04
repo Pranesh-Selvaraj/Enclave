@@ -4,6 +4,57 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] — 2026-09-04
+
+### Added
+
+- **Matte design language** — the 1.7 liquid-glass look becomes fully opaque
+  by default: warm charcoal surfaces (dark/light/OLED-true-black), warm
+  neutrals, hairline borders and diffused shadows. Every frosted chrome piece
+  (top bars, drawer, bottom nav, action sheets, export sheet, command-palette
+  scrim, wallpaper widget card) is now solid.
+- **Background styles** (Settings → Appearance) — **Matte** (default),
+  **Soft glow** (accent-tinted ambient gradient behind content) and
+  **Glass** (gradient + frosted translucent chrome with backdrop blur). The
+  gradient re-tints automatically when the accent color changes.
+- **Custom accent color** — pick any hex in Settings → Appearance; hover and
+  subtle shades derive from the accent via color-mix, so custom accents look
+  native everywhere.
+- **Corner presets** — standard / rounded / rounder.
+- **Dense desktop home dashboard** — full-width two-column layout (recent
+  pages lead; quick actions + favorites rail) that uses the whole window
+  instead of a centered column; collapses to a rail-first single column on
+  phones.
+- **Responsive editor rails** — backlinks/TOC side rails yield width via
+  container queries on common laptop sizes; narrower backlinks rail and
+  responsive page gutters replace the fixed dead space.
+- **Android UX + accessibility pass** — contextual back arrow in the app bar
+  (drawer trigger only on root screens), single clean title row (emoji tile
+  and mode pill fold into the ⋯ sheet), bottom nav now fixed and visible with
+  52px labeled tabs and accent states (it previously never rendered), matte
+  bottom sheets with safe-area padding, WCAG AA contrast for muted/faint text
+  on both themes, 40–48px touch targets, tighter home layout on phones.
+
+### Changed
+
+- **Native desktop window chrome** — main window uses native OS decorations
+  and title bar again (min width restored to 680).
+
+### Fixed
+
+- **Graph canvas colors** — now read live CSS tokens (theme/accent aware) and
+  re-render on theme change instead of using a hardcoded palette.
+- **Editor menu tinting** — slash, bubble, mention, link, database, embed and
+  drag-handle menus tint via color-mix tokens; hardcoded violet/red removed so
+  accent customization applies everywhere.
+- **Undefined `--color-hover` references** in PageEmbedView, DBCell and
+  VaultGuard.
+
+### Removed
+
+- **Page comments** — the per-page comment thread in the page menu is gone
+  as part of the redesign.
+
 ## [1.7.0] — 2026-09-01
 
 ### Added

@@ -41,10 +41,10 @@ by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
 | **Organization** | Folders with collapsible sidebar tree, tags, favorites, trash |
 | **Markdown Source** | `</>` toggle renders the page as editable markdown (Ctrl+S round-trip) |
 | **Database** | Typed table/kanban/list/gallery/timeline views, per-block density (Compact/Spacious) |
-| **Widgets** | Desktop wallpaper widget (tray-toggleable glass panel: recents + quick capture) and Android home-screen widget |
-| **Mobile UI** | Liquid-glass design — frosted floating bars, vibrant gradient backdrop, bottom sheets |
+| **Widgets** | Desktop wallpaper widget (tray-toggleable panel: recents + quick capture) and Android home-screen widget |
+| **UI Design** | Matte, fully opaque surfaces with hairline borders and dense layouts — Background styles: Matte / Soft glow / Glass (frosted chrome + blur), accent-tinted to your color |
 | **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download |
-| **Theming** | Auto / light / dark (follows system), 6 accents, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
+| **Theming** | Auto / light / dark (follows system), 6 accent presets + custom color picker, Background styles, corner presets, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 
 ## Supported Platforms
@@ -357,7 +357,7 @@ Every page toggles between **Paper** (documents) and **Whiteboard** (infinite ca
 
 - **Command palette** — `Ctrl+K` (search pages, run actions)
 - **Shortcuts** — `Ctrl+N` new page, `Ctrl+B` toggle sidebar
-- **Page metadata** — emoji icon, gradient cover, tags, comments, favorites
+- **Page metadata** — emoji icon, gradient cover, tags, favorites
 - **Info & safety** — created/modified/word counts, delete-to-trash with Undo toast
 - **Export** — per-page Markdown or HTML (native dialog); whole-vault encrypted backup
 - **Import** — Markdown files
