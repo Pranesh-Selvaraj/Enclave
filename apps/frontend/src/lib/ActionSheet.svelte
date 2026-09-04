@@ -61,14 +61,12 @@
 		right: 8px;
 		bottom: 8px;
 		z-index: 401;
-		/* Liquid glass: translucent + heavy blur over the page. */
-		background: color-mix(in srgb, var(--color-surface) 62%, transparent);
-		backdrop-filter: blur(28px) saturate(170%);
-		-webkit-backdrop-filter: blur(28px) saturate(170%);
-		border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
-		border-radius: 22px;
+		/* Matte sheet: solid surface, no translucency. */
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 20px;
 		padding: 8px 10px calc(14px + env(safe-area-inset-bottom));
-		box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-lg);
 		animation: sheet-up 0.22s ease;
 	}
 

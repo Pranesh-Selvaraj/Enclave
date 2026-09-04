@@ -901,8 +901,8 @@
 		align-items: center;
 		gap: 4px;
 		border-radius: 999px;
-		background: rgba(124, 111, 240, 0.12);
-		color: #9d8cff;
+		background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+		color: var(--color-accent);
 		font-size: 12px;
 		padding: 2px 10px;
 	}
@@ -1051,7 +1051,7 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-lg);
 		padding: 5px;
 		min-width: 150px;
 	}
@@ -1138,7 +1138,7 @@
 	}
 
 	.doc-topbar {
-		padding: 20px 0 10px;
+		padding: 14px 0 8px;
 		display: flex;
 		align-items: center;
 		gap: 16px;
@@ -1215,7 +1215,7 @@
 	}
 	.icon-btn:hover { background: var(--color-surface-hover); color: var(--color-text); }
 	.icon-btn.faved { color: var(--color-warning); }
-	.icon-btn.danger:hover { color: var(--color-danger); background: rgba(229, 83, 75, 0.1); }
+	.icon-btn.danger:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 
 	.doc-comments {
 		max-width: 720px;
@@ -1245,7 +1245,7 @@
 		background: none; border: none; color: var(--color-text-faint);
 		cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 4px;
 	}
-	.comment-del:hover { background: rgba(229, 83, 75, 0.12); color: var(--color-danger); }
+	.comment-del:hover { background: color-mix(in srgb, var(--color-danger) 12%, transparent); color: var(--color-danger); }
 	.comments-empty { font-size: 13px; color: var(--color-text-faint); }
 	.comment-add { display: flex; gap: 8px; }
 	.comment-input {
@@ -1447,19 +1447,17 @@
 			font-size: 24px;
 		}
 
-		/* Page-info popover becomes a glass bottom sheet on phones. */
+		/* Page-info popover becomes a matte bottom sheet on phones. */
 		.export-menu {
 			position: fixed;
 			left: 12px;
 			right: 12px;
 			bottom: calc(16px + env(safe-area-inset-bottom));
 			top: auto;
-			background: color-mix(in srgb, var(--color-surface) 62%, transparent);
-			backdrop-filter: blur(28px) saturate(170%);
-			-webkit-backdrop-filter: blur(28px) saturate(170%);
-			border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
-			border-radius: 18px;
-			box-shadow: 0 8px 36px rgba(0, 0, 0, 0.4);
+			background: var(--color-surface);
+			border: 1px solid var(--color-border);
+			border-radius: 16px;
+			box-shadow: var(--shadow-lg);
 		}
 		.doc-topbar { flex-wrap: wrap; gap: 6px 10px; padding-top: 12px; }
 		.doc-title-input { font-size: 24px; }

@@ -559,7 +559,7 @@
 
 	.slash-item:hover,
 	.slash-item.selected {
-		background-color: rgba(124, 111, 240, 0.12);
+		background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
 	}
 
 	.slash-item-icon {

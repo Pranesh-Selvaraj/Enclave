@@ -375,7 +375,7 @@ sentinel check</pre>
 		max-width: 100%;
 		max-height: min(90vh, 760px);
 		overflow-y: auto;
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+		box-shadow: var(--shadow-lg);
 	}
 
 	.settings-header {

@@ -166,7 +166,7 @@
 
 	.bubble-btn.active {
 		color: var(--color-accent);
-		background-color: rgba(124, 111, 240, 0.15);
+		background-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
 	}
 
 	.bubble-divider {

@@ -122,14 +122,14 @@
 		width: 80px;
 		height: 6px;
 		border-radius: 3px;
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 		overflow: hidden;
 	}
 
 	.bar-fill {
 		display: block;
 		height: 100%;
-		background: #7c6cf0;
+		background: var(--color-accent);
 		border-radius: 3px;
 	}
 </style>

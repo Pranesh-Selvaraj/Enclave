@@ -17,10 +17,11 @@
         "title": "Enclave",
         "width": 1200,
         "height": 800,
-        "minWidth": 680,
+        "minWidth": 820,
         "minHeight": 480,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false
       }
     ],
     "security": {

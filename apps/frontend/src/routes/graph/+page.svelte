@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
+	import { theme } from '@enclave/ui';
 	import { extractLinks } from '$lib/graphLinks.js';
 
 	let documents = $state<Document[]>([]);
@@ -31,6 +32,13 @@
 		if (!canvasEl || documents.length === 0) return;
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
+
+		// Read matte tokens live so the canvas tracks theme + accent changes.
+		const cssVar = (n: string, fb: string) =>
+			getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb;
+		const edgeColor = cssVar('--color-border-strong', '#3f3830');
+		const nodeColor = cssVar('--color-accent', '#8b7cf6');
+		const labelColor = cssVar('--color-text-muted', '#a39b90');
 
 		const w = canvasEl.width = canvasEl.clientWidth * devicePixelRatio;
 		const h = canvasEl.height = canvasEl.clientHeight * devicePixelRatio;
@@ -109,7 +117,7 @@
 				totalEnergy += Math.abs(n.vx) + Math.abs(n.vy);
 			}
 
-			ctx!.strokeStyle = '#444';
+			ctx!.strokeStyle = edgeColor;
 			ctx!.lineWidth = 1;
 			for (const edge of links) {
 				const s = nodeMap.get(edge.source);
@@ -122,12 +130,12 @@
 			}
 
 			for (const n of nodes) {
-				ctx!.fillStyle = '#6b5ce7';
+				ctx!.fillStyle = nodeColor;
 				ctx!.beginPath();
 				ctx!.arc(n.x, n.y, 6, 0, Math.PI * 2);
 				ctx!.fill();
 
-				ctx!.fillStyle = '#e8e8e8';
+				ctx!.fillStyle = labelColor;
 				ctx!.font = '11px Inter, sans-serif';
 				ctx!.fillText(n.title.slice(0, 20), n.x + 10, n.y + 4);
 			}
@@ -157,7 +165,10 @@
 	$effect(() => {
 		loadGraph();
 	});
+	// Re-render when the graph is ready, the window resizes, or the theme
+	// changes (canvas colors are read from live CSS tokens).
 	$effect(() => {
+		const _t = theme.value;
 		if (!loading && canvasEl) render();
 	});
 </script>

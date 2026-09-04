@@ -9,7 +9,7 @@ const KEY = 'enclave-theme';
 const SKEY = 'enclave-settings';
 
 export const ACCENTS = [
-	{ id: 'violet', color: '#7c6cf0' },
+	{ id: 'violet', color: '#8b7cf6' },
 	{ id: 'blue', color: '#4f8ef7' },
 	{ id: 'green', color: '#2fbf71' },
 	{ id: 'teal', color: '#2bb6b6' },

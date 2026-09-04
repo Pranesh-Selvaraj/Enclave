@@ -164,8 +164,9 @@
 		font-family: var(--font-sans);
 	}
 
-	/* Frosted card look over the wallpaper. The widget window is transparent;
-	   app.css paints html/body with --color-bg, so force it transparent here. */
+	/* Matte card over the wallpaper. The widget window is transparent;
+	   app.css paints html/body with --color-bg, so force it transparent here
+	   and let the solid matte card (with its own radius) float on top. */
 	:global(html) {
 		background: transparent !important;
 	}
@@ -173,11 +174,10 @@
 		background: transparent !important;
 	}
 	:global(.widget) {
-		background: color-mix(in srgb, var(--color-surface) 78%, transparent);
-		backdrop-filter: blur(14px);
-		-webkit-backdrop-filter: blur(14px);
+		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 18px;
+		box-shadow: var(--shadow-md);
 	}
 
 	.w-head {
@@ -242,7 +242,7 @@
 	.w-input {
 		flex: 1;
 		min-width: 0;
-		background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+		background: var(--color-inset);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
 		color: var(--color-text);

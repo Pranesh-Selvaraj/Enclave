@@ -6,6 +6,7 @@
 	import type { Document, Folder } from '@enclave/ui';
 	import { theme, ShortcutsDialog, Icon, Logo } from '@enclave/ui';
 	import VaultGuard from '$lib/VaultGuard.svelte';
+	import TitleBar from '$lib/TitleBar.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
 	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
@@ -587,10 +588,18 @@
 
 {#if currentPath.startsWith('/capture') || currentPath.startsWith('/widget')}
 	{@render children?.()}
-{:else if !vaultUnlocked}
-	<VaultGuard onunlock={() => (vaultUnlocked = true)} />
 {:else}
-<div class="app-shell">
+<div class="app-frame">
+	{#if !isMobile}
+		<!-- Custom window chrome (native decorations are off on desktop). -->
+		<TitleBar onSearch={() => openUI('palette')} />
+	{/if}
+	{#if !vaultUnlocked}
+		<div class="vault-wrap">
+			<VaultGuard onunlock={() => (vaultUnlocked = true)} />
+		</div>
+	{:else}
+	<div class="app-shell">
 	<!-- Left Sidebar (drawer on phones) -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen}>
 		<div class="sidebar-header" class:mini={!sidebarOpen}>
@@ -1156,6 +1165,8 @@
 			</div>
 		</div>
 	{/if}
+	</div>
+	{/if}
 </div>
 {/if}
 
@@ -1166,10 +1177,24 @@
 {/if}
 
 <style>
+	/* Custom title bar (desktop) + shell below it. */
+	.app-frame {
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
 	.app-shell {
 		display: flex;
-		height: 100vh;
+		flex: 1;
+		min-height: 0;
 		overflow: hidden;
+	}
+	.vault-wrap {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	/* ── Phone drawer backdrop + top bar (hidden on desktop) ── */
@@ -1232,12 +1257,17 @@
 	:global([data-density="narrow"]) .sidebar.collapsed,
 	:global([data-density="wide"]) .sidebar.collapsed { width: 48px; min-width: 48px; }
 
+	/* Desktop chrome: the brand lives in the custom title bar above, so the
+	   expanded sidebar header is just the collapse toggle (right-aligned).
+	   The collapsed icon rail and the phone drawer keep the logo. */
 	.sidebar-header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		padding: 10px 10px 10px 14px;
+		justify-content: flex-end;
+		padding: 6px 10px 6px 6px;
 	}
+
+	.sidebar-header:not(.mini) .sidebar-brand { display: none; }
 
 	.sidebar-brand {
 		display: flex;
@@ -1516,7 +1546,7 @@
 		padding: 0;
 	}
 	.row-btn:hover { background: var(--color-surface-active); color: var(--color-text); }
-	.row-btn.danger-row:hover { color: var(--color-danger); background: rgba(229, 83, 75, 0.1); }
+	.row-btn.danger-row:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 
 	.tree-empty {
 		font-size: 13px;
@@ -1570,11 +1600,11 @@
 
 	.tag-row:hover,
 	.tag-row.active {
-		background: rgba(124, 111, 240, 0.12);
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 	}
 
 	.tag-row-hash {
-		color: #9d8cff;
+		color: var(--color-accent);
 		font-weight: 600;
 	}
 
@@ -1739,7 +1769,7 @@
 	}
 	.context-item:hover { background: var(--color-surface-hover); }
 	.context-item.danger { color: var(--color-danger); }
-	.context-item.danger:hover { background: rgba(229, 83, 75, 0.12); }
+	.context-item.danger:hover { background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 	.context-sep { height: 1px; background: var(--color-border); margin: 4px 6px; }
 
 	/* ── Main Pane ── */
@@ -1764,7 +1794,6 @@
 		display: flex;
 		justify-content: center;
 		padding-top: 14vh;
-		backdrop-filter: blur(2px);
 	}
 	.command-palette {
 		width: 560px;
@@ -1929,45 +1958,38 @@
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
-		/* Liquid-glass shell: the topbar floats over scrolling content so the
-		   backdrop blur has something to refract; content pads below it. */
+		/* Matte mobile chrome: solid surfaces, no translucency/blur. */
 		.mobile-topbar {
 			position: fixed;
 			top: 0;
 			left: 0;
 			right: 0;
 			z-index: 120;
-			background: color-mix(in srgb, var(--color-surface) 55%, transparent);
-			backdrop-filter: blur(22px) saturate(170%);
-			-webkit-backdrop-filter: blur(22px) saturate(170%);
-			border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+			background: var(--color-surface);
+			border-bottom: 1px solid var(--color-border);
 		}
 		.main-pane {
 			padding-top: calc(52px + env(safe-area-inset-top));
 			padding-bottom: calc(76px + env(safe-area-inset-bottom));
-			/* Vibrant ambient blobs behind the glass (Liquid-Glass style). */
-			background:
-				radial-gradient(1100px 700px at 88% -8%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 60%),
-				radial-gradient(900px 640px at -12% 108%, color-mix(in srgb, #4fc3f7 15%, transparent), transparent 55%),
-				radial-gradient(700px 500px at 50% 45%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 70%),
-				var(--color-bg);
+			background: var(--color-bg);
 		}
 
-		/* Floating glass bottom nav (pill). */
+		/* Bottom nav — matte surface bar fixed above the gesture area. */
 		.bottom-nav {
+			display: flex;
+			position: fixed;
 			left: 12px;
 			right: 12px;
 			bottom: calc(10px + env(safe-area-inset-bottom));
-			border-radius: 24px;
-			border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
-			background: color-mix(in srgb, var(--color-surface) 62%, transparent);
-			backdrop-filter: blur(24px) saturate(170%);
-			-webkit-backdrop-filter: blur(24px) saturate(170%);
-			box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
-			padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+			z-index: 120;
+			border-radius: 16px;
+			border: 1px solid var(--color-border);
+			background: var(--color-surface);
+			box-shadow: var(--shadow-md);
+			padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
 		}
 
-		/* Glass drawer — near-full-width sheet with mobile proportions. */
+		/* Drawer — solid matte sheet, full height. */
 		.sidebar,
 		.sidebar.collapsed,
 		:global([data-density="narrow"]) .sidebar,
@@ -1982,11 +2004,12 @@
 			transform: translateX(-105%);
 			transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
 			box-shadow: var(--shadow-lg);
-			background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-			backdrop-filter: blur(28px) saturate(170%);
-			-webkit-backdrop-filter: blur(28px) saturate(170%);
-			border-right: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+			background: var(--color-surface);
+			border-right: 1px solid var(--color-border);
 		}
+		/* No title bar on phones — the drawer keeps the brand for identity. */
+		.sidebar-header:not(.mini) .sidebar-brand { display: flex; }
+		.sidebar-header { justify-content: space-between; }
 
 		/* Mobile drawer proportions: bigger rows, labeled actions. */
 		.sidebar-header {

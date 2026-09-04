@@ -816,7 +816,7 @@
 		padding: 6px 10px;
 		font-size: 12px;
 		color: var(--color-text-muted);
-		background: rgba(124, 111, 240, 0.08);
+		background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 		border-bottom: 1px solid var(--color-border);
 	}
 
@@ -951,7 +951,7 @@
 	}
 
 	.db-ctx-item.danger:hover {
-		background: rgba(229, 83, 75, 0.12);
+		background: color-mix(in srgb, var(--color-danger) 12%, transparent);
 	}
 
 	.db-ctx-sep {
@@ -1155,8 +1155,8 @@
 		font-size: 11px;
 		font-weight: 500;
 		white-space: nowrap;
-		background: rgba(124, 111, 240, 0.12);
-		color: #7c6cf0;
+		background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+		color: var(--color-accent);
 	}
 
 	.db-rel-open {
@@ -1331,7 +1331,7 @@
 	}
 
 	.db-kb-card:hover {
-		border-color: rgba(124, 111, 240, 0.5);
+		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
 	}
 
 	.db-kb-cell {
@@ -1391,7 +1391,7 @@
 	}
 
 	.db-card:hover {
-		border-color: rgba(124, 111, 240, 0.5);
+		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
 	}
 
 	.db-card-item {

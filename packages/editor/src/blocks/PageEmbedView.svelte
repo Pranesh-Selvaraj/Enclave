@@ -77,7 +77,7 @@
 		gap: 8px;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		background: var(--color-hover);
+		background: var(--color-surface);
 		color: var(--color-text);
 		padding: 8px 12px;
 		text-decoration: none;
@@ -88,7 +88,7 @@
 	}
 
 	.pe-card:hover {
-		border-color: rgba(124, 111, 240, 0.5);
+		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
 	}
 
 	.pe-icon {
@@ -123,7 +123,7 @@
 	}
 
 	.pe-pick-btn:hover {
-		border-color: rgba(124, 111, 240, 0.5);
+		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
 		color: var(--color-text);
 	}
 
@@ -176,7 +176,7 @@
 	}
 
 	.pe-item:hover {
-		background: var(--color-hover);
+		background: var(--color-surface-hover);
 	}
 
 	.pe-item-icon {

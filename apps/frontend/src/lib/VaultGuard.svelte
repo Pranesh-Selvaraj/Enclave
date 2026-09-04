@@ -170,9 +170,6 @@
 </script>
 
 <div class="vault-wall">
-	<div class="vault-glow vault-glow-a"></div>
-	<div class="vault-glow vault-glow-b"></div>
-
 	{#if step === 'loading' || step === 'checking'}
 		<div class="vault-card vault-card-center">
 			<Logo size={56} />
@@ -314,31 +311,10 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 100vh;
-		width: 100vw;
+		height: 100%;
+		width: 100%;
 		background-color: var(--color-bg);
 		overflow: hidden;
-	}
-
-	.vault-glow {
-		position: absolute;
-		border-radius: 50%;
-		filter: blur(90px);
-		pointer-events: none;
-	}
-	.vault-glow-a {
-		width: 480px;
-		height: 480px;
-		top: -160px;
-		left: -120px;
-		background: rgba(124, 111, 240, 0.16);
-	}
-	.vault-glow-b {
-		width: 420px;
-		height: 420px;
-		bottom: -140px;
-		right: -100px;
-		background: rgba(74, 144, 226, 0.12);
 	}
 
 	.vault-card {
@@ -350,7 +326,7 @@
 		border: 1px solid var(--color-border);
 		background-color: var(--color-surface);
 		text-align: center;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-lg);
 	}
 	.vault-card-center {
 		display: flex;
@@ -371,20 +347,20 @@
 		height: 56px;
 		margin: 0 auto 18px;
 		border-radius: 16px;
-		background: linear-gradient(135deg, #7c6cf0, #4f46e5);
+		background: linear-gradient(135deg, #8b7cf6, #5b4fe0);
 		color: #fff;
 		font-size: 26px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
-		box-shadow: 0 8px 24px rgba(124, 111, 240, 0.35);
+		box-shadow: var(--shadow-md);
 	}
 	.brand-mark-ok {
 		background: linear-gradient(135deg, #46a758, #2f9e44);
-		box-shadow: 0 8px 24px rgba(70, 167, 88, 0.3);
+		box-shadow: var(--shadow-md);
 	}
 	.brand-mark-err {
 		background: linear-gradient(135deg, #e5484d, #b13b40);
-		box-shadow: 0 8px 24px rgba(229, 72, 77, 0.3);
+		box-shadow: var(--shadow-md);
 	}
 
 	.vault-heading { font-size: 22px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
@@ -469,7 +445,7 @@
 		padding: 3px 6px;
 		border-radius: 6px;
 	}
-	.seed-word:hover { background: var(--color-hover); }
+	.seed-word:hover { background: var(--color-surface-hover); }
 	.seed-num {
 		display: inline-flex;
 		align-items: center;
@@ -478,7 +454,7 @@
 		height: 18px;
 		padding: 0 4px;
 		border-radius: 5px;
-		background: rgba(124, 111, 240, 0.15);
+		background: color-mix(in srgb, var(--color-accent) 16%, transparent);
 		color: var(--color-accent);
 		font-size: 10px;
 		font-weight: 700;
@@ -501,7 +477,7 @@
 	}
 	.seed-input:focus {
 		border-color: var(--color-accent);
-		box-shadow: 0 0 0 3px rgba(124, 111, 240, 0.15);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
 	}
 	.seed-input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
 
