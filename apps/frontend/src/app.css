@@ -93,6 +93,53 @@
 [data-ui-scale="large"] { zoom: 1.08; }
 [data-ui-scale="xlarge"] { zoom: 1.18; }
 
+/* ── Background styles: matte (default) · soft gradient · frosted glass ──
+   The ambient blobs are accent-aware — changing the accent color re-tints
+   the background. 'soft' keeps every surface opaque; 'glassy' additionally
+   frosts the chrome (sidebar, bars, menus, sheets) with translucency. */
+:root {
+	--ambient-a: color-mix(in srgb, var(--color-accent) 22%, transparent);
+	--ambient-b: color-mix(in srgb, #47a8b8 17%, transparent);
+	--ambient-c: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+[data-theme="light"] {
+	--ambient-a: color-mix(in srgb, var(--color-accent) 15%, transparent);
+	--ambient-b: color-mix(in srgb, #4a9fb0 12%, transparent);
+	--ambient-c: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+[data-bg="soft"] body,
+[data-bg="glassy"] body,
+html[data-bg="soft"] .main-pane,
+html[data-bg="glassy"] .main-pane {
+	background-image:
+		radial-gradient(1100px 700px at 88% -8%, var(--ambient-a), transparent 62%),
+		radial-gradient(900px 640px at -12% 110%, var(--ambient-b), transparent 55%),
+		radial-gradient(760px 520px at 55% 45%, var(--ambient-c), transparent 70%);
+	background-color: var(--color-bg);
+	background-attachment: fixed;
+}
+
+/* Frosted chrome for the glassy style. Content panels stay solid (readable);
+   only bars, the sidebar, and floating chrome become translucent/blurred. */
+html[data-bg="glassy"] .sidebar,
+html[data-bg="glassy"] .mobile-topbar,
+html[data-bg="glassy"] .bottom-nav,
+html[data-bg="glassy"] .command-palette,
+html[data-bg="glassy"] .context-menu,
+html[data-bg="glassy"] .settings-panel,
+html[data-bg="glassy"] .sd-dialog,
+html[data-bg="glassy"] .sheet,
+html[data-bg="glassy"] .picker,
+html[data-bg="glassy"] .export-menu,
+html[data-bg="glassy"] .meta-popover,
+html[data-bg="glassy"] .ai-panel,
+html[data-bg="glassy"] .confirm-dialog {
+	background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+	backdrop-filter: blur(24px) saturate(160%);
+	-webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
 [data-font="system"] { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 [data-font="serif"] { --font-sans: Georgia, 'Times New Roman', serif; }
 [data-font="mono"] { --font-sans: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }

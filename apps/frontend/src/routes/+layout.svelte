@@ -6,7 +6,6 @@
 	import type { Document, Folder } from '@enclave/ui';
 	import { theme, ShortcutsDialog, Icon, Logo } from '@enclave/ui';
 	import VaultGuard from '$lib/VaultGuard.svelte';
-	import TitleBar from '$lib/TitleBar.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
 	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
@@ -590,10 +589,6 @@
 	{@render children?.()}
 {:else}
 <div class="app-frame">
-	{#if !isMobile}
-		<!-- Custom window chrome (native decorations are off on desktop). -->
-		<TitleBar onSearch={() => openUI('palette')} />
-	{/if}
 	{#if !vaultUnlocked}
 		<div class="vault-wrap">
 			<VaultGuard onunlock={() => (vaultUnlocked = true)} />
@@ -1288,17 +1283,13 @@
 	:global([data-density="wide"]) .nav-item { padding: 8px 12px; }
 	:global([data-density="wide"]) .tree-item { min-height: 34px; }
 
-	/* Desktop chrome: the brand lives in the custom title bar above, so the
-	   expanded sidebar header is just the collapse toggle (right-aligned).
-	   The collapsed icon rail and the phone drawer keep the logo. */
+	/* Native OS window chrome is back, so the sidebar owns the brand again. */
 	.sidebar-header {
 		display: flex;
 		align-items: center;
-		justify-content: flex-end;
-		padding: 6px 10px 6px 6px;
+		justify-content: space-between;
+		padding: 10px 10px 10px 14px;
 	}
-
-	.sidebar-header:not(.mini) .sidebar-brand { display: none; }
 
 	.sidebar-brand {
 		display: flex;
@@ -2038,10 +2029,6 @@
 			background: var(--color-surface);
 			border-right: 1px solid var(--color-border);
 		}
-		/* No title bar on phones — the drawer keeps the brand for identity. */
-		.sidebar-header:not(.mini) .sidebar-brand { display: flex; }
-		.sidebar-header { justify-content: space-between; }
-
 		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
 		.sidebar-header { padding: calc(10px + env(safe-area-inset-top)) 16px 8px; }
 		.sidebar-header .brand-mark { width: 30px; height: 30px; border-radius: 9px; }

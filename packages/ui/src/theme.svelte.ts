@@ -27,6 +27,8 @@ export const LOCK_AFTERS = [0, 1, 5, 15, 60] as const;
 export const CORNERS = ['standard', 'rounded', 'rounder'] as const;
 /** Whole-UI scale presets — applied as CSS zoom on <html>. */
 export const UI_SCALES = ['compact', 'regular', 'large', 'xlarge'] as const;
+/** Background styles: solid matte, soft ambient gradient, or frosted glass. */
+export const BACKGROUNDS = ['matte', 'soft', 'glassy'] as const;
 
 // Resolve an accent preset id (or raw #rrggbb hex) to a concrete color.
 function accentHex(v: string): string {
@@ -43,6 +45,7 @@ let fontSize = $state<string>(FONT_SIZES[1]);
 let pageWidth = $state<string>(PAGE_WIDTHS[1]);
 let corners = $state<string>(CORNERS[0]);
 let uiScale = $state<string>(UI_SCALES[1]);
+let background = $state<string>(BACKGROUNDS[0]);
 let trueBlack = $state(false);
 let reduceMotion = $state(false);
 let haptics = $state(true);
@@ -64,13 +67,14 @@ function apply() {
 	root.setAttribute('data-page-width', pageWidth);
 	root.setAttribute('data-corners', corners);
 	root.setAttribute('data-ui-scale', uiScale);
+	root.setAttribute('data-bg', background);
 	root.toggleAttribute('data-true-black', trueBlack);
 	root.toggleAttribute('data-reduce-motion', reduceMotion);
 	try {
 		localStorage.setItem(KEY, mode);
 		localStorage.setItem(
 			SKEY,
-			JSON.stringify({ accent, font, density, fontSize, pageWidth, corners, uiScale, trueBlack, reduceMotion, haptics, homeSort, lockAfter }),
+			JSON.stringify({ accent, font, density, fontSize, pageWidth, corners, uiScale, background, trueBlack, reduceMotion, haptics, homeSort, lockAfter }),
 		);
 	} catch { /* private browsing */ }
 }
@@ -99,6 +103,8 @@ export const theme = {
 	set corners(v: string) { corners = v; apply(); },
 	get uiScale() { return uiScale; },
 	set uiScale(v: string) { uiScale = v; apply(); },
+	get background() { return background; },
+	set background(v: string) { background = v; apply(); },
 	get trueBlack() { return trueBlack; },
 	set trueBlack(v: boolean) { trueBlack = v; apply(); },
 	get reduceMotion() { return reduceMotion; },
@@ -121,6 +127,7 @@ export const theme = {
 			if (PAGE_WIDTHS.includes(s.pageWidth)) pageWidth = s.pageWidth;
 			if (CORNERS.includes(s.corners)) corners = s.corners;
 			if (UI_SCALES.includes(s.uiScale)) uiScale = s.uiScale;
+			if (BACKGROUNDS.includes(s.background)) background = s.background;
 			if (HOME_SORTS.includes(s.homeSort)) homeSort = s.homeSort;
 			if (typeof s.trueBlack === 'boolean') trueBlack = s.trueBlack;
 			if (typeof s.reduceMotion === 'boolean') reduceMotion = s.reduceMotion;

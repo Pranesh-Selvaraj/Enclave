@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '$lib/backend.js';
 	import { Button, Icon } from '@enclave/ui';
-	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES } from '@enclave/ui';
+	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES, BACKGROUNDS } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
 	import { loadUpdatePrefs, saveUpdatePrefs } from './updates.js';
 	import UpdateDialog from './UpdateDialog.svelte';
@@ -128,6 +128,16 @@
 						<input type="checkbox" bind:checked={theme.trueBlack} />
 						<span class="switch-slider"></span>
 					</label>
+				</div>
+				<div class="setting-row">
+					<span>Background</span>
+					<div class="seg-row">
+						{#each BACKGROUNDS as b (b)}
+							<button class="seg" class:active={theme.background === b} onclick={() => (theme.background = b)}>
+								{b === 'matte' ? 'Matte' : b === 'soft' ? 'Soft glow' : 'Glass'}
+							</button>
+						{/each}
+					</div>
 				</div>
 				<div class="setting-row">
 					<span>Accent color</span>
