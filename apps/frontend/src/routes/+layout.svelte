@@ -1092,6 +1092,9 @@
 				</a>
 			{/if}
 			<div class="topbar-spacer"></div>
+			<button class="topbar-btn" onclick={() => { sidebarOpen = true; syncCardOpen = true; haptic(); }} aria-label="P2P sync" title="P2P sync">
+				<span class="topbar-sync-dot" class:online={networkRunning} class:peers={connectedCount > 0}></span>
+			</button>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
 				<Icon name="search" size={20} />
 			</button>
@@ -1101,10 +1104,10 @@
 		</div>
 	</div>
 
-	<!-- Phone bottom navigation: Home / Graph / Settings -->
+	<!-- Phone bottom navigation: Home / Graph / Sync / Settings -->
 	{#if isMobile && !currentDocId}
 		<nav class="bottom-nav" aria-label="Main">
-			<a href="/" class="nav-tab" class:active={currentPath === '/'} onclick={() => haptic()} aria-current={currentPath === '/' ? 'page' : undefined}>
+			<a href="/" class="nav-tab" class:active={currentPath === '/' && !sidebarOpen} onclick={() => haptic()} aria-current={currentPath === '/' ? 'page' : undefined}>
 				<span class="nav-tab-pill"><Icon name="home" size={20} /></span>
 				<span>Home</span>
 			</a>
@@ -1112,6 +1115,13 @@
 				<span class="nav-tab-pill"><Icon name="graph" size={20} /></span>
 				<span>Graph</span>
 			</a>
+			<button class="nav-tab" class:active={sidebarOpen} onclick={() => { sidebarOpen = true; syncCardOpen = true; haptic(); }}>
+				<span class="nav-tab-pill">
+					<Icon name="network" size={20} />
+					{#if networkRunning}<span class="nav-tab-dot" class:online={connectedCount > 0}></span>{/if}
+				</span>
+				<span>Sync</span>
+			</button>
 			<button class="nav-tab" class:active={settingsOpen} onclick={() => { openUI('settings'); haptic(); }}>
 				<span class="nav-tab-pill"><Icon name="settings" size={20} /></span>
 				<span>Settings</span>
@@ -1311,6 +1321,16 @@
 	}
 	.topbar-btn:hover { background: var(--color-surface-hover); }
 	.topbar-btn:active { background: var(--color-surface-active); }
+	.topbar-sync-dot {
+		display: block;
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: var(--color-border-strong);
+		transition: background 0.2s;
+	}
+	.topbar-sync-dot.online { background: var(--color-success); }
+	.topbar-sync-dot.peers { animation: sync-pulse 2.4s ease-out infinite; }
 
 	/* ── Sidebar ── */
 	.sidebar {
@@ -1574,6 +1594,8 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 2px 8px 8px;
+		/* Keep the WebView from rubber-banding into pull-to-refresh. */
+		overscroll-behavior: contain;
 	}
 	.tree-section-title {
 		font-size: 11px;
@@ -2312,8 +2334,20 @@
 			padding: 5px 22px;
 			border-radius: 999px;
 			transition: background 0.15s;
+			position: relative;
 		}
 		.nav-tab.active .nav-tab-pill { background: var(--color-accent-subtle); }
+		/* Live sync state on the nav pill: green = peers connected. */
+		.nav-tab-dot {
+			position: absolute;
+			top: 4px;
+			right: 14px;
+			width: 7px;
+			height: 7px;
+			border-radius: 50%;
+			background: var(--color-border-strong);
+		}
+		.nav-tab-dot.online { background: var(--color-success); }
 
 
 

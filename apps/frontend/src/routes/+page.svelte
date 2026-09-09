@@ -3,6 +3,7 @@
 	import type { Document } from '@enclave/ui';
 	import { theme, Icon, Logo } from '@enclave/ui';
 	import { goto } from '$app/navigation';
+	import { haptic } from '$lib/haptics.js';
 
 	let documents = $state<Document[]>([]);
 
@@ -16,6 +17,7 @@
 
 	async function createAndOpen() {
 		try {
+			haptic();
 			const doc = await invoke<Document>('create_document', { title: 'Untitled' });
 			goto(`/${doc.id}`);
 		} catch (e) {
@@ -138,6 +140,12 @@
 			</aside>
 		</div>
 	{/if}
+
+	<!-- Android-style FAB: new page one thumb-tap away, no drawer trip.
+	     Hidden on desktop — the sidebar button + Ctrl+N cover it. -->
+	<button class="fab" onclick={createAndOpen} aria-label="New page" title="New page">
+		<Icon name="plus" size={22} />
+	</button>
 </div>
 
 <style>
@@ -322,5 +330,31 @@
 		.home-tips { display: none; }
 		.home-empty { padding: 32px 20px; }
 		.home-empty p { font-size: 13.5px; }
+	}
+
+	/* Floating action button — phones only, above the bottom nav. */
+	.fab {
+		display: none;
+	}
+	@media (max-width: 768px) {
+		.fab {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			position: fixed;
+			right: 16px;
+			bottom: calc(78px + env(safe-area-inset-bottom));
+			z-index: 125;
+			width: 56px;
+			height: 56px;
+			border: none;
+			border-radius: 18px;
+			background: var(--color-accent);
+			color: #fff;
+			box-shadow: var(--shadow-md);
+			cursor: pointer;
+		}
+		.fab:active { transform: scale(0.94); }
+		.fab { transition: transform 0.08s ease-out, box-shadow 0.15s; }
 	}
 </style>
