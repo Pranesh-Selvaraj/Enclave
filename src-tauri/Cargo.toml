@@ -57,6 +57,9 @@ fastembed = { version = "5.17", default-features = false, features = ["ort-downl
 # Desktop keeps using the system OpenSSL — unchanged build.
 [target.'cfg(target_os = "android")'.dependencies]
 rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }
+# JNI bridge to the foreground SyncService (issue #60) — already in the tree
+# via tao, this makes it a direct dependency for android_sync.rs.
+jni = "0.21"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
