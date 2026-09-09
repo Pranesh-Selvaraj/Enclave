@@ -4,6 +4,98 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] — 2026-09-09
+
+Mobile ↔ desktop sync finally works end to end: this release fixes the
+Android mDNS root cause, hardens the P2P layer, ships incremental sync on
+a versioned wire protocol and keeps Android sync alive in the background —
+wrapped in a desktop/mobile sync-first UI pass.
+
+### Added
+
+- **P2P sync protocol versioning (v3)** — auth frames carry a wire protocol
+  version; mismatched peers refuse the session with "update this/the peer
+  device" guidance instead of passing auth (same-vault keys!) and silently
+  misinterpreting frames. Pre-versioning peers (≤ 1.8.0) are refused and
+  must update alongside.
+- **Incremental sync** — the full-vault snapshot on every connect is gone.
+  Peers exchange a metadata digest (id, rev, updated_at, tombstone), diff
+  it against their local index and pull only newer/missing docs
+  (digest → need → partial snapshot → LWW merge → ack). Reconnects move
+  O(changed docs) instead of O(vault); converged pairs exchange two tiny
+  frames and still refresh "last synced". Deletions propagate as
+  tombstones; the doc-level LWW merge path is unchanged.
+- **Android background sync** — a foreground service (dataSync) with a
+  high-perf Wi-Fi lock keeps the sync stack alive while the app is
+  backgrounded or the screen is off; started via JNI only while sync is
+  enabled (no notification for users who never enable P2P), stopped on
+  disable/lock. On return to the app the network re-checks itself and
+  reloads docs (resume-reconnect).
+- **Release version pre-flight** (`npm run release:check`) — verifies the
+  four version declarations agree (package.json, tauri.conf.json,
+  Cargo.toml, CHANGELOG), previews the exact versionName/versionCode CI
+  will ship from the committed counter, enforces strictly-increasing
+  versionCode vs the last release tag, and `--apk` aapt-inspects a locally
+  built artifact — no more tag→download→check→re-tag loops.
+- **Sync card** (sidebar) — one place for sync: live status dot (pulses
+  when peers are online), this-device address with **one-tap copy** (the
+  manual-connect story), peer list with connect states, inline add-peer,
+  last-sync line, and a one-tap start when sync is off. Collapsed state
+  persists per device.
+- **Command palette as a launcher** — actions are query-filtered (type
+  "sync" to narrow), plus Start/Stop P2P sync, Copy sync address,
+  New folder and Open settings; recents capped at 8 (previously rendered
+  every document on big vaults).
+- **Android sync-first UX** — Sync tab in the bottom nav (opens the sync
+  card, live dot when peers connect), topbar sync dot on every screen
+  (tap = open sync), home FAB for one-tap new pages with haptics,
+  overscroll containment on the page tree.
+- npm `build:android` / `build:all` aliases.
+
+### Changed
+
+- **Manual peer connect shows the exact address to dial**
+  (`host:port` from NetworkStatus.local_host) in the sync card, peer
+  tooltips and the palette — no more guessing which IP to dial.
+- **Sync failures are visible** — wrong-vault-key peers, protocol-version
+  skew and failed handshakes surface as snackbars (previously silent
+  eprintlns); manual-connect dial errors toast instead of console.error.
+- **Micro-interactions** — press-scale on buttons, pop-in entrances for
+  the palette/context menus/confirm dialogs, snackbar slide-in,
+  pulsing online dot.
+
+### Fixed
+
+- **Android mDNS discovery was dead on real devices** — Android's Wi-Fi
+  driver filters multicast unless the app holds a MulticastLock; the app
+  never did, so the phone could neither discover desktop peers nor answer
+  their queries (the root cause of "mobile doesn't sync"). Permissions
+  (`ACCESS_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE`) + a lifetime
+  MulticastLock fix it.
+- **Offline LANs couldn't sync at all** — local IP resolution dialed
+  1.1.1.1 as its fallback and failed without a default route; interfaces
+  are now enumerated via if-addrs (private IPv4 preferred), UDP trick
+  demoted to last resort.
+- **Duplicate snapshot merges** — mutual dials left two live sockets per
+  peer pair; the unregistered twin re-delivered every frame. Sessions
+  register first-come and twins back off.
+- **Synced documents stayed invisible** — the sidebar never re-queried
+  after a merge; now the document list reloads when a peer's changes
+  land.
+- **False "synced" state** — malformed snapshots/digests merged as empty
+  and reported success; every frame type is strictly parsed and dropped
+  with a log instead.
+- **Stuck Android versionCode** — every release since v1.2.0 shipped the
+  identical code 1001003 (the auto-increment counter was never committed
+  back); the counter now advances per release and `release:check`
+  enforces strict increase against the last tag.
+- **Test infrastructure** — parallel cargo tests shared the host's real
+  mDNS namespace and dialed each other's peers; network tests are now
+  hermetic (mDNS-off `start_test`), plus a vec0 auto-extension
+  registration race in db tests.
+- CODEOWNERS trust-boundary paths pointed at non-existent
+  `apps/desktop/…` files — now the real `apps/frontend` ones.
+
 ## [1.8.0] — 2026-09-04
 
 ### Added
