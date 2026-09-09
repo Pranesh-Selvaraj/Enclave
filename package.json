@@ -11,6 +11,7 @@
     "dev": "npm run tauri dev",
     "build": "npm run tauri build",
     "check": "npm run check -w @enclave/frontend",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release:check": "bash scripts/release-check.sh"
   }
 }
