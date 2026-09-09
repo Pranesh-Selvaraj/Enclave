@@ -16,6 +16,8 @@ mod embed;
 
 mod updater;
 
+mod android_sync;
+
 const DB_FILENAME: &str = "enclave.db";
 
 // ── App State ───────────────────────────────────────────────────────────────
@@ -83,6 +85,7 @@ async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
     // Locked vault = no sync: drop the key and stop the network so no
     // session keeps running with key material after the user locks up.
     let _ = state.network.stop().await;
+    let _ = android_sync::set_service(false);
     *state.sync_key.lock().map_err(|e| e.to_string())? = None;
     let mut guard = state.db.lock().map_err(|e| e.to_string())?;
     *guard = None;
@@ -483,12 +486,17 @@ async fn start_network(state: tauri::State<'_, AppState>, name: Option<String>) 
         .lock()
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Vault is locked — unlock before enabling sync".to_string())?;
-    state.network.start(&name, key).await
+    state.network.start(&name, key).await?;
+    // Android: keep the stack alive while backgrounded (no-op elsewhere).
+    let _ = android_sync::set_service(true);
+    Ok(())
 }
 
 #[tauri::command(async)]
 async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.network.stop().await
+    state.network.stop().await?;
+    let _ = android_sync::set_service(false);
+    Ok(())
 }
 
 /// Manual peer connect for networks where mDNS discovery is blocked.

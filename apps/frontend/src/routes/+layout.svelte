@@ -603,7 +603,30 @@
 	// Listen for sync completions from the LAN sync task.
 	$effect(() => {
 		let unlisten: (() => void) | undefined;
-		listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
+		// Android: when the app is backgrounded the OS can kill the sync service
+	// and its sockets. On return to the foreground, re-check and restart the
+	// network (start_network also re-arms the foreground service), then reload
+	// so anything synced elsewhere appears immediately.
+	$effect(() => {
+		if (!vaultUnlocked) return;
+		const onVisible = () => {
+			if (document.visibilityState !== 'visible' || !networkRunning) return;
+			(async () => {
+				try {
+					const status = await invoke<NonNullable<typeof networkStatus>>('network_status');
+					if (!status || !status.running) {
+						await invoke('start_network', { name: null });
+						networkStatus = await invoke<typeof networkStatus>('network_status');
+						loadDocuments();
+					}
+				} catch { /* vault may be locked or mid-toggle — next poll recovers */ }
+			})();
+		};
+		document.addEventListener('visibilitychange', onVisible);
+		return () => document.removeEventListener('visibilitychange', onVisible);
+	});
+
+	listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
 		listen('peer-connect-failed', handlePeerConnectFailed).then((fn) => (unlisten = fn));
 		return () => unlisten?.();
 	});

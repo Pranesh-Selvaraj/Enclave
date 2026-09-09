@@ -10,6 +10,15 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
+    <!-- P2P background sync: the foreground SyncService keeps the Rust sync
+         stack alive while the app is backgrounded (issue #60). dataSync is a
+         normal (install-time) permission required from API 34;
+         POST_NOTIFICATIONS is runtime — without the grant the service still
+         runs, only its notification stays hidden (Android 13+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
@@ -53,5 +62,12 @@
             android:name="android.appwidget.provider"
             android:resource="@xml/widget_info" />
         </receiver>
+
+        <!-- Keeps the sync stack alive while backgrounded; started/stopped
+             from the Rust core via JNI as sync is enabled/disabled. -->
+        <service
+          android:name=".SyncService"
+          android:exported="false"
+          android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
