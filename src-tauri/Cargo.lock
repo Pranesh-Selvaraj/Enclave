@@ -701,6 +701,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hkdf",
  "hmac",
+ "if-addrs",
  "mdns-sd",
  "serde",
  "serde_json",

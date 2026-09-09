@@ -12,17 +12,33 @@ pub struct MdnsHandle {
     daemon: ServiceDaemon,
 }
 
-// ponytail: UDP connect trick to discover local IP; works on Linux/macOS/Windows
-// but may return 0.0.0.0 if no route exists. If real mDNS breaks, switch to
-// the `local-ip-address` crate.
-fn local_ip() -> Result<String, String> {
+// ponytail: UDP connect trick kept as last-resort fallback; primary path
+// enumerates real interfaces via if-addrs — works offline (no default route
+// needed) and avoids dialing out to 1.1.1.1 just to learn our own IP.
+pub(crate) fn local_ip() -> Result<String, String> {
+    // Prefer a private IPv4 (RFC 1918) on an up interface — that's the
+    // interface peers on the same Wi-Fi can reach.
+    if let Some(ip) = if_addrs::get_if_addrs()
+        .ok()
+        .and_then(|ifs| {
+            ifs.into_iter()
+                .filter_map(|i| match i.addr {
+                    if_addrs::IfAddr::V4(v4) => Some(v4.ip.to_string()),
+                    _ => None,
+                })
+                .find(|ip| ip.parse::<std::net::Ipv4Addr>().map(|v| v.is_private()).unwrap_or(false))
+        })
+    {
+        return Ok(ip);
+    }
     use std::net::UdpSocket;
     let sock = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
     sock.connect("10.255.255.255:1").map_err(|e| e.to_string())?;
     let addr = sock.local_addr().map_err(|e| e.to_string())?;
     let ip = addr.ip().to_string();
     if ip == "0.0.0.0" {
-        // ponytail: fallback for machines with no default route (VPN, VM-only)
+        // ponytail: needs a route to the internet; only reached when no
+        // private IPv4 interface was found.
         let sock2 = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
         sock2.connect("1.1.1.1:1").map_err(|e| e.to_string())?;
         let addr2 = sock2.local_addr().map_err(|e| e.to_string())?;

@@ -20,6 +20,9 @@ hmac = "0.12"
 sha2 = "0.10"
 getrandom = "0.2"
 base64 = "0.22"
+# Enumerate interfaces for a reliable local IP (the UDP-connect trick
+# fails without a default route — e.g. offline LANs, Enclave's core case).
+if-addrs = "0.15"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

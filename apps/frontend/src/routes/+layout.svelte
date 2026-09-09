@@ -145,6 +145,7 @@
 	let networkRunning = $state(false);
 	let networkStatus = $state<{
 		local_peer_id: string;
+		local_host: string;
 		running: boolean;
 		port: number;
 		peers: { id: string; host: string; port: number; connected: boolean; name: string }[];
@@ -164,8 +165,8 @@
 		const port = m[2] ? Number(m[2]) : 4242;
 		try {
 			await invoke('connect_peer', { host: m[1], port });
-		} catch (e) {
-			console.error('Failed to connect to peer:', e);
+		} catch (e: any) {
+			showSnack(`Can't reach ${m[1]}:${port} — ${e?.message || e}`);
 		}
 	}
 
@@ -398,7 +399,18 @@
 	function handleSyncDone(e: { payload: { peer: string; docs_changed: number; blocks_changed: number } }) {
 		const d = e?.payload ?? {};
 		lastSync = `${new Date().toLocaleTimeString()} · +${d.docs_changed ?? 0} docs, +${d.blocks_changed ?? 0} blocks`;
+		// Merged docs must show up immediately — without a reload they appear
+		// only after some unrelated action re-queries the list.
+		if ((d.docs_changed ?? 0) > 0) {
+			loadDocuments();
+			loadFolders();
+		}
 		setTimeout(() => (lastSync = ''), 8000);
+	}
+
+	function handlePeerConnectFailed(e: { payload: { host: string; error: string } }) {
+		const d = e?.payload ?? { host: '?', error: 'connection failed' };
+		showSnack(`Sync: ${d.error} (${d.host})`);
 	}
 
 	function showContextMenu(e: MouseEvent, doc: Document) {
@@ -554,6 +566,7 @@
 	$effect(() => {
 		let unlisten: (() => void) | undefined;
 		listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
+		listen('peer-connect-failed', handlePeerConnectFailed).then((fn) => (unlisten = fn));
 		return () => unlisten?.();
 	});
 
@@ -835,9 +848,9 @@
 					<span>New page</span>
 				</button>
 				<div class="footer-row">
-					<div class="sync-status" class:online={networkRunning} title="P2P sync">
+					<div class="sync-status" class:online={networkRunning} title={networkRunning ? `Connect to ${networkStatus?.local_host ?? 'this device'}:${networkStatus?.port ?? '?'}` : 'P2P sync'}>
 						<span class="sync-dot"></span>
-						<span>{networkRunning ? `P2P:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
+						<span>{networkRunning ? `${networkStatus?.local_host ?? '?'}:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
 					</div>
 					<div class="footer-actions">
 						<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
@@ -871,7 +884,7 @@
 				{#if networkStatus?.peers?.length}
 					<div class="peer-list">
 						{#each networkStatus.peers as peer}
-							<div class="peer-item" title={peer.host}>
+							<div class="peer-item" title={`${peer.host}:${peer.port}`}>
 								<span class="peer-dot" class:connected={peer.connected}></span>
 								<span class="peer-label">{peer.name || peer.id.slice(0, 8)}…</span>
 							</div>

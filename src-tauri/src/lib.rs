@@ -533,8 +533,15 @@ async fn handle_sync_message(
         }
         Some("snapshot") => {
             let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
-            let docs: Vec<core_db::Document> = serde_json::from_value(v["docs"].clone()).unwrap_or_default();
-            let blocks: Vec<core_db::Block> = serde_json::from_value(v["blocks"].clone()).unwrap_or_default();
+            // Parse strictly: a malformed snapshot must NOT merge an empty set
+            // and must NOT report a successful sync.
+            let (docs, blocks) = match (serde_json::from_value::<Vec<core_db::Document>>(v["docs"].clone()), serde_json::from_value::<Vec<core_db::Block>>(v["blocks"].clone())) {
+                (Ok(d), Ok(b)) => (d, b),
+                (e1, e2) => {
+                    eprintln!("sync: malformed snapshot from {peer_id} ignored (docs: {:?}, blocks: {:?})", e1.err(), e2.err());
+                    return;
+                }
+            };
             match with_db(state, |db| core_db::sync_merge(db, &docs, &blocks).map_err(|e| e.to_string())) {
                 Ok(stats) => {
                     net.mark_synced().await;
@@ -556,6 +563,17 @@ async fn handle_sync_message(
                 }
                 Err(_) => { /* vault locked — ignore */ }
             }
+        }
+        Some("session_failed") => {
+            // Transport-level failure worth surfacing (wrong-key peer, dead
+            // handshake) — the UI listens for this and toasts it.
+            let _ = app.emit(
+                "peer-connect-failed",
+                serde_json::json!({
+                    "host": v["host"].as_str().unwrap_or(&msg.from_peer),
+                    "error": v["error"].as_str().unwrap_or("connection failed"),
+                }),
+            );
         }
         Some("ack") => {
             net.mark_synced().await;
