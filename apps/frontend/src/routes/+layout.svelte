@@ -132,6 +132,25 @@
 		const el = items[Math.min(paletteIndex, items.length - 1)];
 		el?.click();
 	}
+	// Palette commands: every label is also the filter — typing "sync" narrows
+	// the Actions group to sync commands. Runs close the palette first.
+	const paletteCommands = $derived.by(() => {
+		const close = () => (commandPaletteOpen = false);
+		const cmds: { icon: string; label: string; run: () => void }[] = [
+			{ icon: 'plus', label: 'New page', run: () => { close(); createDocument(); } },
+			{ icon: 'download', label: 'Import Markdown…', run: () => { close(); importMarkdownFiles((n) => { loadDocuments(); loadTags(); if (n > 0) alert(`Imported ${n} page${n > 1 ? 's' : ''}`); }); } },
+			{ icon: 'upload', label: 'Export vault as Markdown…', run: () => { close(); exportVaultAsMarkdown().then((n) => { if (n > 0) alert(`Exported ${n} pages`); }); } },
+			{ icon: 'network', label: networkRunning ? 'Stop P2P sync' : 'Start P2P sync', run: () => { close(); toggleNetwork(); } },
+			{ icon: 'duplicate', label: 'Copy sync address', run: () => { close(); copySyncAddress(); } },
+			{ icon: 'folder', label: 'New folder', run: () => { close(); startCreateFolder(); } },
+			{ icon: 'chevronLeft', label: 'Toggle sidebar', run: () => { close(); sidebarOpen = !sidebarOpen; } },
+			{ icon: 'text', label: 'Keyboard shortcuts…', run: () => { close(); shortcutsOpen = true; } },
+			{ icon: 'settings', label: 'Open settings', run: () => { close(); openUI('settings'); } },
+			{ icon: theme.value === 'dark' ? 'sun' : 'moon', label: 'Toggle theme', run: () => { close(); theme.toggle(); } },
+		];
+		const q = searchQuery.trim().toLowerCase();
+		return q ? cmds.filter((c) => c.label.toLowerCase().includes(q)) : cmds;
+	});
 	// Keep the highlight class in sync after renders (query keystrokes re-render
 	// the list) — tracks searchResults/paletteIndex reactively.
 	$effect(() => {
@@ -153,6 +172,25 @@
 	} | null>(null);
 	let lastSync = $state('');
 	const connectedCount = $derived(networkStatus?.peers.filter(p => p.connected).length ?? 0);
+	// Collapsed by default — the footer stays dense; the card opens on demand.
+	// ponytail: per-device localStorage, not account state — no backend for it.
+	let syncCardOpen = $state(false);
+	function toggleSyncCard() {
+		syncCardOpen = !syncCardOpen;
+		try { localStorage.setItem('enclave-sync-card', syncCardOpen ? '1' : '0'); } catch { /* ignore */ }
+	}
+	try { syncCardOpen = localStorage.getItem('enclave-sync-card') === '1'; } catch { /* ignore */ }
+	async function copySyncAddress() {
+		const addr = networkStatus ? `${networkStatus.local_host || 'unknown'}:${networkStatus.port}` : '';
+		if (!addr) return;
+		try {
+			await navigator.clipboard.writeText(addr);
+			showSnack(`Sync address copied — paste it as "Add peer" on your other device`);
+		} catch {
+			// Clipboard can be denied (permissions/old webview) — show it instead.
+			showSnack(`Sync address: ${addr}`);
+		}
+	}
 	let peerHost = $state('');
 
 	async function addPeer() {
@@ -847,11 +885,67 @@
 					<Icon name="plus" size={15} />
 					<span>New page</span>
 				</button>
+				<!-- Sync card: one place for status, address sharing, peers and
+				     manual connect. Collapsed by default to keep the footer dense. -->
+				<div class="sync-card" class:online={networkRunning}>
+					<button class="sync-head" onclick={toggleSyncCard} aria-expanded={syncCardOpen}>
+						<span class="sync-dot" class:online={networkRunning}></span>
+						<span class="sync-head-label">{networkRunning ? 'P2P sync' : 'Sync off'}</span>
+						{#if networkRunning && networkStatus}
+							<span class="sync-head-count">{connectedCount}/{networkStatus.peers.length}</span>
+						{/if}
+						<span class="sync-chevron"><Icon name="chevronLeft" size={12} /></span>
+					</button>
+					{#if syncCardOpen}
+						<div class="sync-body">
+							{#if networkRunning && networkStatus}
+								<div class="sync-address" title="Give this address to your other device (Sync → add peer, or dial it directly)">
+									<span class="sync-addr-label">This device</span>
+									<code class="sync-addr">{networkStatus.local_host || '?'}:{networkStatus.port}</code>
+									<button class="row-btn" onclick={copySyncAddress} title="Copy sync address">
+										<Icon name="duplicate" size={13} />
+									</button>
+								</div>
+								{#if networkStatus.peers.length > 0}
+									<div class="sync-peers">
+										{#each networkStatus.peers as peer (peer.id)}
+											<div class="sync-peer" title={`${peer.host}:${peer.port}`}>
+												<span class="sync-peer-dot" class:connected={peer.connected}></span>
+												<span class="sync-peer-name">{peer.name || peer.id.slice(0, 8)}</span>
+												<span class="sync-peer-addr">{peer.host}</span>
+											</div>
+										{/each}
+									</div>
+								{:else}
+									<div class="sync-empty">No peers yet — devices on the same network appear automatically, or add one below.</div>
+								{/if}
+								<div class="peer-add">
+									<input
+										class="peer-add-input"
+										bind:value={peerHost}
+										placeholder="Add peer — 192.168.1.5:4242"
+										aria-label="Add peer by address"
+										onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addPeer(); } }}
+									/>
+									<button class="peer-add-btn" onclick={addPeer} title="Connect">
+										<Icon name="plus" size={13} />
+									</button>
+								</div>
+								{#if networkStatus.last_sync_at}
+									<div class="last-sync" role="status">
+										{connectedCount}/{networkStatus.peers.length} online · synced {timeAgo(networkStatus.last_sync_at)} ago
+									</div>
+								{/if}
+							{:else}
+								<button class="sync-start" onclick={toggleNetwork} title="Discover peers on this network">
+									<Icon name="network" size={14} />
+									<span>Start sync on this network</span>
+								</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
 				<div class="footer-row">
-					<div class="sync-status" class:online={networkRunning} title={networkRunning ? `Connect to ${networkStatus?.local_host ?? 'this device'}:${networkStatus?.port ?? '?'}` : 'P2P sync'}>
-						<span class="sync-dot"></span>
-						<span>{networkRunning ? `${networkStatus?.local_host ?? '?'}:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
-					</div>
 					<div class="footer-actions">
 						<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
 							<Icon name="network" size={15} />
@@ -867,38 +961,6 @@
 						</button>
 					</div>
 				</div>
-				{#if networkRunning}
-					<div class="peer-add">
-						<input
-							class="peer-add-input"
-							bind:value={peerHost}
-							placeholder="Add peer — 192.168.1.5:4242"
-							aria-label="Add peer by address"
-							onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); addPeer(); } }}
-						/>
-						<button class="peer-add-btn" onclick={addPeer} title="Connect">
-							<Icon name="plus" size={13} />
-						</button>
-					</div>
-				{/if}
-				{#if networkStatus?.peers?.length}
-					<div class="peer-list">
-						{#each networkStatus.peers as peer}
-							<div class="peer-item" title={`${peer.host}:${peer.port}`}>
-								<span class="peer-dot" class:connected={peer.connected}></span>
-								<span class="peer-label">{peer.name || peer.id.slice(0, 8)}…</span>
-							</div>
-						{/each}
-					</div>
-				{/if}
-				{#if lastSync}
-					<div class="last-sync" role="status">Synced {lastSync}</div>
-				{/if}
-				{#if networkRunning && networkStatus?.last_sync_at}
-					<div class="last-sync" role="status">
-						{connectedCount}/{networkStatus.peers.length} peers online · last sync {timeAgo(networkStatus.last_sync_at)} ago
-					</div>
-				{/if}
 			</div>
 		{:else}
 			<!-- Collapsed sidebar: icon rail with the essentials. -->
@@ -1143,7 +1205,7 @@
 							<div class="palette-empty">No results found</div>
 						{/if}
 					{:else if !searchQuery.trim()}
-						{#each documents as doc (doc.id)}
+						{#each documents.slice(0, 8) as doc (doc.id)}
 							<a href="/{doc.id}" class="palette-item" onclick={() => (commandPaletteOpen = false)}>
 								<span class="palette-icon">
 									<Icon name={doc.is_favorite ? 'star' : 'page'} size={15} />
@@ -1154,31 +1216,15 @@
 					{:else}
 						<div class="palette-empty">Searching…</div>
 					{/if}
-					<div class="palette-group-title">Actions</div>
-					<button class="palette-item" onclick={() => { commandPaletteOpen = false; createDocument(); }}>
-						<span class="palette-icon"><Icon name="plus" size={15} /></span>
-						<span>New page</span>
-					</button>
-					<button class="palette-item" onclick={() => { commandPaletteOpen = false; importMarkdownFiles((n) => { loadDocuments(); loadTags(); if (n > 0) alert(`Imported ${n} page${n > 1 ? 's' : ''}`); }); }}>
-						<span class="palette-icon"><Icon name="download" size={15} /></span>
-						<span>Import Markdown…</span>
-					</button>
-					<button class="palette-item" onclick={() => { commandPaletteOpen = false; exportVaultAsMarkdown().then((n) => { if (n > 0) alert(`Exported ${n} pages`); }); }}>
-						<span class="palette-icon"><Icon name="upload" size={15} /></span>
-						<span>Export vault as Markdown…</span>
-					</button>
-					<button class="palette-item" onclick={() => { commandPaletteOpen = false; sidebarOpen = !sidebarOpen; }}>
-						<span class="palette-icon"><Icon name="chevronLeft" size={15} /></span>
-						<span>Toggle sidebar</span>
-					</button>
-					<button class="palette-item" onclick={() => { commandPaletteOpen = false; shortcutsOpen = true; }}>
-						<span class="palette-icon"><Icon name="text" size={15} /></span>
-						<span>Keyboard shortcuts…</span>
-					</button>
-					<button class="palette-item" onclick={() => { commandPaletteOpen = false; theme.toggle(); }}>
-						<span class="palette-icon"><Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} /></span>
-						<span>Toggle theme</span>
-					</button>
+					{#if paletteCommands.length > 0}
+						<div class="palette-group-title">Actions</div>
+						{#each paletteCommands as cmd (cmd.label)}
+							<button class="palette-item" onclick={cmd.run}>
+								<span class="palette-icon"><Icon name={cmd.icon} size={15} /></span>
+								<span>{cmd.label}</span>
+							</button>
+						{/each}
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -1696,26 +1742,149 @@
 	.footer-row {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-end;
 		gap: 8px;
-	}
-	.sync-status {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 12px;
-		color: var(--color-text-faint);
 	}
 	.sync-dot {
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
 		background: var(--color-border-strong);
+		flex-shrink: 0;
 	}
-	.sync-status.online .sync-dot { background: var(--color-success); }
-	.sync-status.online { color: var(--color-text-muted); }
 
-	.footer-actions { display: flex; gap: 2px; }
+	/* ── Sync card (sidebar footer) ── */
+	.sync-card {
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-hover);
+		overflow: hidden;
+	}
+	.sync-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 7px 9px;
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font: inherit;
+		font-size: 12px;
+		transition: background 0.1s, color 0.1s;
+	}
+	.sync-head:hover { background: var(--color-surface-hover); color: var(--color-text); }
+	.sync-head-label { flex: 1; text-align: left; }
+	.sync-head-count {
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--color-text-faint);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		padding: 1px 6px;
+	}
+	.sync-chevron {
+		display: flex;
+		color: var(--color-text-faint);
+		transform: rotate(-90deg);
+		transition: transform 0.15s;
+	}
+	.sync-card.open .sync-chevron { transform: rotate(0deg); }
+	.sync-dot.online {
+		background: var(--color-success);
+		animation: sync-pulse 2.4s ease-out infinite;
+	}
+	@keyframes sync-pulse {
+		0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 45%, transparent); }
+		70% { box-shadow: 0 0 0 6px transparent; }
+		100% { box-shadow: 0 0 0 0 transparent; }
+	}
+	.sync-body {
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
+		padding: 2px 9px 9px;
+		animation: sync-body-in 0.14s ease-out;
+	}
+	@keyframes sync-body-in {
+		from { opacity: 0; transform: translateY(-3px); }
+		to { opacity: 1; transform: none; }
+	}
+	.sync-address {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11px;
+		color: var(--color-text-faint);
+	}
+	.sync-addr-label { flex-shrink: 0; }
+	.sync-addr {
+		flex: 1;
+		min-width: 0;
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 11px;
+		color: var(--color-text);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 3px 7px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.sync-peers {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.sync-peer {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 12px;
+		color: var(--color-text-muted);
+		min-width: 0;
+	}
+	.sync-peer-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--color-border-strong);
+		flex-shrink: 0;
+	}
+	.sync-peer-dot.connected { background: var(--color-success); }
+	.sync-peer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.sync-peer-addr {
+		margin-left: auto;
+		font-size: 10px;
+		color: var(--color-text-faint);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.sync-empty {
+		font-size: 11px;
+		color: var(--color-text-faint);
+		line-height: 1.45;
+	}
+	.sync-start {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 7px 10px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: var(--color-accent-subtle);
+		color: var(--color-accent);
+		cursor: pointer;
+		font: inherit;
+		font-size: 12px;
+		transition: background 0.15s, color 0.15s;
+	}
+	.sync-start:hover { background: var(--color-accent); color: #fff; }
 	.icon-btn {
 		display: flex;
 		align-items: center;
@@ -1764,11 +1933,29 @@
 	}
 	.peer-add-btn:hover { background: var(--color-accent); color: #fff; }
 
-	.peer-list { display: flex; flex-direction: column; gap: 4px; }
-	.peer-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-faint); }
-	.peer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-border-strong); }
-	.peer-dot.connected { background: var(--color-success); }
 	.last-sync { font-size: 11px; color: var(--color-text-faint); }
+
+	/* ── Micro-interactions: press states + entrance motion ── */
+	.icon-btn:active, .row-btn:active, .nav-item:active, .mini-btn:active,
+	.new-page-btn:active, .sync-start:active, .sync-head:active {
+		transform: scale(0.97);
+	}
+	/* Union of each button's own color transition + the press-scale. */
+	.icon-btn, .row-btn, .new-page-btn, .sync-start, .sync-head {
+		transition: background 0.12s, color 0.12s, transform 0.08s ease-out;
+	}
+	.command-palette { animation: pop-in 0.13s cubic-bezier(0.32, 0.72, 0, 1); }
+	@keyframes pop-in {
+		from { opacity: 0; transform: scale(0.985) translateY(4px); }
+		to { opacity: 1; transform: none; }
+	}
+	.context-menu { animation: pop-in 0.12s cubic-bezier(0.32, 0.72, 0, 1); }
+	.confirm-dialog { animation: pop-in 0.15s cubic-bezier(0.32, 0.72, 0, 1); }
+	.snackbar { animation: snack-in 0.18s cubic-bezier(0.32, 0.72, 0, 1); }
+	@keyframes snack-in {
+		from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+		to { opacity: 1; transform: translateX(-50%) translateY(0); }
+	}
 
 	/* ── Context Menu ── */
 	.context-overlay {
