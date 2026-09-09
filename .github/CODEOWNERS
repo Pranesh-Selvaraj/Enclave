@@ -8,5 +8,5 @@ packages/crypto/ @Pranesh-Selvaraj
 src-tauri/crates/core-db/ @Pranesh-Selvaraj
 src-tauri/crates/core-network/ @Pranesh-Selvaraj
 src-tauri/src/embed.rs @Pranesh-Selvaraj
-apps/desktop/src/lib/VaultGuard.svelte @Pranesh-Selvaraj
-apps/desktop/src/lib/ai.ts @Pranesh-Selvaraj
+apps/frontend/src/lib/VaultGuard.svelte @Pranesh-Selvaraj
+apps/frontend/src/lib/ai.ts @Pranesh-Selvaraj
