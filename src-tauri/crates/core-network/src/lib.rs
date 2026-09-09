@@ -456,6 +456,51 @@ mod tests {
         a.stop().await.unwrap();
     }
 
+    /// A pre-versioning client (auth frame without "v") must be refused:
+    /// no session, and a session_failed surfaces to the app layer.
+    #[tokio::test]
+    async fn old_protocol_client_is_refused() {
+        let a = Arc::new(NetworkState::new());
+        a.start_test("alice", crate::crypto::derive_sync_key(b"k")).await.unwrap();
+        let port = a.status().await.port;
+
+        let (ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}"))
+            .await
+            .expect("dial the test network");
+        let (mut write, mut read) = ws.split();
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+
+        // Old-style auth: no "v" field.
+        let auth = serde_json::json!({
+            "kind": "auth",
+            "peer_id": "old-client",
+            "name": "old",
+            "challenge": ws::b64(&[0u8; 32]),
+        });
+        write.send(Message::Text(auth.to_string().into())).await.unwrap();
+
+        // The modern side answers with its own auth (carrying v), then closes
+        // the socket on the version mismatch.
+        let first = read.next().await.unwrap().unwrap();
+        let text = match first {
+            Message::Text(t) => t.to_string(),
+            other => panic!("expected the server's auth frame, got {other:?}"),
+        };
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["kind"], "auth");
+        assert_eq!(v["v"], super::ws::PROTOCOL_VERSION);
+
+        // No session may register; the refusal must surface to the app layer.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(a.inner().read().await.sessions.is_empty());
+        let msg = a.message_rx.lock().await.as_mut().unwrap().recv().await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&msg.payload).unwrap();
+        assert_eq!(v["kind"], "session_failed");
+
+        a.stop().await.unwrap();
+    }
+
     /// The dial must fall through advertised addresses: an unroutable first
     /// host must not prevent connecting via the second. (192.0.2.1 is
     /// TEST-NET-1, documented non-routable — machines without a route to it
