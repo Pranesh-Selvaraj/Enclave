@@ -15,7 +15,7 @@ pub struct MdnsHandle {
 // ponytail: UDP connect trick to discover local IP; works on Linux/macOS/Windows
 // but may return 0.0.0.0 if no route exists. If real mDNS breaks, switch to
 // the `local-ip-address` crate.
-fn local_ip() -> Result<String, String> {
+pub(crate) fn local_ip() -> Result<String, String> {
     use std::net::UdpSocket;
     let sock = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
     sock.connect("10.255.255.255:1").map_err(|e| e.to_string())?;

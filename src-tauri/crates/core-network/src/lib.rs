@@ -29,6 +29,7 @@ pub struct Peer {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkStatus {
     pub local_peer_id: String,
+    pub local_host: String,
     pub running: bool,
     pub port: u16,
     pub peers: Vec<Peer>,
@@ -41,6 +42,7 @@ pub struct NetworkStatus {
 
 struct Inner {
     peer_id: String,
+    local_host: String,
     port: u16,
     name: String,
     /// Vault-derived PSK for peer auth + transport encryption. Set when the
@@ -76,6 +78,7 @@ impl NetworkState {
         Self {
             inner: Arc::new(RwLock::new(Inner {
                 peer_id: peer_id.clone(),
+                local_host: String::new(),
                 port: 0,
                 name: String::new(),
                 sync_key: None,
@@ -94,6 +97,7 @@ impl NetworkState {
         let inner = self.inner.read().await;
         NetworkStatus {
             local_peer_id: inner.peer_id.clone(),
+            local_host: inner.local_host.clone(),
             running: inner.mdns_handle.is_some(),
             port: inner.port,
             peers: inner.peers.values().cloned().collect(),
@@ -131,6 +135,7 @@ impl NetworkState {
             .await
             .map_err(|e| format!("Failed to bind: {e}"))?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        inner.local_host = mdns::local_ip().unwrap_or_else(|_| "unknown".to_string());
         inner.port = port;
         inner.ws_shutdown = Some(shutdown_tx.clone());
 
@@ -223,6 +228,7 @@ impl NetworkState {
         inner.sync_key = None;
         inner.sessions.clear();
         inner.peers.clear();
+        inner.local_host.clear();
         inner.port = 0;
         Ok(())
     }

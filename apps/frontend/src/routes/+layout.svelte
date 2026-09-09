@@ -145,6 +145,7 @@
 	let networkRunning = $state(false);
 	let networkStatus = $state<{
 		local_peer_id: string;
+		local_host: string;
 		running: boolean;
 		port: number;
 		peers: { id: string; host: string; port: number; connected: boolean; name: string }[];
@@ -835,9 +836,9 @@
 					<span>New page</span>
 				</button>
 				<div class="footer-row">
-					<div class="sync-status" class:online={networkRunning} title="P2P sync">
+					<div class="sync-status" class:online={networkRunning} title={networkRunning ? `Connect to ${networkStatus?.local_host ?? 'this device'}:${networkStatus?.port ?? '?'}` : 'P2P sync'}>
 						<span class="sync-dot"></span>
-						<span>{networkRunning ? `P2P:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
+						<span>{networkRunning ? `${networkStatus?.local_host ?? '?'}:${networkStatus?.port ?? '?'}` : 'Offline'}</span>
 					</div>
 					<div class="footer-actions">
 						<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
@@ -871,7 +872,7 @@
 				{#if networkStatus?.peers?.length}
 					<div class="peer-list">
 						{#each networkStatus.peers as peer}
-							<div class="peer-item" title={peer.host}>
+							<div class="peer-item" title={`${peer.host}:${peer.port}`}>
 								<span class="peer-dot" class:connected={peer.connected}></span>
 								<span class="peer-label">{peer.name || peer.id.slice(0, 8)}…</span>
 							</div>
