@@ -120,6 +120,15 @@ impl NetworkState {
     /// `sync_key` is the vault-derived PSK: peers that can't prove it are
     /// rejected and everything on the wire is encrypted with it.
     pub async fn start(self: &Arc<Self>, name: &str, sync_key: [u8; 32]) -> Result<(), String> {
+        self.start_with(name, sync_key, true).await
+    }
+
+    async fn start_with(
+        self: &Arc<Self>,
+        name: &str,
+        sync_key: [u8; 32],
+        enable_mdns: bool,
+    ) -> Result<(), String> {
         let mut inner = self.inner.write().await;
         if inner.mdns_handle.is_some() {
             return Err("Network already running".into());
@@ -147,43 +156,59 @@ impl NetworkState {
         });
 
         // mDNS browse → connect to discovered peers.
+        // Disabled in tests: parallel test binaries share the host's real
+        // mDNS namespace and would discover (and dial!) each other's peers.
         let (discovery_tx, mut discovery_rx) = mpsc::unbounded_channel::<(String, Vec<String>, u16)>();
-        let mdns_handle = match mdns::start(peer_id.clone(), port, discovery_tx).await {
-            Ok(h) => Some(h),
-            Err(e) => {
-                // ponytail: mDNS is best-effort — some networks block it.
-                // Keep the WS server running so manual connect_peer still
-                // works; the UI surfaces the warning.
-                eprintln!("mDNS unavailable (manual peer connect still works): {e}");
-                None
+        let mdns_handle = if !enable_mdns {
+            None
+        } else {
+            match mdns::start(peer_id.clone(), port, discovery_tx).await {
+                Ok(h) => Some(h),
+                Err(e) => {
+                    // ponytail: mDNS is best-effort — some networks block it.
+                    // Keep the WS server running so manual connect_peer still
+                    // works; the UI surfaces the warning.
+                    eprintln!("mDNS unavailable (manual peer connect still works): {e}");
+                    None
+                }
             }
         };
         inner.mdns_handle = mdns_handle;
 
-        let net = self.shared();
-        tokio::spawn(async move {
-            while let Some((pid, hosts, port)) = discovery_rx.recv().await {
-                {
-                    let inner = net.inner().read().await;
-                    if pid == inner.peer_id || inner.sessions.contains_key(&pid) {
-                        continue;
+        if enable_mdns {
+            let net = self.shared();
+            tokio::spawn(async move {
+                while let Some((pid, hosts, port)) = discovery_rx.recv().await {
+                    {
+                        let inner = net.inner().read().await;
+                        if pid == inner.peer_id || inner.sessions.contains_key(&pid) {
+                            continue;
+                        }
+                    }
+                    let host = hosts.first().cloned().unwrap_or_default();
+                    {
+                        let mut inner = net.inner().write().await;
+                        inner.peers.insert(
+                            pid.clone(),
+                            Peer { id: pid.clone(), host: host.clone(), hosts: hosts.clone(), port, connected: false, name: String::new() },
+                        );
+                    }
+                    if let Err(e) = ws::connect(&pid, &hosts, &port, net.clone()).await {
+                        eprintln!("WS connect to {pid}@{host}:{port} failed: {e}");
                     }
                 }
-                let host = hosts.first().cloned().unwrap_or_default();
-                {
-                    let mut inner = net.inner().write().await;
-                    inner.peers.insert(
-                        pid.clone(),
-                        Peer { id: pid.clone(), host: host.clone(), hosts: hosts.clone(), port, connected: false, name: String::new() },
-                    );
-                }
-                if let Err(e) = ws::connect(&pid, &hosts, &port, net.clone()).await {
-                    eprintln!("WS connect to {pid}@{host}:{port} failed: {e}");
-                }
-            }
-        });
+            });
+        }
 
         Ok(())
+    }
+
+    /// Hermetic network for tests: WS listener + manual dial only, no mDNS
+    /// (parallel tests share the host's mDNS namespace and would otherwise
+    /// discover and dial each other).
+    #[cfg(test)]
+    async fn start_test(self: &Arc<Self>, name: &str, sync_key: [u8; 32]) -> Result<(), String> {
+        self.start_with(name, sync_key, false).await
     }
 
     /// Manually dial a peer by host:port (mDNS-blocked networks). Creates a
@@ -351,6 +376,28 @@ impl NetworkState {
     pub(crate) async fn sync_key(&self) -> Option<[u8; 32]> {
         self.inner.read().await.sync_key
     }
+
+    /// True while `tx` is still the registered session for `pid`. Sessions
+    /// check this before forwarding a message: when both peers dial each
+    /// other, two sockets exist for one peer id and only the registered one
+    /// may deliver data — the redundant socket closes instead of duplicating
+    /// every snapshot merge.
+    pub(crate) async fn session_is_current(&self, pid: &str, tx: &mpsc::UnboundedSender<String>) -> bool {
+        self.inner
+            .read()
+            .await
+            .sessions
+            .get(pid)
+            .map(|current| current.same_channel(tx))
+            .unwrap_or(false)
+    }
+
+    /// True when any session is registered for `pid` (regardless of which
+    /// socket). Used by a connecting session to detect an incumbent twin and
+    /// back off instead of stealing the registration.
+    pub(crate) async fn session_exists(&self, pid: &str) -> bool {
+        self.inner.read().await.sessions.contains_key(pid)
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -367,11 +414,11 @@ mod tests {
         let a = Arc::new(NetworkState::new());
         let b = Arc::new(NetworkState::new());
         let key = crate::crypto::derive_sync_key(b"same-vault-key");
-        a.start("alice", key).await.unwrap();
+        a.start_test("alice", key).await.unwrap();
         let a_status = a.status().await;
         let a_id = a_status.local_peer_id.clone();
         let b_id = b.status().await.local_peer_id.clone();
-        b.start("bob", key).await.unwrap();
+        b.start_test("bob", key).await.unwrap();
 
         ws::connect(&a_id, &["127.0.0.1".to_string()], &a_status.port, b.clone())
             .await
@@ -419,10 +466,10 @@ mod tests {
         let a = Arc::new(NetworkState::new());
         let b = Arc::new(NetworkState::new());
         let key = crate::crypto::derive_sync_key(b"same-vault-key");
-        a.start("alice", key).await.unwrap();
+        a.start_test("alice", key).await.unwrap();
         let a_status = a.status().await;
         let a_id = a_status.local_peer_id.clone();
-        b.start("bob", key).await.unwrap();
+        b.start_test("bob", key).await.unwrap();
 
         ws::connect(
             &a_id,
@@ -451,10 +498,10 @@ mod tests {
     async fn wrong_key_peer_is_rejected() {
         let a = Arc::new(NetworkState::new());
         let b = Arc::new(NetworkState::new());
-        a.start("alice", crate::crypto::derive_sync_key(b"vault-A")).await.unwrap();
+        a.start_test("alice", crate::crypto::derive_sync_key(b"vault-A")).await.unwrap();
         let a_status = a.status().await;
         let a_id = a_status.local_peer_id.clone();
-        b.start("mallory", crate::crypto::derive_sync_key(b"vault-B")).await.unwrap();
+        b.start_test("mallory", crate::crypto::derive_sync_key(b"vault-B")).await.unwrap();
 
         ws::connect(&a_id, &["127.0.0.1".to_string()], &a_status.port, b.clone())
             .await
@@ -466,12 +513,67 @@ mod tests {
         assert!(a.inner().read().await.sessions.is_empty(), "A must not register a session");
         assert!(b.inner().read().await.sessions.is_empty(), "B must not register a session");
 
-        // No payloads may arrive on either side.
+        // The rejection is surfaced as a session_failed control message (both
+        // sides fail their proof) — but no data ever flows.
         for (name, net) in [("a", &a), ("b", &b)] {
             let mut rx = net.message_rx.lock().await;
+            let msg = rx.as_mut().unwrap().recv().await.unwrap();
+            let v: serde_json::Value = serde_json::from_str(&msg.payload).unwrap();
+            assert_eq!(v["kind"], "session_failed", "{name} must surface the rejection");
             assert!(
                 rx.as_mut().unwrap().try_recv().is_err(),
-                "{name} must receive nothing from a wrong-key peer"
+                "{name} must receive no data from a wrong-key peer"
+            );
+        }
+
+        b.stop().await.unwrap();
+        a.stop().await.unwrap();
+    }
+
+    /// When both peers dial each other (the normal race after mutual mDNS
+    /// discovery), exactly one socket per pair must survive and deliver:
+    /// each side receives exactly one hello and registers one session — no
+    /// duplicate deliveries from a redundant twin.
+    #[tokio::test]
+    async fn concurrent_mutual_dials_yield_one_session() {
+        let a = Arc::new(NetworkState::new());
+        let b = Arc::new(NetworkState::new());
+        let key = crate::crypto::derive_sync_key(b"same-vault-key");
+        a.start_test("alice", key).await.unwrap();
+        let a_status = a.status().await;
+        let a_id = a_status.local_peer_id.clone();
+        let b_id = b.status().await.local_peer_id.clone();
+        b.start_test("bob", key).await.unwrap();
+
+        // Both dials in flight — each side accepts while also dialing.
+        let (a1, b1) = (a.clone(), b.clone());
+        let (a_port, b_port) = (a_status.port, b.status().await.port);
+        let (dial_b_id, dial_a_id) = (b_id.clone(), a_id.clone());
+        let h1 = tokio::spawn(async move {
+            ws::connect(&dial_b_id, &["127.0.0.1".to_string()], &b_port, a1).await
+        });
+        let h2 = tokio::spawn(async move {
+            ws::connect(&dial_a_id, &["127.0.0.1".to_string()], &a_port, b1).await
+        });
+        h1.await.unwrap().expect("A→B dial");
+        h2.await.unwrap().expect("B→A dial");
+
+        // Settle: twins complete their hellos and back off.
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        assert_eq!(a.inner().read().await.sessions.len(), 1, "A keeps one session for B");
+        assert_eq!(b.inner().read().await.sessions.len(), 1, "B keeps one session for A");
+
+        // Exactly one hello arrives on each side — the twin forwarded nothing.
+        for (name, net, other) in [("a", &a, &b_id), ("b", &b, &a_id)] {
+            let mut rx = net.message_rx.lock().await;
+            let hello = rx.as_mut().unwrap().recv().await.unwrap();
+            let v: serde_json::Value = serde_json::from_str(&hello.payload).unwrap();
+            assert_eq!(v["kind"], "hello");
+            assert_eq!(hello.from_peer, *other);
+            assert!(
+                rx.as_mut().unwrap().try_recv().is_err(),
+                "{name} must get exactly one hello, not one per twin socket"
             );
         }
 

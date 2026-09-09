@@ -165,8 +165,8 @@
 		const port = m[2] ? Number(m[2]) : 4242;
 		try {
 			await invoke('connect_peer', { host: m[1], port });
-		} catch (e) {
-			console.error('Failed to connect to peer:', e);
+		} catch (e: any) {
+			showSnack(`Can't reach ${m[1]}:${port} — ${e?.message || e}`);
 		}
 	}
 
@@ -399,7 +399,18 @@
 	function handleSyncDone(e: { payload: { peer: string; docs_changed: number; blocks_changed: number } }) {
 		const d = e?.payload ?? {};
 		lastSync = `${new Date().toLocaleTimeString()} · +${d.docs_changed ?? 0} docs, +${d.blocks_changed ?? 0} blocks`;
+		// Merged docs must show up immediately — without a reload they appear
+		// only after some unrelated action re-queries the list.
+		if ((d.docs_changed ?? 0) > 0) {
+			loadDocuments();
+			loadFolders();
+		}
 		setTimeout(() => (lastSync = ''), 8000);
+	}
+
+	function handlePeerConnectFailed(e: { payload: { host: string; error: string } }) {
+		const d = e?.payload ?? { host: '?', error: 'connection failed' };
+		showSnack(`Sync: ${d.error} (${d.host})`);
 	}
 
 	function showContextMenu(e: MouseEvent, doc: Document) {
@@ -555,6 +566,7 @@
 	$effect(() => {
 		let unlisten: (() => void) | undefined;
 		listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
+		listen('peer-connect-failed', handlePeerConnectFailed).then((fn) => (unlisten = fn));
 		return () => unlisten?.();
 	});
 

@@ -208,6 +208,17 @@ where
         32,
     )?;
     if !crypto::verify_proof(&sync_key, &peer_challenge, &my_challenge, &peer_id, &peer_proof) {
+        // Surface to the app layer (UI toast): someone on the LAN has a
+        // different vault key trying to pair. Not a quiet failure.
+        let _ = message_tx.send(PeerMessage {
+            from_peer: peer_id.clone(),
+            payload: serde_json::json!({
+                "kind": "session_failed",
+                "host": host,
+                "error": format!("peer {peer_id} rejected — wrong vault key"),
+            })
+            .to_string(),
+        });
         return Err("peer failed auth (wrong vault key?)".into());
     }
     let session_key = crypto::session_key(&sync_key, &my_challenge, &peer_challenge);
@@ -252,16 +263,34 @@ where
                         if let Some(v) = &parsed {
                             if v["kind"] == "hello" {
                                 if let (Some(pid), Some(name)) = (v["peer_id"].as_str(), v["name"].as_str()) {
-                                    net.register_session(pid, name, &host, port, out_tx.clone()).await;
-                                    registered = Some(pid.to_string());
-                                    conn_id = pid.to_string();
+                                    // When both peers dial each other, two
+                                    // sockets exist for one peer id. Only the
+                                    // first to register owns it — the twin
+                                    // backs off here instead of stealing the
+                                    // registration and duplicating every
+                                    // subsequent snapshot merge.
+                                    if net.session_is_current(pid, &out_tx).await {
+                                        // Already ours (re-hello) — ignore.
+                                    } else if net.session_exists(pid).await {
+                                        registered = None;
+                                        break;
+                                    } else {
+                                        net.register_session(pid, name, &host, port, out_tx.clone()).await;
+                                        registered = Some(pid.to_string());
+                                        conn_id = pid.to_string();
+                                    }
                                 }
                             }
                         }
-                        let _ = message_tx.send(PeerMessage {
-                            from_peer: conn_id.clone(),
-                            payload: text.to_string(),
-                        });
+                        // Forward only from a registered session: pre-hello
+                        // frames carry no data, and a redundant twin that
+                        // broke out above delivers nothing.
+                        if registered.is_some() {
+                            let _ = message_tx.send(PeerMessage {
+                                from_peer: conn_id.clone(),
+                                payload: text.to_string(),
+                            });
+                        }
                     }
                     // Post-auth text frames are a protocol violation.
                     Some(Ok(Message::Text(_))) => break,
