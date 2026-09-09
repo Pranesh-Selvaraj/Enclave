@@ -22,6 +22,27 @@ use crate::{crypto, NetworkState, PeerMessage};
 /// Upper bound for the auth handshake (challenge + proof exchange).
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// Wire protocol version. Bumped on any breaking frame-format change.
+/// Peers exchange this in the auth frame and refuse mismatched versions:
+/// a v2 client talking to a v3 peer would otherwise pass auth (keys match —
+/// same vault) and then misinterpret frames, corrupting the vault silently.
+/// Old clients (pre-versioning) send no "v" at all and are treated as v1.
+pub const PROTOCOL_VERSION: u64 = 2;
+
+/// Check the peer's advertised protocol version from its auth frame.
+fn version_ok(peer_v: Option<u64>) -> Result<(), String> {
+    match peer_v {
+        Some(v) if v == PROTOCOL_VERSION => Ok(()),
+        Some(v) if v > PROTOCOL_VERSION => Err(format!(
+            "peer speaks sync protocol v{v} — this Enclave speaks v{PROTOCOL_VERSION}; update this device"
+        )),
+        Some(v) => Err(format!(
+            "peer speaks sync protocol v{v} — this Enclave speaks v{PROTOCOL_VERSION}; update the peer"
+        )),
+        None => Err("peer does not advertise a sync protocol version (older Enclave?) — update Enclave on both devices".into()),
+    }
+}
+
 fn random_bytes<const N: usize>() -> Result<[u8; N], String> {
     let mut buf = [0u8; N];
     getrandom::getrandom(&mut buf).map_err(|e| format!("getrandom failed: {e}"))?;
@@ -135,9 +156,24 @@ async fn await_frame(
     .map_err(|_| "auth handshake timed out".to_string())?
 }
 
-fn b64(v: &[u8]) -> String {
+pub(crate) fn b64(v: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(v)
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::{version_ok, PROTOCOL_VERSION};
+
+    #[test]
+    fn version_check_matches_and_rejects() {
+        assert!(version_ok(Some(PROTOCOL_VERSION)).is_ok());
+        // Older peer / pre-versioning peer (v1): refuse with update guidance.
+        assert!(version_ok(Some(1)).is_err());
+        assert!(version_ok(None).is_err());
+        // Newer peer: this install must update.
+        assert!(version_ok(Some(PROTOCOL_VERSION + 1)).is_err());
+    }
 }
 
 fn unb64(s: &str, expected: usize) -> Result<[u8; 32], Box<dyn std::error::Error + Send + Sync>> {
@@ -178,6 +214,7 @@ where
     let my_challenge = random_bytes::<32>()?;
     let auth = serde_json::json!({
         "kind": "auth",
+        "v": PROTOCOL_VERSION,
         "peer_id": local_peer_id,
         "name": local_name,
         "challenge": b64(&my_challenge),
@@ -189,6 +226,21 @@ where
         .as_str()
         .ok_or("auth missing peer_id")?
         .to_string();
+    version_ok(peer_auth["v"].as_u64())
+        .map_err(|e| {
+            // Surface like wrong-key rejections — "update both devices" is a
+            // user-actionable state, not a quiet close.
+            let _ = message_tx.send(PeerMessage {
+                from_peer: peer_id.clone(),
+                payload: serde_json::json!({
+                    "kind": "session_failed",
+                    "host": host,
+                    "error": e,
+                })
+                .to_string(),
+            });
+            e
+        })?;
     let peer_challenge = unb64(
         peer_auth["challenge"].as_str().ok_or("auth missing challenge")?,
         32,
