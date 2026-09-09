@@ -35,7 +35,11 @@ jobs:
 
       - name: Install Linux system deps
         run: |
-          sudo apt-get update
+          # Third-party runner sources (e.g. google-chrome) intermittently
+          # serve hash-mismatched indexes mid-republish, failing the whole
+          # `apt-get update` — nothing installed here comes from them, so a
+          # failed third-party index is ignored (apt keeps healthy mirrors).
+          sudo apt-get update || true
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 
       - name: npm install
@@ -93,7 +97,8 @@ jobs:
       - name: Install Linux system deps
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # See the test job: tolerate flaky third-party runner sources.
+          sudo apt-get update || true
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 
       - name: Install OpenSSL (Windows)
