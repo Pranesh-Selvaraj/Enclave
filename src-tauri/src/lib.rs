@@ -502,14 +502,25 @@ async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_networ
     Ok(state.network.status().await)
 }
 
-// ── Sync Message Handling (LAN v2) ──────────────────────────────────────────
+// ── Sync Message Handling (LAN v3 — incremental) ───────────────────────────────
 
-/// Wire protocol: both sides send hello on connect; each side responds to a
-/// hello with a full snapshot {kind:"snapshot", docs, blocks}; the receiver
-/// merges it (doc-level LWW) and replies with an ack for the UI.
-fn sync_snapshot(state: &AppState) -> Option<String> {
+/// Wire protocol: both sides send hello on connect; each answers with a
+/// digest of doc metadata (id, rev, updated_at, deleted_at). The digest
+/// receiver diffs it against its own index and pulls only newer/missing docs
+/// via need → partial snapshot → merge (doc-level LWW) → ack. A converged
+/// pair exchanges need([]) → snapshot([]) → ack, which also refreshes
+/// "last synced" without moving payload.
+fn sync_digest(state: &AppState) -> Option<String> {
     let payload = with_db(state, |db| {
-        let (docs, blocks) = core_db::query_sync_data(db).map_err(|e| e.to_string())?;
+        let index = core_db::query_doc_index(db).map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "kind": "digest", "docs": index }).to_string())
+    });
+    payload.ok()
+}
+
+fn sync_snapshot_for(state: &AppState, ids: &[String]) -> Option<String> {
+    let payload = with_db(state, |db| {
+        let (docs, blocks) = core_db::query_sync_data_for(db, ids).map_err(|e| e.to_string())?;
         Ok(serde_json::json!({ "kind": "snapshot", "docs": docs, "blocks": blocks }).to_string())
     });
     payload.ok()
@@ -527,7 +538,34 @@ async fn handle_sync_message(
     match v["kind"].as_str() {
         Some("hello") => {
             let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
-            if let Some(snapshot) = sync_snapshot(state) {
+            if let Some(digest) = sync_digest(state) {
+                net.send_to(&peer_id, digest).await;
+            }
+        }
+        Some("digest") => {
+            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
+            // Strict parse (issue #57 lesson): a malformed digest is dropped,
+            // never silently treated as "nothing changed".
+            let Ok(remote_index) = serde_json::from_value::<Vec<core_db::DocIndexEntry>>(v["docs"].clone()) else {
+                eprintln!("sync: malformed digest from {peer_id} ignored");
+                return;
+            };
+            let want = with_db(state, |db| {
+                let local = core_db::query_doc_index(db).map_err(|e| e.to_string())?;
+                Ok(core_db::diff_doc_index(&local, &remote_index))
+            });
+            if let Ok(want) = want {
+                let need = serde_json::json!({ "kind": "need", "ids": want }).to_string();
+                net.send_to(&peer_id, need).await;
+            }
+        }
+        Some("need") => {
+            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
+            let Ok(ids) = serde_json::from_value::<Vec<String>>(v["ids"].clone()) else {
+                eprintln!("sync: malformed need from {peer_id} ignored");
+                return;
+            };
+            if let Some(snapshot) = sync_snapshot_for(state, &ids) {
                 net.send_to(&peer_id, snapshot).await;
             }
         }

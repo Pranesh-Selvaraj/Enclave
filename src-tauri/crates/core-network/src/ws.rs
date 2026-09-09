@@ -27,7 +27,7 @@ const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10
 /// a v2 client talking to a v3 peer would otherwise pass auth (keys match —
 /// same vault) and then misinterpret frames, corrupting the vault silently.
 /// Old clients (pre-versioning) send no "v" at all and are treated as v1.
-pub const PROTOCOL_VERSION: u64 = 2;
+pub const PROTOCOL_VERSION: u64 = 3;
 
 /// Check the peer's advertised protocol version from its auth frame.
 fn version_ok(peer_v: Option<u64>) -> Result<(), String> {

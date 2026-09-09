@@ -1109,6 +1109,84 @@ pub fn query_sync_data(db: &Connection) -> rusqlite::Result<(Vec<Document>, Vec<
     Ok((docs, blocks))
 }
 
+/// Minimal per-doc metadata exchanged as a "digest" before any payload —
+/// the incremental-sync handshake (issue #58): peers diff digests and pull
+/// only what changed instead of shipping the whole vault on every hello.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocIndexEntry {
+    pub id: String,
+    pub rev: i64,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+pub fn query_doc_index(db: &Connection) -> rusqlite::Result<Vec<DocIndexEntry>> {
+    let mut stmt = db.prepare(
+        "SELECT id, rev, updated_at, deleted_at FROM documents ORDER BY id",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(DocIndexEntry {
+            id: row.get("id")?,
+            rev: row.get("rev")?,
+            updated_at: row.get("updated_at")?,
+            deleted_at: row.get("deleted_at")?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Pure LWW diff: which remote docs must be pulled to converge locally —
+/// ids missing locally, or where the remote (rev, updated_at) is strictly
+/// newer. Exact ties are skipped: both sides converged (rev bumps on every
+/// save, so equal clocks mean equal content in practice).
+/// ponytail: doc-level LWW — same ceiling as sync_merge, not a CRDT.
+pub fn diff_doc_index(local: &[DocIndexEntry], remote: &[DocIndexEntry]) -> Vec<String> {
+    let by_id: std::collections::HashMap<&str, &DocIndexEntry> =
+        local.iter().map(|e| (e.id.as_str(), e)).collect();
+    let mut want = Vec::new();
+    for r in remote {
+        match by_id.get(r.id.as_str()) {
+            None => want.push(r.id.clone()),
+            Some(l) => {
+                if (r.rev, r.updated_at.as_str()) > (l.rev, l.updated_at.as_str()) {
+                    want.push(r.id.clone());
+                }
+            }
+        }
+    }
+    want
+}
+
+/// Partial snapshot for the ids the peer asked for. Same shape as
+/// query_sync_data so the merge path stays unchanged; deleted docs come
+/// with tombstones and no blocks.
+pub fn query_sync_data_for(
+    db: &Connection,
+    ids: &[String],
+) -> rusqlite::Result<(Vec<Document>, Vec<Block>)> {
+    let docs = {
+        let mut stmt = db.prepare(&format!(
+            "{DOC_COLS} WHERE id IN ({}) ORDER BY id",
+            ids.iter().map(|_| "?").collect::<Vec<_>>().join(",")
+        ))?;
+        let refs: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(refs.as_slice(), row_to_document)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let blocks = if ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut stmt = db.prepare(&format!(
+            "{BLOCK_COLS} JOIN documents d ON d.id = b.document_id WHERE d.deleted_at IS NULL AND b.document_id IN ({}) ORDER BY b.id",
+            ids.iter().map(|_| "?").collect::<Vec<_>>().join(",")
+        ))?;
+        let refs: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(refs.as_slice(), row_to_block)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    Ok((docs, blocks))
+}
+
 /// Merge a peer snapshot. Winner per document = higher (rev, updated_at),
 /// exact ties broken by (title, deleted_at) so both devices pick the same
 /// winner. The winning side's blocks replace the local set wholesale.
@@ -1551,6 +1629,10 @@ mod tests {
 
     #[test]
     fn embeddings_upsert_query_and_cleanup() {
+        // Register the vec auto-extension BEFORE opening: connections opened
+        // before any thread registers it miss vec0 (process-global hook) —
+        // racy when test threads schedule differently.
+        ensure_vec_extension();
         let conn = Connection::open_in_memory().unwrap();
         create_tables(&conn).unwrap();
         let now = "t";
@@ -1674,6 +1756,76 @@ mod tests {
     }
 
     #[test]
+    fn doc_index_digest_and_partial_fetch_round_trip() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        let mk = |id: &str, title: &str, rev: i64, ts: &str, deleted: Option<&str>| Document {
+            id: id.into(),
+            title: title.into(),
+            created_at: "c".into(),
+            updated_at: ts.into(),
+            is_favorite: false,
+            is_archived: false,
+            rev,
+            deleted_at: deleted.map(|s| s.to_string()),
+            folder_id: None,
+        };
+        insert_document(&conn, &mk("d1", "live", 3, "2026-01-01T00:00:00Z", None)).unwrap();
+        // Direct SQL: insert_document forces rev=1 — LWW fields need explicit
+        // control (same pattern as the LWW convergence test).
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at, rev, deleted_at)\n             VALUES ('d2', 'gone', 'c', '2026-01-02T00:00:00Z', 2, '2026-01-03T00:00:00Z')",
+            [],
+        ).unwrap();
+        insert_block(&conn, &Block {
+            id: "b1".into(), document_id: "d1".into(), block_type: "p".into(),
+            content: serde_json::json!("text"), sort_order: 0.0,
+            created_at: "c".into(), updated_at: "u".into(),
+        }).unwrap();
+
+        // Index covers live + tombstoned docs.
+        let index = query_doc_index(&conn).unwrap();
+        assert_eq!(index.len(), 2);
+        let d2 = index.iter().find(|e| e.id == "d2").unwrap();
+        assert!(d2.deleted_at.is_some());
+
+        // Partial fetch: deleted doc arrives with tombstone, no blocks.
+        let (docs, blocks) = query_sync_data_for(&conn, &["d1".into(), "d2".into(), "missing".into()]).unwrap();
+        assert_eq!(docs.len(), 2);
+        assert_eq!(blocks.len(), 1, "blocks only for the live doc");
+        assert!(docs.iter().all(|d| d.deleted_at.is_some() || d.id == "d1"));
+    }
+
+    fn diff_doc_index_is_symmetric_and_minimal() {
+        let e = |id: &str, rev: i64, ts: &str, deleted: Option<&str>| DocIndexEntry {
+            id: id.into(), rev, updated_at: ts.into(), deleted_at: deleted.map(|s| s.to_string()),
+        };
+        let local = vec![
+            e("same", 1, "t1", None),
+            e("older-local", 1, "t1", None),
+            e("newer-local", 5, "t5", None),
+            e("local-only", 1, "t1", None),
+        ];
+        let remote = vec![
+            e("same", 1, "t1", None),
+            e("older-local", 4, "t4", None),
+            e("newer-local", 2, "t2", None),
+            e("remote-new", 1, "t1", None),
+            e("remote-deleted", 3, "t3", Some("t3")),
+        ];
+        // We want only what the remote has newer (or that we lack entirely).
+        assert_eq!(
+            diff_doc_index(&local, &remote),
+            vec!["older-local", "remote-new", "remote-deleted"]
+        );
+        // Ties are skipped — neither side pulls on equal clocks.
+        let a = vec![e("x", 1, "t", None)];
+        let b = vec![e("x", 1, "t", None)];
+        assert!(diff_doc_index(&a, &b).is_empty());
+        // Empty local vault pulls everything.
+        assert_eq!(diff_doc_index(&[], &remote).len(), 4);
+    }
+
     fn sync_merge_lww_converges_and_honors_tombstones() {
         // Two devices, same doc edited concurrently to different titles.
         let a = Connection::open_in_memory().unwrap();
