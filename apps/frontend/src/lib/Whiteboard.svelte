@@ -1001,7 +1001,7 @@
 		cursor: pointer;
 		font-size: 13px;
 	}
-	.wb-picker-item:hover { background: var(--color-hover); }
+	.wb-picker-item:hover { background: var(--color-surface-hover); }
 
 	/* ── Presentation ── */
 	.wb-present {
@@ -1066,4 +1066,18 @@
 		font-size: 12px;
 	}
 	.wb-pres-exit:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+
+	/* ── Phone layout: toolbar within thumb reach, real touch targets ── */
+	@media (max-width: 768px) {
+		.wb-wrap { margin-bottom: 12px; }
+		.wb-toolbar {
+			top: auto;
+			bottom: 10px;
+			gap: 4px;
+			padding: 4px;
+			max-width: calc(100% - 16px);
+		}
+		.tool-group { padding: 0 2px; gap: 1px; }
+		.tool-btn { width: 36px; height: 36px; }
+	}
 </style>

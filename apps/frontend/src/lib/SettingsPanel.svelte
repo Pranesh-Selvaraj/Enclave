@@ -406,7 +406,7 @@ sentinel check</pre>
 		position: fixed;
 		inset: 0;
 		z-index: 300;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -420,6 +420,11 @@ sentinel check</pre>
 		max-height: min(90vh, 760px);
 		overflow-y: auto;
 		box-shadow: var(--shadow-lg);
+		animation: settings-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+	}
+	@keyframes settings-in {
+		from { opacity: 0; transform: translateY(6px) scale(0.99); }
+		to { opacity: 1; transform: none; }
 	}
 
 	.settings-header {

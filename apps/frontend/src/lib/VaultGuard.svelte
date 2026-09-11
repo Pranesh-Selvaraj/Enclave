@@ -309,18 +309,20 @@
 	.vault-wall {
 		position: relative;
 		display: flex;
-		align-items: center;
-		justify-content: center;
 		height: 100%;
 		width: 100%;
 		background-color: var(--color-bg);
-		overflow: hidden;
+		/* Tall cards (seed phrase, password setup) must scroll on short
+		   screens instead of being clipped. */
+		overflow-y: auto;
+		padding: 24px 16px;
 	}
 
 	.vault-card {
 		position: relative;
 		width: 420px;
-		max-width: 90vw;
+		max-width: 100%;
+		margin: auto;
 		padding: 44px 40px;
 		border-radius: 20px;
 		border: 1px solid var(--color-border);
@@ -492,4 +494,12 @@
 	}
 
 	@keyframes spin { to { transform: rotate(360deg); } }
+
+	/* ── Phone layout ── */
+	@media (max-width: 480px) {
+		.vault-card { padding: 28px 18px; }
+		.vault-wall { padding: 16px 12px; }
+		.seed-box { grid-template-columns: 1fr 1fr; padding: 10px; }
+		.vault-heading { font-size: 20px; }
+	}
 </style>

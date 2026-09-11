@@ -600,10 +600,7 @@
 		if (vaultUnlocked) loadTags();
 	});
 
-	// Listen for sync completions from the LAN sync task.
-	$effect(() => {
-		let unlisten: (() => void) | undefined;
-		// Android: when the app is backgrounded the OS can kill the sync service
+	// Android: when the app is backgrounded the OS can kill the sync service
 	// and its sockets. On return to the foreground, re-check and restart the
 	// network (start_network also re-arms the foreground service), then reload
 	// so anything synced elsewhere appears immediately.
@@ -626,9 +623,17 @@
 		return () => document.removeEventListener('visibilitychange', onVisible);
 	});
 
-	listen('sync-done', handleSyncDone).then((fn) => (unlisten = fn));
-		listen('peer-connect-failed', handlePeerConnectFailed).then((fn) => (unlisten = fn));
-		return () => unlisten?.();
+	// Listen for sync completions from the LAN sync task. Two subscriptions,
+	// two handles — sharing one variable leaks the first listener.
+	$effect(() => {
+		let unlistenSyncDone: (() => void) | undefined;
+		let unlistenPeerFailed: (() => void) | undefined;
+		listen('sync-done', handleSyncDone).then((fn) => (unlistenSyncDone = fn));
+		listen('peer-connect-failed', handlePeerConnectFailed).then((fn) => (unlistenPeerFailed = fn));
+		return () => {
+			unlistenSyncDone?.();
+			unlistenPeerFailed?.();
+		};
 	});
 
 	// Desktop widget → main window navigation. Guarded so the widget window
@@ -910,7 +915,7 @@
 				</button>
 				<!-- Sync card: one place for status, address sharing, peers and
 				     manual connect. Collapsed by default to keep the footer dense. -->
-				<div class="sync-card" class:online={networkRunning}>
+				<div class="sync-card" class:online={networkRunning} class:open={syncCardOpen}>
 					<button class="sync-head" onclick={toggleSyncCard} aria-expanded={syncCardOpen}>
 						<span class="sync-dot" class:online={networkRunning}></span>
 						<span class="sync-head-label">{networkRunning ? 'P2P sync' : 'Sync off'}</span>
@@ -1105,10 +1110,11 @@
 				<button class="topbar-btn" onclick={() => goto('/')} aria-label="Back to home" title="Back to home">
 					<Icon name="arrowLeft" size={20} />
 				</button>
-			{:else}
-				<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Open menu" title="Menu">
-					<Icon name="menu" size={20} />
-				</button>
+			{/if}
+			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Open menu" title="Menu">
+				<Icon name="menu" size={20} />
+			</button>
+			{#if !currentDocId}
 				<a href="/" class="topbar-brand" title="Enclave home">
 					<span class="topbar-logo"><Logo size={20} /></span>
 					<span class="topbar-word">Enclave</span>
@@ -1304,15 +1310,14 @@
 	.mobile-topbar {
 		display: none;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 10px;
+		gap: 2px;
+		padding: 4px 8px;
 		padding-top: calc(4px + env(safe-area-inset-top));
-		padding-bottom: calc(4px + env(safe-area-inset-bottom));
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-surface);
 		flex-shrink: 0;
-		min-height: 52px;
-		box-sizing: border-box;
+		/* Deterministic height — the pane below offsets by exactly this. */
+		height: calc(52px + env(safe-area-inset-top));
 	}
 	.topbar-brand {
 		display: flex;
@@ -1355,7 +1360,9 @@
 	.topbar-sync-dot.online { background: var(--color-success); }
 	.topbar-sync-dot.peers { animation: sync-pulse 2.4s ease-out infinite; }
 
-	/* ── Sidebar ── */
+	/* ── Sidebar ──
+	   One scroll context for the whole sidebar: pages, tags and trash scroll
+	   together while the brand header and the footer stay pinned. */
 	.sidebar {
 		display: flex;
 		flex-direction: column;
@@ -1363,6 +1370,8 @@
 		min-width: 260px;
 		background-color: var(--color-surface);
 		border-right: 1px solid var(--color-border);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		transition: width 0.2s, min-width 0.2s;
 	}
 	.sidebar.collapsed { width: 48px; min-width: 48px; }
@@ -1387,10 +1396,14 @@
 
 	/* Native OS window chrome is back, so the sidebar owns the brand again. */
 	.sidebar-header {
+		position: sticky;
+		top: 0;
+		z-index: 2;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		padding: 10px 10px 10px 14px;
+		background: var(--color-surface);
 	}
 
 	.sidebar-brand {
@@ -1507,10 +1520,8 @@
 
 	/* ── Pages ── */
 	.pages-section {
-		flex: 1;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
 	}
 	.section-head {
 		display: flex;
@@ -1614,11 +1625,7 @@
 	.context-item.selected { color: var(--color-accent); }
 
 	.page-tree {
-		flex: 1;
-		overflow-y: auto;
 		padding: 2px 8px 8px;
-		/* Keep the WebView from rubber-banding into pull-to-refresh. */
-		overscroll-behavior: contain;
 	}
 	.tree-section-title {
 		font-size: 11px;
@@ -1760,6 +1767,11 @@
 
 	/* ── Footer ── */
 	.sidebar-footer {
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
+		margin-top: auto;
+		background: var(--color-surface);
 		border-top: 1px solid var(--color-border);
 		padding: 10px;
 		display: flex;
@@ -1789,6 +1801,11 @@
 		align-items: center;
 		justify-content: flex-end;
 		gap: 8px;
+	}
+	.footer-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
 	}
 	.sync-dot {
 		width: 7px;
@@ -1833,10 +1850,11 @@
 	.sync-chevron {
 		display: flex;
 		color: var(--color-text-faint);
-		transform: rotate(-90deg);
+		/* chevronLeft glyph: 180° = closed (points right), -90° = open (points down) */
+		transform: rotate(180deg);
 		transition: transform 0.15s;
 	}
-	.sync-card.open .sync-chevron { transform: rotate(0deg); }
+	.sync-card.open .sync-chevron { transform: rotate(-90deg); }
 	.sync-dot.online {
 		background: var(--color-success);
 		animation: sync-pulse 2.4s ease-out infinite;
@@ -2236,8 +2254,8 @@
 			border-bottom: 1px solid var(--color-border);
 		}
 		.main-pane {
-			padding-top: calc(48px + env(safe-area-inset-top));
-			padding-bottom: calc(76px + env(safe-area-inset-bottom));
+			padding-top: calc(52px + env(safe-area-inset-top));
+			padding-bottom: calc(78px + env(safe-area-inset-bottom));
 			background: var(--color-bg);
 		}
 
@@ -2326,9 +2344,13 @@
 
 		.mobile-topbar { display: flex; }
 
-		/* Touch: no hover — row actions must be tappable without a long-press. */
+		/* Touch: no hover — row actions must be tappable without a long-press.
+		   Favoriting stays one tap away in the ⋯ menu; dropping the star here
+		   gives titles the room a phone row actually needs. */
 		.tree-item-actions { display: flex; }
 		.folder-row .tree-item-actions { display: flex; }
+		.tree-item .row-btn[title="Add to favorites"],
+		.tree-item .row-btn[title="Unfavorite"] { display: none; }
 
 		.nav-tab {
 			flex: 1;

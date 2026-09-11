@@ -175,14 +175,15 @@
 
 <div class="graph-page">
 	<div class="graph-header">
-		<h1>Graph View</h1>
-		<p class="graph-subtitle">
-			{documents.length} pages, {links.length} connections
-			{#if links.length === 0}
-				— Link pages with <code>[[Page Title]]</code> or /doc links to see connections
-			{/if}
-		</p>
-		<a href="/" class="back-link">← Back to pages</a>
+		<div class="graph-heading">
+			<h1>Graph</h1>
+			<span class="graph-subtitle">
+				{documents.length} pages · {links.length} {links.length === 1 ? 'connection' : 'connections'}
+			</span>
+		</div>
+		{#if links.length === 0 && documents.length > 0}
+			<p class="graph-hint">Link pages with <code>[[Page Title]]</code> to connect them.</p>
+		{/if}
 	</div>
 
 	{#if loading}
@@ -204,39 +205,47 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		padding: 24px 32px;
+		padding: 24px 28px;
 	}
 
 	.graph-header {
-		margin-bottom: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-bottom: 14px;
 		flex-shrink: 0;
 	}
 
+	.graph-heading {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
 	.graph-header h1 {
-		font-size: 22px;
+		font-size: 20px;
 		font-weight: 700;
-		margin: 0 0 4px;
+		letter-spacing: -0.02em;
+		margin: 0;
 	}
 
 	.graph-subtitle {
 		font-size: 13px;
 		color: var(--color-text-muted);
-		margin: 0 0 8px;
 	}
-	.graph-subtitle code {
+	.graph-hint {
+		font-size: 12px;
+		color: var(--color-text-faint);
+		margin: 0;
+	}
+	.graph-hint code {
 		background: var(--color-surface);
 		padding: 1px 5px;
 		border-radius: 3px;
 		font-family: var(--font-mono);
 		font-size: 12px;
 	}
-
-	.back-link {
-		font-size: 13px;
-		color: var(--color-accent);
-		text-decoration: none;
-	}
-	.back-link:hover { text-decoration: underline; }
 
 	.loading {
 		display: flex;

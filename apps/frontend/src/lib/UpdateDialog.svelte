@@ -146,7 +146,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 400;
-		background: rgba(0, 0, 0, 0.45);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -155,11 +155,11 @@
 	.update-dialog {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 14px;
+		border-radius: var(--radius-lg);
 		width: 520px;
 		max-width: 100%;
 		max-height: min(88vh, 640px);
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
 	}
@@ -269,7 +269,7 @@
 		.update-dialog {
 			width: 100%;
 			max-height: 88vh;
-			border-radius: 16px 16px 0 0;
+			border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 			border-bottom: none;
 		}
 	}

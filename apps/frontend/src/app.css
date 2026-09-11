@@ -180,6 +180,10 @@ html[data-bg="glassy"] .confirm-dialog {
 [data-page-width="full"] { --page-width: 1600px; }
 .tiptap-editor .ProseMirror { font-size: var(--editor-font-size); }
 
+/* Every padded control fits its box. Without this, width:100% rows with
+   side padding overflow their parent (context menus, sheets, sync card). */
+*, *::before, *::after { box-sizing: border-box; }
+
 html, body {
 	height: 100%;
 	margin: 0;
@@ -191,6 +195,10 @@ html, body {
 	line-height: 1.6;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	-webkit-text-size-adjust: 100%;
+	/* No scroll chaining / pull-to-refresh on the app chrome itself. */
+	overflow: hidden;
+	overscroll-behavior: none;
 	-webkit-tap-highlight-color: transparent;
 	transition: background-color 0.2s, color 0.2s;
 }
@@ -209,4 +217,5 @@ html, body {
 
 button {
 	font-family: inherit;
+	-webkit-tap-highlight-color: transparent;
 }

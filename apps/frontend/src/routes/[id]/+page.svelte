@@ -43,7 +43,7 @@
 	let cover = $state('');
 	let fullWidth = $state(false);
 	let metaOpen = $state(false);
-	let exportOpen = $state(false);
+	let menuOpen = $state(false);
 	let infoOpen = $state(false);
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout>;	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
@@ -349,6 +349,21 @@
 		contentSaveTimer = setTimeout(saveContent, 1000);
 	}
 
+	// Escape closes the topmost page overlay (menu, popovers, AI panel, sheet).
+	// The editor's own Escape handlers still run — no preventDefault here.
+	$effect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape') return;
+			if (sheetOpen) sheetOpen = false;
+			else if (aiOpen) aiOpen = false;
+			else if (metaOpen) metaOpen = false;
+			else if (menuOpen) menuOpen = false;
+			else if (infoOpen) infoOpen = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+
 	// ── Local AI (off unless enabled in Settings) ──
 	$effect(() => {
 		loadAISettings().then((s) => (aiEnabled = s.enabled));
@@ -485,7 +500,7 @@
 		if (!editor) return;
 		try {
 			const md = htmlToMarkdown(editor.getHTML());
-			exportOpen = false;
+			menuOpen = false;
 			const ok = await exportMarkdownDialog(documentTitle, md);
 			if (ok) console.log('Exported');
 		} catch (e) {
@@ -496,7 +511,7 @@
 	async function exportHtml() {
 		if (!editor) return;
 		try {
-			exportOpen = false;
+			menuOpen = false;
 			const ok = await exportHtmlDialog(documentTitle, editor.getHTML());
 			if (ok) console.log('Exported');
 		} catch (e) {
@@ -505,7 +520,7 @@
 	}
 
 	function printPage() {
-		exportOpen = false;
+		menuOpen = false;
 		try {
 			// ponytail: WebKitGTK may no-op window.print — HTML export is the
 			// reliable path; add a Rust PDF renderer when print is asked for.
@@ -618,45 +633,44 @@
 					<Icon name="star" size={15} />
 				</button>
 				<div class="export-wrap">
-					<button class="icon-btn" onclick={() => (infoOpen = !infoOpen)} title="Page info">
-						<Icon name="info" size={15} />
+					<button class="icon-btn menu-btn" class:active={menuOpen} onclick={() => (menuOpen = !menuOpen)} title="More actions" aria-label="More actions">
+						<Icon name="more" size={16} />
 					</button>
-					{#if infoOpen}
+					{#if menuOpen}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<div class="export-backdrop" onclick={() => (infoOpen = false)}></div>
+						<div class="export-backdrop" onclick={() => (menuOpen = false)}></div>
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<div class="export-menu info-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
+						<div class="export-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
 							<div class="info-row"><span>Created</span><span>{formatDate(document.created_at)}</span></div>
 							<div class="info-row"><span>Modified</span><span>{formatDate(document.updated_at)}</span></div>
 							<div class="info-row"><span>Words</span><span>{wordCount}</span></div>
+							<div class="menu-sep"></div>
+							<button class="export-item" onclick={exportMarkdown}><Icon name="download" size={14} />Export Markdown…</button>
+							<button class="export-item" onclick={exportHtml}><Icon name="download" size={14} />Export HTML…</button>
+							<button class="export-item" onclick={printPage}><Icon name="print" size={14} />Print (PDF)…</button>
+							<div class="menu-sep"></div>
+							<button class="export-item danger" onclick={() => { menuOpen = false; deleteDocument(); }}><Icon name="trash" size={14} />Move to trash</button>
 						</div>
 					{/if}
 				</div>
-				<div class="export-wrap">
-					<button class="icon-btn" onclick={() => (exportOpen = !exportOpen)} title="Export page">
-						<Icon name="download" size={15} />
-					</button>
-					{#if exportOpen}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<div class="export-backdrop" onclick={() => (exportOpen = false)}></div>
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<div class="export-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
-							<button class="export-item" onclick={exportMarkdown}>Markdown…</button>
-							<button class="export-item" onclick={exportHtml}>HTML…</button>
-							<button class="export-item" onclick={printPage}>Print (PDF)…</button>
-						</div>
-					{/if}
-				</div>
-			<button class="icon-btn danger" onclick={deleteDocument} title="Delete page">
-				<Icon name="trash" size={15} />
-			</button>
-			<button class="icon-btn more-btn" onclick={() => (sheetOpen = true)} title="More actions" aria-label="More actions">
-				<Icon name="more" size={18} />
-			</button>
+				{#if infoOpen}
+					<!-- Reached from the phone ⋯ sheet; becomes a bottom sheet there. -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div class="export-backdrop" onclick={() => (infoOpen = false)}></div>
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div class="export-menu info-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
+						<div class="info-row"><span>Created</span><span>{formatDate(document.created_at)}</span></div>
+						<div class="info-row"><span>Modified</span><span>{formatDate(document.updated_at)}</span></div>
+						<div class="info-row"><span>Words</span><span>{wordCount}</span></div>
+					</div>
+				{/if}
+				<button class="icon-btn more-btn" onclick={() => (sheetOpen = true)} title="More actions" aria-label="More actions">
+					<Icon name="more" size={16} />
+				</button>
+			</div>
 		</div>
-	</div>
 
 	{#if aiOpen}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -911,11 +925,11 @@
 
 	/* ── Page icon & meta popover ── */
 	.page-icon {
-		font-size: 20px;
+		font-size: 18px;
 		flex-shrink: 0;
-		width: 36px;
-		height: 36px;
-		border-radius: 8px;
+		width: 32px;
+		height: 32px;
+		border-radius: var(--radius-md);
 	}
 
 	.page-icon.has-icon { background: var(--color-surface-hover); }
@@ -993,18 +1007,27 @@
 	.export-menu {
 		position: absolute;
 		z-index: 291;
-		top: calc(100% + 4px);
+		top: calc(100% + 6px);
 		right: 0;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 10px;
+		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-lg);
-		padding: 5px;
-		min-width: 150px;
+		padding: 6px;
+		min-width: 220px;
+		animation: pop-in 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+	}
+	@keyframes pop-in {
+		from { opacity: 0; transform: scale(0.985) translateY(4px); }
+		to { opacity: 1; transform: none; }
 	}
 
+	.menu-sep { height: 1px; background: var(--color-border); margin: 5px 6px; }
+
 	.export-item {
-		display: block;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		width: 100%;
 		border: none;
 		background: none;
@@ -1012,14 +1035,17 @@
 		font-size: 13px;
 		font-family: inherit;
 		text-align: left;
-		padding: 6px 10px;
-		border-radius: 6px;
+		padding: 7px 10px;
+		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
 
 	.export-item:hover {
 		background: var(--color-surface-hover);
 	}
+
+	.export-item.danger { color: var(--color-danger); }
+	.export-item.danger:hover { background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 
 	.info-menu {
 		width: 220px;
@@ -1045,23 +1071,28 @@
 		text-align: right;
 	}
 
-	/* ── Toast ── */
+	/* ── Toast (same pill as the global snackbar) ── */
 	.toast {
 		position: fixed;
-		bottom: 24px;
+		bottom: calc(24px + env(safe-area-inset-bottom));
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 400;
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
+		gap: 14px;
+		background: var(--color-text);
+		color: var(--color-bg);
+		border-radius: 999px;
 		box-shadow: var(--shadow-lg);
-		padding: 10px 16px;
+		padding: 10px 18px;
 		font-size: 13px;
-		color: var(--color-text);
+		max-width: 90vw;
+		animation: toast-in 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+	}
+	@keyframes toast-in {
+		from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+		to { opacity: 1; transform: translateX(-50%) translateY(0); }
 	}
 
 	.toast-undo {
@@ -1085,10 +1116,10 @@
 	}
 
 	.doc-topbar {
-		padding: 14px 0 8px;
+		padding: 12px 0 10px;
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		gap: 12px;
 		flex-shrink: 0;
 	}
 
@@ -1110,16 +1141,20 @@
 	.doc-actions {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 2px;
 		flex-shrink: 0;
+		position: relative;
 	}
+	/* Fixed-width slot so the title width never shifts while typing. */
 	.save-status {
+		width: 62px;
+		text-align: right;
 		font-size: 11px;
 		color: var(--color-text-faint);
 		flex-shrink: 0;
-		align-self: center;
 		white-space: nowrap;
 	}
+	.save-status:empty { visibility: hidden; }
 	.save-status.error { color: var(--color-danger); font-weight: 500; }
 
 	.mode-toggle {
@@ -1150,8 +1185,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 30px;
-		height: 30px;
+		width: 32px;
+		height: 32px;
 		border: none;
 		border-radius: var(--radius-md);
 		background: none;
