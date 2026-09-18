@@ -4,6 +4,104 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] — 2026-09-18
+
+Enclave for Android is now the **full app** — the same editor, whiteboards,
+tables, databases, graph and search as desktop — with native home-screen
+widgets, a share target, launcher shortcuts and restart-safe P2P sync on
+top. Under the hood the Rust core moved into a shell-agnostic `core-api`
+crate, so desktop and Android share one vault, one network stack and one
+sync loop.
+
+### Added
+
+- **Full Enclave UI on Android** — the Tauri web view is the app's front
+  door: every desktop feature runs on Android (editor, whiteboards, tables,
+  databases, graph, search, folders, settings, sync). The native Keep-style
+  shell is gone; `MainActivity` routes Android intents into app pages.
+- **Android home-screen widgets** (Jetpack Glance):
+  - **Notes list** (3×2, resizable) — the notes you opted in, with checklist
+    items, text previews and labels; renders while the vault is locked.
+  - **Pinned note** (3×2, resizable) — one shared note in full; tapping a
+    checklist row ticks it through to the note (or opens the app while
+    locked).
+  - **Quick capture** (1×1) — one tap into a new note.
+  - Widget-picker configuration for pinned notes, plus **Pin this note to
+    the home screen** from the page menu.
+- **Widget privacy model** — widgets never read the vault. A per-note
+  **Show in Android widgets** switch puts a synced marker on the note; only
+  those notes enter an opt-in cache encrypted with an Android Keystore
+  AES-256-GCM key (hardware-backed where available) holding just the title,
+  labels, updated time, checklist state and text. **Hide widgets while
+  vault is locked** (Settings → Android widgets) blanks them to a lock
+  placeholder; the dial lives in the vault so the web app and the widget
+  renderer always agree.
+- **Android entry points** — the share sheet (“Share → Enclave” pre-fills
+  Quick Capture), launcher long-press shortcuts (New note / New checklist)
+  and a Quick Settings tile.
+- **`core-api` crate** — shell-agnostic Rust API over `core-db` and
+  `core-network` (vault lifecycle, documents, folders, blocks, search,
+  tags, page list, backlinks, settings, embeddings, network + the sync
+  loop) with UniFFI bindings for Kotlin. The Tauri shell delegates to it;
+  the Android app consumes it through JNA — one process, one vault, one
+  network, one sync loop.
+- **Restart-safe sync on Android** — the foreground sync service is owned
+  by the core (start/stop/re-arm/lock) and its notification reports live
+  state (“N devices connected”, “looking for your devices”); the enabled
+  choice persists per device and re-arms on unlock, after a restart and
+  when the network comes back.
+- **Desktop/mobile UI rework** — resizable sidebar with compact chrome,
+  consistent spacing and sizing across breakpoints, theme boot before
+  hydration, long-press action sheets with Escape/back handling,
+  phone-sized whiteboard and split-view toolbars, graph render/resize
+  fixes.
+
+### Changed
+
+- Android app data directory matches the Tauri app's, so vaults created by
+  earlier Android builds keep working.
+- Android build: Kotlin 2.0.21 + Compose compiler, Glance widgets, and
+  cargo-ndk in CI (the shared core `.so` is compiled into the app).
+- The UniFFI surface is the frozen native API (own record types + one flat
+  error), so core internals can change without breaking Kotlin.
+
+### Fixed
+
+- Locking the vault with “hide widgets while locked” on no longer crashes
+  the widget cache rebuild — lock only re-renders from the existing cache,
+  and a lock racing a refresh keeps the last good cache.
+- Every widget instance (notes list, pinned, quick capture) refreshes on
+  change, and a stale render can no longer land after a fresh one.
+- **Android intent routing** — `MainActivity` navigated with
+  `tauri://localhost` (desktop WebKit only, `ERR_UNKNOWN_URL_SCHEME` on
+  Android/Windows). Warm routes now go through a SPA bridge; cold starts
+  load against the web view's real origin.
+- **Share → capture** — Android pauses/resumes the activity on intent
+  delivery, which the auto-lock-on-hide treated as backgrounding and locked
+  the vault mid-share; a short grace period keeps real backgrounding
+  locking. Sharing into a locked app now shows the unlock step inline on
+  the capture screen, keeps the shared text, saves after unlock and lands
+  on the home screen.
+- **capture/widget auto-unlock** — both passed the password-encrypted key
+  file to `unlock_vault` as a raw database key; they now use the shared
+  core's unlocked state (the desktop wallpaper widget included).
+- **Desktop capture/widget windows** — `core:window:allow-close` and the
+  `capture`/`widget` windows joined the capability: the capture popup could
+  not close itself and the widget window had no core permissions.
+- **Windows cdylib link** — the standalone `core_api.dll` now names the
+  `crypt32`/`user32` system libraries its OpenSSL depends on (the main
+  binary got them transitively via WebView2).
+- **Prerender error on `/capture`** — `searchParams` is read on mount, not
+  during prerender.
+
+### Removed
+
+- The native Keep-style Compose shell (list/detail/capture), its QR pairing
+  screen and the shell-only state preferences — superseded by the full app.
+  The zxing dependency is gone with it, so the app no longer requests the
+  camera permission; peers connect through the Sync card's address copy /
+  add-peer flow.
+
 ## [1.9.0] — 2026-09-09
 
 Mobile ↔ desktop sync finally works end to end: this release fixes the
