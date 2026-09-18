@@ -42,6 +42,33 @@ internal object WidgetStore {
         val text: String,
     )
 
+    // Plaintext state dials — booleans only, no note data.
+    private const val STATE_PREFS = "enclave_widget_state"
+    private const val KEY_UNLOCKED = "vault_unlocked"
+    private const val KEY_HIDE_LOCKED = "hide_when_locked"
+
+    /** Lock state marker so widgets can react while the app is not running. */
+    fun setVaultUnlocked(context: Context, unlocked: Boolean) {
+        context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_UNLOCKED, unlocked).apply()
+    }
+
+    fun vaultUnlocked(context: Context): Boolean =
+        context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_UNLOCKED, false)
+
+    fun setHideWhenLocked(context: Context, hide: Boolean) {
+        context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_HIDE_LOCKED, hide).apply()
+    }
+
+    fun hideWhenLocked(context: Context): Boolean =
+        context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_HIDE_LOCKED, false)
+
+    /** True when widgets must blank out: the dial is on and the vault is locked. */
+    fun shouldHide(context: Context): Boolean = hideWhenLocked(context) && !vaultUnlocked(context)
+
     private const val PIN_PREFS = "enclave_widget_pin"
     private const val PIN_KEY = "pending_doc_id"
 
@@ -102,6 +129,7 @@ internal object WidgetStore {
         updateMutex.withLock {
             withContext(Dispatchers.IO) { refresh(context, core) }
             NoteListWidget().updateAll(context)
+            PinnedNoteWidget().updateAll(context)
             QuickCaptureWidget().updateAll(context)
         }
     }

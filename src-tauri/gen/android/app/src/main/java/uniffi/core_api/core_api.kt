@@ -817,6 +817,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -869,6 +871,8 @@ fun uniffi_core_api_checksum_method_fficore_get_page_list(
 fun uniffi_core_api_checksum_method_fficore_get_setting(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_init_vault(
+): Short
+fun uniffi_core_api_checksum_method_fficore_is_unlocked(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_is_vault_initialized(
 ): Short
@@ -1021,6 +1025,8 @@ fun uniffi_core_api_fn_method_fficore_get_setting(`ptr`: Pointer,`key`: RustBuff
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_init_vault(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_core_api_fn_method_fficore_is_unlocked(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_core_api_fn_method_fficore_is_vault_initialized(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_core_api_fn_method_fficore_list_archived_documents(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1258,6 +1264,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_init_vault() != 56490.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_is_unlocked() != 45057.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_is_vault_initialized() != 20016.toShort()) {
@@ -1891,6 +1900,12 @@ public interface FfiCoreInterface {
     
     fun `initVault`(`key`: kotlin.ByteArray)
     
+    /**
+     * True while the vault is unlocked in this process. Widgets use it to
+     * decide between live toggles and opening the app.
+     */
+    fun `isUnlocked`(): kotlin.Boolean
+    
     fun `isVaultInitialized`(): kotlin.Boolean
     
     fun `listArchivedDocuments`(): List<Document>
@@ -2313,6 +2328,22 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * True while the vault is unlocked in this process. Widgets use it to
+     * decide between live toggles and opening the app.
+     */override fun `isUnlocked`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_is_unlocked(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     override fun `isVaultInitialized`(): kotlin.Boolean {

@@ -36,8 +36,9 @@ import androidx.glance.unit.ColorProvider
  */
 class NoteListWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val notes = WidgetStore.notes(context)
-        provideContent { NoteListContent(context, notes) }
+        val hidden = WidgetStore.shouldHide(context)
+        val notes = if (hidden) emptyList() else WidgetStore.notes(context)
+        provideContent { NoteListContent(context, notes, hidden) }
     }
 }
 
@@ -46,7 +47,11 @@ class NoteListWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 @Composable
-private fun NoteListContent(context: Context, notes: List<WidgetStore.WidgetNote>) {
+private fun NoteListContent(
+    context: Context,
+    notes: List<WidgetStore.WidgetNote>,
+    hidden: Boolean = false,
+) {
     val bg = DayNightColorProvider(day = Color(0xFFFAF7F1), night = Color(0xFF201C17))
     val fg = DayNightColorProvider(day = Color(0xFF211D17), night = Color(0xFFECE7DF))
     val muted = DayNightColorProvider(day = Color(0xFF6E6557), night = Color(0xFFA39B90))
@@ -63,6 +68,15 @@ private fun NoteListContent(context: Context, notes: List<WidgetStore.WidgetNote
                 "Enclave",
                 style = TextStyle(color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold),
             )
+        }
+
+        if (hidden) {
+            Spacer(GlanceModifier.height(6.dp))
+            Text(
+                "🔒 Vault locked\nUnlock Enclave to see shared notes.",
+                style = TextStyle(color = muted, fontSize = 12.sp),
+            )
+            return@Column
         }
 
         if (notes.isEmpty()) {

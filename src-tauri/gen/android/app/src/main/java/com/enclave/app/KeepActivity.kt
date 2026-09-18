@@ -250,6 +250,17 @@ private fun KeepApp(
         if (stage is Stage.Notes) WidgetStore.refreshAndUpdate(context, core)
     }
 
+    // Lock-state marker for the "hide widget data while locked" dial; widgets
+    // re-render when it flips while the dial is on.
+    LaunchedEffect(stage) {
+        val unlocked = stage is Stage.Notes
+        val changed = WidgetStore.vaultUnlocked(context) != unlocked
+        WidgetStore.setVaultUnlocked(context, unlocked)
+        if (changed && WidgetStore.hideWhenLocked(context)) {
+            WidgetStore.refreshAndUpdate(context, core)
+        }
+    }
+
     // Widget tap → open the note once unlocked.
     LaunchedEffect(stage, pendingOpen.value) {
         val id = pendingOpen.value ?: return@LaunchedEffect
@@ -712,6 +723,8 @@ private fun NoteCard(row: NoteRow, onOpen: () -> Unit, onToggleFavorite: () -> U
 @Composable
 private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var hideLocked by remember { mutableStateOf(WidgetStore.hideWhenLocked(context)) }
     val clipboard = LocalClipboardManager.current
     var status by remember { mutableStateOf<NetworkStatus?>(null) }
     var host by remember { mutableStateOf("") }
@@ -834,6 +847,26 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
             }
 
             Spacer(Modifier.height(18.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = hideLocked,
+                    onCheckedChange = { on ->
+                        hideLocked = on
+                        WidgetStore.setHideWhenLocked(context, on)
+                        scope.launch { WidgetStore.refreshAndUpdate(context, core) }
+                    },
+                )
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Hide widget data while locked", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Widgets show a lock placeholder until you unlock the vault.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
             TextButton(onClick = onPinWidget, modifier = Modifier.fillMaxWidth()) {
                 Text("Add a home-screen widget")
             }

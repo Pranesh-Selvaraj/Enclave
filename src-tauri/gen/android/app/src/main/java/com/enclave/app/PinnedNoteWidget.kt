@@ -35,7 +35,12 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
+import androidx.glance.action.clickable
 import androidx.glance.appwidget.AppWidgetId
+import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.cornerRadius
@@ -56,6 +61,7 @@ import androidx.glance.text.FontWeight as GlanceFontWeight
 import androidx.glance.text.Text as GlanceText
 import androidx.glance.text.TextStyle as GlanceTextStyle
 import androidx.lifecycle.lifecycleScope
+import uniffi.core_api.FfiCore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,8 +83,9 @@ class PinnedNoteWidget : GlanceAppWidget() {
             }
         }
         val wanted = docId
-        val note = wanted?.let { id2 -> WidgetStore.notes(context).firstOrNull { it.id == id2 } }
-        provideContent { PinnedNoteContent(note) }
+        val hidden = WidgetStore.shouldHide(context)
+        val note = if (hidden) null else wanted?.let { id2 -> WidgetStore.notes(context).firstOrNull { it.id == id2 } }
+        provideContent { PinnedNoteContent(note, hidden) }
     }
 
     companion object {
@@ -126,7 +133,7 @@ class PinResultReceiver : android.content.BroadcastReceiver() {
 }
 
 @Composable
-private fun PinnedNoteContent(note: WidgetStore.WidgetNote?) {
+private fun PinnedNoteContent(note: WidgetStore.WidgetNote?, hidden: Boolean = false) {
     val bg = DayNightColorProvider(day = Color(0xFFFAF7F1), night = Color(0xFF201C17))
     val fg = DayNightColorProvider(day = Color(0xFF211D17), night = Color(0xFFECE7DF))
     val muted = DayNightColorProvider(day = Color(0xFF6E6557), night = Color(0xFFA39B90))
@@ -139,6 +146,14 @@ private fun PinnedNoteContent(note: WidgetStore.WidgetNote?) {
             .cornerRadius(20.dp)
             .glancePadding(12.dp),
     ) {
+        if (hidden) {
+            GlanceText(
+                "🔒 Vault locked\nUnlock Enclave to see this note.",
+                style = GlanceTextStyle(color = muted, fontSize = 12.sp),
+            )
+            return@GlanceColumn
+        }
+
         if (note == null) {
             GlanceText(
                 "No note pinned yet.\nLong-press this widget → reconfigure.",
@@ -154,8 +169,17 @@ private fun PinnedNoteContent(note: WidgetStore.WidgetNote?) {
         )
 
         if (note.checklist.isNotEmpty()) {
-            note.checklist.forEach { item ->
-                GlanceRow(verticalAlignment = GlanceAlignment.CenterVertically) {
+            note.checklist.forEachIndexed { index, item ->
+                GlanceRow(
+                    verticalAlignment = GlanceAlignment.CenterVertically,
+                    // Tap a row to tick it: toggles in place while the vault is
+                    // unlocked, opens the note otherwise.
+                    modifier = GlanceModifier.clickable(
+                        actionRunCallback<ToggleCheckAction>(
+                            actionParametersOf(DOC_ID_KEY to note.id, ITEM_INDEX_KEY to index),
+                        ),
+                    ),
+                ) {
                     GlanceText(
                         if (item.checked) "☑" else "☐",
                         style = GlanceTextStyle(color = accent, fontSize = 14.sp),
@@ -225,6 +249,43 @@ class PinnedNoteWidgetConfigureActivity : ComponentActivity() {
                     },
                 )
             }
+        }
+    }
+}
+
+/** Parameters for the widget checkbox action. */
+internal val DOC_ID_KEY = ActionParameters.Key<String>("docId")
+internal val ITEM_INDEX_KEY = ActionParameters.Key<Int>("itemIndex")
+
+/**
+ * Toggle one checklist item from a widget. Requires the vault unlocked in this
+ * process (the widget otherwise just opens the note) — the write goes through
+ * the same core API as the app, then the cache and widget re-render.
+ */
+class ToggleCheckAction : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters,
+    ) {
+        val docId = parameters[DOC_ID_KEY] ?: return
+        val index = parameters[ITEM_INDEX_KEY] ?: return
+        val core = FfiCore(context.applicationInfo.dataDir)
+        if (!core.isUnlocked()) {
+            context.startActivity(openNoteIntent(context, docId))
+            return
+        }
+        try {
+            val blocks = core.getBlocks(docId)
+            val docJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson ?: return
+            val items = docChecklist(docJson).toMutableList()
+            if (index !in items.indices) return
+            items[index] = items[index].copy(checked = !items[index].checked)
+            core.upsertBlock("$docId-content", docId, "doc", taskListDocJson(items), 0.0)
+            WidgetStore.refreshAndUpdate(context, core)
+            PinnedNoteWidget().update(context, glanceId)
+        } catch (e: Exception) {
+            android.util.Log.e("EnclaveWidgets", "widget toggle failed", e)
         }
     }
 }

@@ -278,6 +278,12 @@ impl FfiCore {
         self.core.is_vault_initialized()
     }
 
+    /// True while the vault is unlocked in this process. Widgets use it to
+    /// decide between live toggles and opening the app.
+    pub fn is_unlocked(&self) -> bool {
+        self.core.is_unlocked()
+    }
+
     pub fn init_vault(&self, key: Vec<u8>) -> Result<(), EnclaveError> {
         Ok(self.core.init_vault(&key)?)
     }
