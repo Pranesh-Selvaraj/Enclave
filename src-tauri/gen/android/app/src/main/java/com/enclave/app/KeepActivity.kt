@@ -1,12 +1,16 @@
 package com.enclave.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
@@ -22,18 +28,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +56,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,17 +84,32 @@ import uniffi.core_api.FfiCore
 /**
  * Keep-like native shell — Phase 1 of the Android-native plan.
  *
- * Vault gate (create / password / recovery phrase) → note list → note detail,
- * all talking to the shared Rust core through the UniFFI bindings. The full
- * block editor stays in the WebView editor island (next slice); this screen is
- * for the 90% mobile flow: read, capture, check off, tag, pin.
+ * Vault gate (create / password / recovery phrase) → note list → note detail.
+ * Supports text notes and checklists, labels (tags), pin/archive, search and
+ * the Android share target. The full block editor (whiteboards, tables,
+ * databases) stays in the WebView editor island.
  */
 class KeepActivity : ComponentActivity() {
+    /** Text shared from another app, consumed once the vault is unlocked. */
+    private val pendingShare = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // JNA finds libcore_api.so through the app's native library dir.
         System.setProperty("jna.library.path", applicationInfo.nativeLibraryDir)
-        setContent { EnclaveTheme { KeepApp(filesDir.absolutePath) } }
+        pendingShare.value = extractSharedText(intent)
+        setContent { EnclaveTheme { KeepApp(filesDir.absolutePath, pendingShare) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        extractSharedText(intent)?.let { pendingShare.value = it }
+    }
+
+    private fun extractSharedText(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_SEND) return null
+        @Suppress("DEPRECATION")
+        return intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()?.takeIf { it.isNotEmpty() }
     }
 }
 
@@ -121,17 +147,36 @@ private sealed interface Stage {
 }
 
 private data class NoteRow(val doc: Document, val snippet: String, val tags: List<String>)
+private data class TaskItem(val text: String, val checked: Boolean)
 
 @Composable
-private fun KeepApp(appDir: String) {
+private fun KeepApp(appDir: String, pendingShare: MutableState<String?>) {
     val scope = rememberCoroutineScope()
     val core = remember { FfiCore(appDir) }
     var stage by remember { mutableStateOf<Stage>(Stage.Loading) }
     var error by remember { mutableStateOf<String?>(null) }
+    var openDocId by remember { mutableStateOf<String?>(null) }
+    var refreshKey by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         stage = withContext(Dispatchers.IO) {
             if (core.isVaultInitialized()) Stage.Unlock else Stage.CreateVault
+        }
+    }
+
+    // Shared text becomes a note as soon as the vault is open (share target).
+    LaunchedEffect(stage, pendingShare.value) {
+        val shared = pendingShare.value
+        if (stage is Stage.Notes && shared != null) {
+            pendingShare.value = null
+            val doc = withContext(Dispatchers.IO) {
+                val title = shared.lineSequence().firstOrNull()?.take(80)?.ifBlank { null } ?: "Shared note"
+                val created = core.createDocument(title)
+                core.upsertBlock("${created.id}-content", created.id, "doc", docJson(shared), 0.0)
+                created
+            }
+            refreshKey++
+            openDocId = doc.id
         }
     }
 
@@ -172,10 +217,18 @@ private fun KeepApp(appDir: String) {
 
         Stage.Notes -> NotesScreen(
             core = core,
+            refreshKey = refreshKey,
+            openDocId = openDocId,
+            onOpen = { openDocId = it },
+            onCloseDetail = {
+                openDocId = null
+                refreshKey++
+            },
             onLock = {
                 scope.launch {
                     withContext(Dispatchers.IO) { core.lockVault() }
                     error = null
+                    openDocId = null
                     stage = Stage.Unlock
                 }
             },
@@ -250,15 +303,11 @@ private fun ShowPhraseScreen(phrase: String, onDone: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Text(
-                phrase,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(16.dp),
-            )
+            Text(phrase, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(16.dp))
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Checkbox(checked = saved, onCheckedChange = { saved = it })
+            Checkbox(checked = saved, onCheckedChange = { saved = it })
             Text("I saved my recovery phrase", style = MaterialTheme.typography.bodyMedium)
         }
         Spacer(Modifier.height(8.dp))
@@ -331,32 +380,42 @@ private fun UnlockScreen(error: String?, onUnlock: (String?, String?) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NotesScreen(core: FfiCore, onLock: () -> Unit) {
+private fun NotesScreen(
+    core: FfiCore,
+    refreshKey: Int,
+    openDocId: String?,
+    onOpen: (String) -> Unit,
+    onCloseDetail: () -> Unit,
+    onLock: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var notes by remember { mutableStateOf<List<NoteRow>>(emptyList()) }
+    var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedTag by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
-    var openDoc by remember { mutableStateOf<Document?>(null) }
     var loading by remember { mutableStateOf(true) }
 
     suspend fun reload() {
-        val rows = withContext(Dispatchers.IO) {
-            val tags = core.getAllTags().associate { it.docId to it.tags }
-            core.listDocuments().map { doc ->
-                NoteRow(doc, snippetOf(core, doc.id), tags[doc.id] ?: emptyList())
+        val (rows, tags) = withContext(Dispatchers.IO) {
+            val tagRows = core.getAllTags()
+            val byDoc = tagRows.associate { it.docId to it.tags }
+            val docs = core.listDocuments().map { doc ->
+                NoteRow(doc, snippetOf(core, doc.id), byDoc[doc.id] ?: emptyList())
             }
+            docs to tagRows.flatMap { it.tags }.distinct().sorted()
         }
         notes = rows
+        allTags = tags
         loading = false
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(refreshKey) { reload() }
 
-    val doc = openDoc
-    if (doc != null) {
+    if (openDocId != null) {
         NoteDetailScreen(
             core = core,
-            docId = doc.id,
-            onBack = { openDoc = null; scope.launch { reload() } },
+            docId = openDocId,
+            onBack = onCloseDetail,
         )
         return
     }
@@ -376,7 +435,7 @@ private fun NotesScreen(core: FfiCore, onLock: () -> Unit) {
                     scope.launch {
                         val newDoc = withContext(Dispatchers.IO) { core.createDocument("Untitled") }
                         reload()
-                        openDoc = newDoc
+                        onOpen(newDoc.id)
                     }
                 },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -394,19 +453,45 @@ private fun NotesScreen(core: FfiCore, onLock: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
             )
 
+            if (allTags.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedTag == null,
+                            onClick = { selectedTag = null },
+                            label = { Text("All") },
+                        )
+                    }
+                    lazyRowItems(allTags, key = { it }) { tag ->
+                        FilterChip(
+                            selected = selectedTag == tag,
+                            onClick = { selectedTag = if (selectedTag == tag) null else tag },
+                            label = { Text("#$tag") },
+                        )
+                    }
+                }
+            }
+
             if (loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 return@Column
             }
 
-            val shown = if (query.isBlank()) notes else notes.filter {
-                it.doc.title.contains(query, ignoreCase = true) || it.snippet.contains(query, ignoreCase = true)
+            var shown = notes
+            selectedTag?.let { tag -> shown = shown.filter { it.tags.contains(tag) } }
+            if (query.isNotBlank()) {
+                shown = shown.filter {
+                    it.doc.title.contains(query, ignoreCase = true) || it.snippet.contains(query, ignoreCase = true)
+                }
             }
 
             if (shown.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        if (query.isBlank()) "No notes yet — tap New note." else "No matches.",
+                        if (notes.isEmpty()) "No notes yet — tap New note." else "No matches.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -415,7 +500,7 @@ private fun NotesScreen(core: FfiCore, onLock: () -> Unit) {
 
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp, 6.dp, 10.dp, 96.dp),
+                contentPadding = PaddingValues(10.dp, 6.dp, 10.dp, 96.dp),
                 verticalItemSpacing = 10.dp,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
@@ -423,7 +508,7 @@ private fun NotesScreen(core: FfiCore, onLock: () -> Unit) {
                 items(shown, key = { it.doc.id }) { row ->
                     NoteCard(
                         row = row,
-                        onOpen = { openDoc = row.doc },
+                        onOpen = { onOpen(row.doc.id) },
                         onToggleFavorite = {
                             scope.launch {
                                 withContext(Dispatchers.IO) { core.toggleFavorite(row.doc.id) }
@@ -485,7 +570,7 @@ private fun NoteCard(row: NoteRow, onOpen: () -> Unit, onToggleFavorite: () -> U
     }
 }
 
-// ── Note detail (flat Keep-style editor; full block editor is the WebView) ──
+// ── Note detail: text or checklist, tags, favorite, archive ────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -493,27 +578,55 @@ private fun NoteDetailScreen(core: FfiCore, docId: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
+    var tasks by remember { mutableStateOf<List<TaskItem>>(emptyList()) }
+    var checklist by remember { mutableStateOf(false) }
+    var tags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagInput by remember { mutableStateOf("") }
     var favorite by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var dirty by remember { mutableStateOf(false) }
 
     LaunchedEffect(docId) {
-        val (doc, text) = withContext(Dispatchers.IO) {
-            core.getDocument(docId) to bodyOf(core, docId)
+        val loadedState = withContext(Dispatchers.IO) {
+            val doc = core.getDocument(docId)
+            val docTasks = tasksOf(core, docId)
+            val docTags = core.getAllTags().firstOrNull { it.docId == docId }?.tags ?: emptyList()
+            listOf(doc.title, bodyOf(core, docId), docTasks, docTags, doc.isFavorite)
         }
-        title = doc.title
-        favorite = doc.isFavorite
-        body = text
+        title = loadedState[0] as String
+        body = loadedState[1] as String
+        tasks = loadedState[2] as List<TaskItem>
+        tags = loadedState[3] as List<String>
+        favorite = loadedState[4] as Boolean
+        checklist = tasks.isNotEmpty()
         loaded = true
     }
 
-    // Debounced autosave (title + body) after edits.
-    LaunchedEffect(title, body) {
+    fun saveTags(next: List<String>) {
+        tags = next
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                core.upsertBlock(
+                    "$docId-tags",
+                    docId,
+                    "tags",
+                    JSONObject().put("tags", JSONArray(next)).toString(),
+                    2.0,
+                )
+            }
+        }
+    }
+
+    // Debounced autosave after edits.
+    LaunchedEffect(title, body, tasks) {
         if (!loaded || !dirty) return@LaunchedEffect
         delay(700)
         withContext(Dispatchers.IO) {
             core.updateDocumentTitle(docId, title)
-            core.upsertBlock("$docId-content", docId, "doc", docJson(body), 0.0)
+            when {
+                checklist -> core.upsertBlock("$docId-checklist", docId, "taskList", taskJson(tasks), 1.0)
+                else -> core.upsertBlock("$docId-content", docId, "doc", docJson(body), 0.0)
+            }
         }
     }
 
@@ -525,6 +638,22 @@ private fun NoteDetailScreen(core: FfiCore, docId: String, onBack: () -> Unit) {
                 },
                 title = {},
                 actions = {
+                    IconButton(onClick = {
+                        // Switch text ↔ checklist, converting the content.
+                        if (checklist) {
+                            body = tasks.joinToString("\n\n") { it.text }
+                            checklist = false
+                        } else {
+                            tasks = body.split("\n").filter { it.isNotBlank() }.map { TaskItem(it, false) }
+                            checklist = true
+                        }
+                        dirty = true
+                    }) {
+                        Icon(
+                            if (checklist) Icons.Default.Edit else Icons.Default.List,
+                            contentDescription = if (checklist) "Text note" else "Checklist",
+                        )
+                    }
                     IconButton(onClick = {
                         favorite = !favorite
                         scope.launch { withContext(Dispatchers.IO) { core.toggleFavorite(docId) } }
@@ -554,15 +683,110 @@ private fun NoteDetailScreen(core: FfiCore, docId: String, onBack: () -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            Spacer(Modifier.height(8.dp))
+            if (checklist) {
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    ChecklistEditor(tasks, onChange = { tasks = it; dirty = true })
+                }
+            } else {
+                OutlinedTextField(
+                    value = body,
+                    onValueChange = { body = it; dirty = true },
+                    placeholder = { Text("Start typing…") },
+                    minLines = 10,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
+
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = body,
-                onValueChange = { body = it; dirty = true },
-                placeholder = { Text("Start typing…") },
-                minLines = 12,
-                modifier = Modifier.fillMaxWidth().weight(1f),
+            TagEditor(
+                tags = tags,
+                input = tagInput,
+                onInput = { tagInput = it },
+                onAdd = {
+                    val t = tagInput.trim().removePrefix("#")
+                    if (t.isNotEmpty() && !tags.contains(t)) saveTags(tags + t)
+                    tagInput = ""
+                },
+                onRemove = { saveTags(tags - it) },
             )
         }
+    }
+}
+
+@Composable
+private fun ChecklistEditor(tasks: List<TaskItem>, onChange: (List<TaskItem>) -> Unit) {
+    var draft by remember { mutableStateOf("") }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+    ) {
+        tasks.forEachIndexed { index, item ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = item.checked,
+                    onCheckedChange = { checked ->
+                        onChange(tasks.toMutableList().also { it[index] = item.copy(checked = checked) })
+                    },
+                )
+                Text(item.text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                IconButton(onClick = {
+                    onChange(tasks.toMutableList().also { it.removeAt(index) })
+                }) { Icon(Icons.Default.Delete, contentDescription = "Remove item") }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                placeholder = { Text("Add item…") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(6.dp))
+            IconButton(
+                onClick = {
+                    if (draft.isNotBlank()) {
+                        onChange(tasks + TaskItem(draft.trim(), false))
+                        draft = ""
+                    }
+                },
+                enabled = draft.isNotBlank(),
+            ) { Icon(Icons.Default.Add, contentDescription = "Add item") }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun TagEditor(
+    tags: List<String>,
+    input: String,
+    onInput: (String) -> Unit,
+    onAdd: () -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        if (tags.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                tags.forEach { tag ->
+                    AssistChip(
+                        onClick = { onRemove(tag) },
+                        label = { Text("#$tag  ✕") },
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        OutlinedTextField(
+            value = input,
+            onValueChange = onInput,
+            label = { Text("Add label") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TextButton(onClick = onAdd, enabled = input.isNotBlank()) { Text("Add") }
     }
 }
 
@@ -602,6 +826,24 @@ private fun bodyOf(core: FfiCore, docId: String): String {
     }
 }
 
+/** Checklist items from the document's `taskList` block. */
+private fun tasksOf(core: FfiCore, docId: String): List<TaskItem> {
+    return try {
+        val block = core.getBlocks(docId).firstOrNull { it.blockType == "taskList" } ?: return emptyList()
+        val content = JSONObject(block.contentJson).optJSONArray("content") ?: return emptyList()
+        (0 until content.length()).mapNotNull { i ->
+            val item = content.optJSONObject(i) ?: return@mapNotNull null
+            if (item.optString("type") != "taskItem") return@mapNotNull null
+            TaskItem(
+                text = jsonText(item).trim(),
+                checked = item.optJSONObject("attrs")?.optBoolean("checked", false) ?: false,
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
 /** Recursively collect `text` leaves from a TipTap JSON node. */
 private fun jsonText(node: JSONObject, out: StringBuilder = StringBuilder()): String {
     when (node.optString("type")) {
@@ -622,19 +864,37 @@ private fun docJson(text: String): String {
     val paragraphs = text.split("\n\n").map { paragraph ->
         JSONObject().apply {
             put("type", "paragraph")
-            val lines = paragraph.split("\n")
             val content = JSONArray()
-            lines.forEachIndexed { i, line ->
+            paragraph.split("\n").forEachIndexed { i, line ->
                 if (i > 0) content.put(JSONObject().put("type", "hardBreak"))
-                if (line.isNotEmpty()) {
-                    content.put(JSONObject().put("type", "text").put("text", line))
-                }
+                if (line.isNotEmpty()) content.put(JSONObject().put("type", "text").put("text", line))
             }
             put("content", content)
         }
     }
-    return JSONObject()
-        .put("type", "doc")
-        .put("content", JSONArray(paragraphs))
-        .toString()
+    return JSONObject().put("type", "doc").put("content", JSONArray(paragraphs)).toString()
+}
+
+/** Checklist items → TipTap `taskList` JSON (what the web editor renders). */
+private fun taskJson(tasks: List<TaskItem>): String {
+    val content = JSONArray()
+    tasks.forEach { item ->
+        content.put(
+            JSONObject()
+                .put("type", "taskItem")
+                .put("attrs", JSONObject().put("checked", item.checked))
+                .put(
+                    "content",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("type", "paragraph")
+                            .put(
+                                "content",
+                                JSONArray().put(JSONObject().put("type", "text").put("text", item.text)),
+                            ),
+                    ),
+                ),
+        )
+    }
+    return JSONObject().put("type", "taskList").put("content", content).toString()
 }

@@ -57,6 +57,9 @@ jobs:
       - name: Add NDK toolchain to PATH (C build scripts need the clang wrappers)
         run: echo "$ANDROID_HOME/ndk/29.0.13846066/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
+      - name: Install cargo-ndk (builds the native shell's core .so)
+        run: cargo install cargo-ndk --locked
+
       - name: npm install
         run: npm ci
 
