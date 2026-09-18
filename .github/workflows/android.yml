@@ -43,16 +43,17 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Android SDK (platform 36 + build-tools 36.0.0)
+      - name: Set up Android SDK (cmdline-tools + platform-tools)
         uses: android-actions/setup-android@v3
         with:
-          api-level: 36
-          build-tools-version: 36.0.0
+          # The action's default package list includes `tools`, which was
+          # removed from the SDK repository — installing it fails the step.
+          packages: 'platform-tools'
 
-      - name: Install NDK 29
+      - name: Install platform 36, build-tools 36.0.0 and NDK 29
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.13846066"
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13846066"
 
       - name: Add NDK toolchain to PATH (C build scripts need the clang wrappers)
         run: echo "$ANDROID_HOME/ndk/29.0.13846066/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
