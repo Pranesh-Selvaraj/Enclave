@@ -110,8 +110,7 @@ class KeepActivity : ComponentActivity() {
     private val pendingOpen = mutableStateOf<String?>(null)
 
     /** "Add widget" request (Sync screen button / adb) → system pin dialog. */
-    private val pendingPin = mutableStateOf(false)
-    private val pendingPinCapture = mutableStateOf(false)
+    private val pendingPinWidget = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,13 +121,14 @@ class KeepActivity : ComponentActivity() {
         pendingShare.value = extractSharedText(intent)
         pendingCreate.value = extractCreateAction(intent)
         pendingOpen.value = extractOpenDoc(intent)
-        pendingPin.value = intent?.action == ACTION_PIN_WIDGET
-        pendingPinCapture.value = intent?.getBooleanExtra(EXTRA_CAPTURE_WIDGET, false) == true
+        pendingPinWidget.value = if (intent?.action == ACTION_PIN_WIDGET) {
+            intent.getStringExtra(EXTRA_WIDGET) ?: "list"
+        } else null
         // Tauri resolves app_data_dir to the app data dir; use the same one so
         // vaults created before the native shell keep working.
         setContent {
             EnclaveTheme {
-                KeepApp(applicationInfo.dataDir, pendingShare, pendingCreate, pendingOpen, pendingPin, pendingPinCapture)
+                KeepApp(applicationInfo.dataDir, pendingShare, pendingCreate, pendingOpen, pendingPinWidget)
             }
         }
     }
@@ -138,8 +138,9 @@ class KeepActivity : ComponentActivity() {
         extractSharedText(intent)?.let { pendingShare.value = it }
         extractCreateAction(intent)?.let { pendingCreate.value = it }
         extractOpenDoc(intent)?.let { pendingOpen.value = it }
-        if (intent.action == ACTION_PIN_WIDGET) pendingPin.value = true
-        if (intent.getBooleanExtra(EXTRA_CAPTURE_WIDGET, false)) pendingPinCapture.value = true
+        if (intent.action == ACTION_PIN_WIDGET) {
+            pendingPinWidget.value = intent.getStringExtra(EXTRA_WIDGET) ?: "list"
+        }
     }
 
     private fun extractSharedText(intent: Intent?): String? {
@@ -162,13 +163,13 @@ class KeepActivity : ComponentActivity() {
         const val ACTION_NEW_CHECKLIST = "com.enclave.app.NEW_CHECKLIST"
         const val ACTION_OPEN_NOTE = "com.enclave.app.OPEN_NOTE"
         const val ACTION_PIN_WIDGET = "com.enclave.app.PIN_WIDGET"
-        const val EXTRA_CAPTURE_WIDGET = "enclave:captureWidget"
+        const val EXTRA_WIDGET = "enclave:widget"
         const val EXTRA_DOC_ID = "enclave:docId"
     }
 }
 
 @Composable
-private fun EnclaveTheme(content: @Composable () -> Unit) {
+internal fun EnclaveTheme(content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
     val scheme = if (dark) {
         darkColorScheme(
@@ -216,8 +217,7 @@ private fun KeepApp(
     pendingShare: MutableState<String?>,
     pendingCreate: MutableState<String?>,
     pendingOpen: MutableState<String?>,
-    pendingPin: MutableState<Boolean>,
-    pendingPinCapture: MutableState<Boolean>,
+    pendingPinWidget: MutableState<String?>,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -261,12 +261,11 @@ private fun KeepApp(
     }
 
     // "Add widget" request → system pin dialog (launcher must support it).
-    LaunchedEffect(stage, pendingPin.value) {
-        if (!pendingPin.value) return@LaunchedEffect
+    LaunchedEffect(stage, pendingPinWidget.value) {
+        val kind = pendingPinWidget.value ?: return@LaunchedEffect
         if (stage !is Stage.Notes) return@LaunchedEffect
-        pendingPin.value = false
-        pinNoteListWidget(context, pendingPinCapture.value)
-        pendingPinCapture.value = false
+        pendingPinWidget.value = null
+        pinWidget(context, kind)
     }
 
     // Launcher shortcut: create a fresh note/checklist once the vault is open.
@@ -348,7 +347,7 @@ private fun KeepApp(
                 openDocChecklist = false
                 refreshKey++
             },
-            onPinWidget = { pinNoteListWidget(context) },
+            onPinWidget = { pinWidget(context, "list") },
             onLock = {
                 scope.launch {
                     withContext(Dispatchers.IO) { core.lockVault() }
@@ -847,17 +846,36 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
     }
 }
 
-/** Ask the launcher to pin a widget (system dialog). */
-private fun pinNoteListWidget(context: Context, capture: Boolean = false) {
+/** Pin one specific note: the callback binds it to the new widget instance. */
+private fun pinPinnedNote(context: Context, docId: String, label: String) {
     val manager = AppWidgetManager.getInstance(context)
-    if (manager.isRequestPinAppWidgetSupported) {
-        val receiver = if (capture) {
-            ComponentName(context, QuickCaptureWidgetReceiver::class.java)
-        } else {
-            ComponentName(context, NoteListWidgetReceiver::class.java)
-        }
-        manager.requestPinAppWidget(receiver, null, null)
+    if (!manager.isRequestPinAppWidgetSupported) return
+    WidgetStore.setPendingPin(context, docId)
+    val callback = android.app.PendingIntent.getBroadcast(
+        context,
+        docId.hashCode(),
+        Intent(context, PinResultReceiver::class.java)
+            .putExtra(PinResultReceiver.EXTRA_DOC_ID, docId)
+            .putExtra(Intent.EXTRA_TITLE, label),
+        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+    )
+    manager.requestPinAppWidget(
+        ComponentName(context, PinnedNoteWidgetReceiver::class.java),
+        null,
+        callback,
+    )
+}
+
+/** Ask the launcher to pin a widget (system dialog). */
+private fun pinWidget(context: Context, kind: String) {
+    val manager = AppWidgetManager.getInstance(context)
+    if (!manager.isRequestPinAppWidgetSupported) return
+    val receiver = when (kind) {
+        "capture" -> ComponentName(context, QuickCaptureWidgetReceiver::class.java)
+        "pinned" -> ComponentName(context, PinnedNoteWidgetReceiver::class.java)
+        else -> ComponentName(context, NoteListWidgetReceiver::class.java)
     }
+    manager.requestPinAppWidget(receiver, null, null)
 }
 
 // ── Note detail: text or checklist, tags, favorite, archive ────────────────
@@ -1058,6 +1076,11 @@ private fun NoteDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            if (widgetShared) {
+                TextButton(
+                    onClick = { pinPinnedNote(context, docId, title.ifBlank { "Untitled" }) },
+                ) { Text("Pin this note to the home screen") }
             }
         }
     }

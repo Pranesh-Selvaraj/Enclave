@@ -42,6 +42,28 @@ internal object WidgetStore {
         val text: String,
     )
 
+    private const val PIN_PREFS = "enclave_widget_pin"
+    private const val PIN_KEY = "pending_doc_id"
+
+    /**
+     * "Pin this note" records the note before asking the launcher to pin a
+     * widget; the new instance binds it on first render. Some launchers do not
+     * deliver the pin-success callback with a usable appWidgetId, so this
+     * handoff is the reliable path (one in-flight pin at a time).
+     */
+    fun setPendingPin(context: Context, docId: String) {
+        context.getSharedPreferences(PIN_PREFS, Context.MODE_PRIVATE)
+            .edit().putString(PIN_KEY, docId).apply()
+    }
+
+    /** Reads and clears the pending pin (called by a widget's first render). */
+    fun consumePendingPin(context: Context): String? {
+        val prefs = context.getSharedPreferences(PIN_PREFS, Context.MODE_PRIVATE)
+        val value = prefs.getString(PIN_KEY, null) ?: return null
+        prefs.edit().remove(PIN_KEY).apply()
+        return value
+    }
+
     /** Shared notes, decrypted for a widget render. Empty on any failure. */
     fun notes(context: Context): List<WidgetNote> = try {
         readCache(context)?.let(::parse) ?: emptyList()

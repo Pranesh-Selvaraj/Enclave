@@ -12,4 +12,7 @@
     <string name="widget_capture_description">Create a note in Enclave with one tap.</string>
     <string name="widget_list_title">Notes</string>
     <string name="widget_list_description">Notes you shared to widgets from Enclave.</string>
+    <string name="widget_pinned_title">Pinned note</string>
+    <string name="widget_pinned_description">One shared note, shown in full.</string>
+    <string name="tile_new_note">New note</string>
 </resources>
