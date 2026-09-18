@@ -82,6 +82,9 @@ dependencies {
     // UniFFI Kotlin bindings load libcore_api.so through JNA.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 
+    // QR pairing (display + scan) — bundled zxing, no camera code.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
     // Home-screen widgets (Glance).
     implementation("androidx.glance:glance-appwidget:1.1.1")
 

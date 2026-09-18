@@ -98,8 +98,19 @@ internal object WidgetStore {
         emptyList()
     }
 
-    /** Rebuild the cache from notes that opted into widgets. */
+    /**
+     * Rebuild the cache from notes that opted into widgets. Never throws: a
+     * lock racing the refresh must keep the previous cache (and the app alive).
+     */
     fun refresh(context: Context, core: FfiCore) {
+        try {
+            refreshInner(context, core)
+        } catch (e: Exception) {
+            android.util.Log.w("EnclaveWidgets", "cache refresh skipped: " + e.message)
+        }
+    }
+
+    private fun refreshInner(context: Context, core: FfiCore) {
         val notes = core.listDocuments().mapNotNull { doc ->
             val blocks = core.getBlocks(doc.id)
             val widget = blocks.firstOrNull { it.blockType == "widget" }
@@ -121,6 +132,21 @@ internal object WidgetStore {
     private val updateMutex = kotlinx.coroutines.sync.Mutex()
 
     /**
+     * Re-render every widget instance from the existing cache (no core access).
+     * Used when the vault locks — showing the placeholder needs a render, not
+     * a vault read.
+     */
+    suspend fun updateAll(context: Context) {
+        updateMutex.withLock { renderAll(context) }
+    }
+
+    private suspend fun renderAll(context: Context) {
+        NoteListWidget().updateAll(context)
+        PinnedNoteWidget().updateAll(context)
+        QuickCaptureWidget().updateAll(context)
+    }
+
+    /**
      * Rebuild the cache and refresh every widget instance. Serialized: two
      * quick updates must not render out of order (a stale OFF state could
      * otherwise land after the fresh ON state).
@@ -128,9 +154,7 @@ internal object WidgetStore {
     suspend fun refreshAndUpdate(context: Context, core: FfiCore) {
         updateMutex.withLock {
             withContext(Dispatchers.IO) { refresh(context, core) }
-            NoteListWidget().updateAll(context)
-            PinnedNoteWidget().updateAll(context)
-            QuickCaptureWidget().updateAll(context)
+            renderAll(context)
         }
     }
 

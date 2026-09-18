@@ -40,7 +40,11 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.outlined.Star
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.Image
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -257,7 +262,10 @@ private fun KeepApp(
         val changed = WidgetStore.vaultUnlocked(context) != unlocked
         WidgetStore.setVaultUnlocked(context, unlocked)
         if (changed && WidgetStore.hideWhenLocked(context)) {
-            WidgetStore.refreshAndUpdate(context, core)
+            // Locking: re-render the placeholder from the cache (the core is
+            // locked, reading it would throw). Unlocking: rebuild + render.
+            if (unlocked) WidgetStore.refreshAndUpdate(context, core)
+            else WidgetStore.updateAll(context)
         }
     }
 
@@ -725,6 +733,7 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var hideLocked by remember { mutableStateOf(WidgetStore.hideWhenLocked(context)) }
+    var showQr by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var status by remember { mutableStateOf<NetworkStatus?>(null) }
     var host by remember { mutableStateOf("") }
@@ -750,6 +759,15 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
             } finally {
                 busy = false
             }
+        }
+    }
+
+    val scanLauncher = rememberLauncherForActivityResult(
+        com.journeyapps.barcodescanner.ScanContract(),
+    ) { result ->
+        Pairing.decode(result.contents ?: "")?.let { peer ->
+            host = "${peer.host}:${peer.port}"
+            run { core.connectPeer(peer.host, peer.port.toUShort()) }
         }
     }
 
@@ -833,6 +851,26 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
                     enabled = !busy && host.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Connect") }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            scanLauncher.launch(
+                                com.journeyapps.barcodescanner.ScanOptions().apply {
+                                    setPrompt("Scan the other device's pairing code")
+                                    setBeepEnabled(false)
+                                    setOrientationLocked(false)
+                                },
+                            )
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Scan QR") }
+                    OutlinedButton(
+                        onClick = { showQr = true },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Show QR") }
+                }
                 Spacer(Modifier.height(10.dp))
                 TextButton(
                     onClick = { run { core.stopNetwork() } },
@@ -844,6 +882,36 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
             error?.let {
                 Spacer(Modifier.height(10.dp))
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            if (showQr && status != null) {
+                val st = status!!
+                val payload = Pairing.encode(st.localHost, st.port.toInt())
+                val image = remember(payload) { Pairing.qrBitmap(payload).asImageBitmap() }
+                AlertDialog(
+                    onDismissRequest = { showQr = false },
+                    confirmButton = {
+                        TextButton(onClick = { showQr = false }) { Text("Done") }
+                    },
+                    title = { Text("Pair this device") },
+                    text = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Image(
+                                bitmap = image,
+                                contentDescription = "Pairing QR code",
+                                modifier = Modifier.size(220.dp),
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text("${st.localHost}:${st.port}", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Scan this with Enclave on your other device.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                )
             }
 
             Spacer(Modifier.height(18.dp))
