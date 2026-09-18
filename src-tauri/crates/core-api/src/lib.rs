@@ -111,16 +111,26 @@ pub struct EnclaveCore {
     /// Vault-derived sync PSK, present only while unlocked.
     sync_key: Mutex<Option<[u8; 32]>>,
     network: Arc<NetworkState>,
+    /// Fan-out for sync events: shells subscribe and surface them (toasts,
+    /// notifications) while the loop itself lives here.
+    sync_events: tokio::sync::broadcast::Sender<SyncEvent>,
 }
 
 impl EnclaveCore {
     pub fn new(app_dir: impl Into<PathBuf>) -> Self {
+        let (sync_events, _) = tokio::sync::broadcast::channel(128);
         Self {
             app_dir: app_dir.into(),
             db: Mutex::new(None),
             sync_key: Mutex::new(None),
             network: Arc::new(NetworkState::new()),
+            sync_events,
         }
+    }
+
+    /// Subscribe to sync events (sync-done / peer-connect-failed).
+    pub fn subscribe_sync_events(&self) -> tokio::sync::broadcast::Receiver<SyncEvent> {
+        self.sync_events.subscribe()
     }
 
     pub fn app_dir(&self) -> &Path {
@@ -563,6 +573,29 @@ impl EnclaveCore {
     /// docs via need → partial snapshot → merge (doc-level LWW) → ack. A
     /// converged pair exchanges need([]) → snapshot([]) → ack, which also
     /// refreshes "last synced" without moving payload.
+    /// Consume peer messages for the lifetime of the process and merge
+    /// snapshots into the vault. Call once after unlock — the first caller
+    /// wins the message receiver; events fan out to [`subscribe_sync_events`].
+    ///
+    /// Owning the loop in the core (not in a shell) is what lets the native
+    /// Android app sync without the WebView editor island running.
+    pub async fn run_sync_loop(self: Arc<Self>) {
+        let rx = {
+            let mut guard = self.network.message_rx.lock().await;
+            guard.take()
+        };
+        let Some(mut rx) = rx else {
+            return; // loop already running (or the network was never set up)
+        };
+        while let Some(msg) = rx.recv().await {
+            let tx = self.sync_events.clone();
+            self.handle_sync_message(msg, move |event| {
+                let _ = tx.send(event);
+            })
+            .await;
+        }
+    }
+
     pub fn sync_digest(&self) -> Option<String> {
         let payload = self.with_db(|db| {
             let index = core_db::query_doc_index(db).map_err(db_err)?;

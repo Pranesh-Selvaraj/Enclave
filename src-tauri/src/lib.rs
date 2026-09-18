@@ -511,27 +511,22 @@ pub fn run() {
 
             // DB starts locked — user must call init_vault or unlock_vault.
             let core = Arc::new(core_api::EnclaveCore::new(app_dir));
-            let sync_rx = core
-                .network()
-                .message_rx
-                .try_lock()
-                .expect("network rx uncontended at setup")
-                .take()
-                .expect("sync receiver exists once");
-            app.manage(AppState { core });
+            app.manage(AppState { core: core.clone() });
 
-            // Consume peer messages for the lifetime of the app: hello →
-            // send digest, need → snapshot, snapshot → merge into vault,
-            // ack → notify UI. State is looked up per message.
+            // The core owns the peer-message loop; events fan out to shells.
+            // This keeps sync alive when the native shell is the only UI.
+            let loop_core = core.clone();
+            tauri::async_runtime::spawn(async move { loop_core.run_sync_loop().await });
+
+            // Forward sync events to the web UI (toasts / peer failures).
             let app_handle = app.handle().clone();
+            let mut events = core.subscribe_sync_events();
             tauri::async_runtime::spawn(async move {
-                let mut rx = sync_rx;
-                while let Some(msg) = rx.recv().await {
-                    let core = app_handle.state::<AppState>().core.clone();
-                    let emit_handle = app_handle.clone();
-                    core.handle_sync_message(msg, move |event| match event {
-                        core_api::SyncEvent::Done { peer, docs_changed, blocks_changed } => {
-                            let _ = emit_handle.emit(
+                use tokio::sync::broadcast::error::RecvError;
+                loop {
+                    match events.recv().await {
+                        Ok(core_api::SyncEvent::Done { peer, docs_changed, blocks_changed }) => {
+                            let _ = app_handle.emit(
                                 "sync-done",
                                 serde_json::json!({
                                     "peer": peer,
@@ -540,14 +535,15 @@ pub fn run() {
                                 }),
                             );
                         }
-                        core_api::SyncEvent::PeerFailed { host, error } => {
-                            let _ = emit_handle.emit(
+                        Ok(core_api::SyncEvent::PeerFailed { host, error }) => {
+                            let _ = app_handle.emit(
                                 "peer-connect-failed",
                                 serde_json::json!({ "host": host, "error": error }),
                             );
                         }
-                    })
-                    .await;
+                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Closed) => break,
+                    }
                 }
             });
 

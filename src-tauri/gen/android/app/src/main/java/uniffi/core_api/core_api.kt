@@ -815,6 +815,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -889,6 +891,8 @@ fun uniffi_core_api_checksum_method_fficore_rename_folder(
 fun uniffi_core_api_checksum_method_fficore_reset_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_restore_document(
+): Short
+fun uniffi_core_api_checksum_method_fficore_run_sync_loop(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_search_all(
 ): Short
@@ -1039,6 +1043,8 @@ fun uniffi_core_api_fn_method_fficore_reset_vault(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_core_api_fn_method_fficore_restore_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_run_sync_loop(`ptr`: Pointer,
+): Long
 fun uniffi_core_api_fn_method_fficore_search_all(`ptr`: Pointer,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_search_embeddings(`ptr`: Pointer,`query`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -1285,6 +1291,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_restore_document() != 50388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_run_sync_loop() != 5280.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_search_all() != 35859.toShort()) {
@@ -1904,6 +1913,13 @@ public interface FfiCoreInterface {
     
     fun `restoreDocument`(`id`: kotlin.String): Document
     
+    /**
+     * Consume peer sync messages for the process lifetime (merges snapshots
+     * into the vault). Start once after unlocking; the call runs until the
+     * process exits, so drive it from a background coroutine.
+     */
+    suspend fun `runSyncLoop`()
+    
     fun `searchAll`(`query`: kotlin.String): List<SearchResult>
     
     fun `searchEmbeddings`(`query`: List<kotlin.Double>, `limit`: kotlin.UInt): List<Embedding>
@@ -2455,6 +2471,32 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     )
     }
     
+
+    
+    /**
+     * Consume peer sync messages for the process lifetime (merges snapshots
+     * into the vault). Start once after unlocking; the call runs until the
+     * process exits, so drive it from a background coroutine.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `runSyncLoop`() {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_run_sync_loop(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
 
     
     @Throws(EnclaveException::class)override fun `searchAll`(`query`: kotlin.String): List<SearchResult> {

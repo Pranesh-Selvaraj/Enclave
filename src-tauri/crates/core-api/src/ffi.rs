@@ -250,14 +250,21 @@ impl From<CoreNetworkStatus> for NetworkStatus {
 /// app's private data directory.
 #[derive(uniffi::Object)]
 pub struct FfiCore {
-    core: EnclaveCore,
+    core: Arc<EnclaveCore>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl FfiCore {
     #[uniffi::constructor]
     pub fn new(app_dir: String) -> Arc<Self> {
-        Arc::new(Self { core: EnclaveCore::new(app_dir) })
+        Arc::new(Self { core: Arc::new(EnclaveCore::new(app_dir)) })
+    }
+
+    /// Consume peer sync messages for the process lifetime (merges snapshots
+    /// into the vault). Start once after unlocking; the call runs until the
+    /// process exits, so drive it from a background coroutine.
+    pub async fn run_sync_loop(&self) {
+        self.core.clone().run_sync_loop().await
     }
 
     pub fn app_dir(&self) -> String {

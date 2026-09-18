@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.List
@@ -65,6 +66,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -80,6 +83,7 @@ import org.json.JSONObject
 import uniffi.core_api.Document
 import uniffi.core_api.EnclaveException
 import uniffi.core_api.FfiCore
+import uniffi.core_api.NetworkStatus
 
 /**
  * Keep-like native shell — Phase 1 of the Android-native plan.
@@ -93,23 +97,39 @@ class KeepActivity : ComponentActivity() {
     /** Text shared from another app, consumed once the vault is unlocked. */
     private val pendingShare = mutableStateOf<String?>(null)
 
+    /** Launcher shortcut that should create a fresh note ("note" | "checklist"). */
+    private val pendingCreate = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // JNA finds libcore_api.so through the app's native library dir.
         System.setProperty("jna.library.path", applicationInfo.nativeLibraryDir)
         pendingShare.value = extractSharedText(intent)
-        setContent { EnclaveTheme { KeepApp(filesDir.absolutePath, pendingShare) } }
+        pendingCreate.value = extractCreateAction(intent)
+        setContent { EnclaveTheme { KeepApp(filesDir.absolutePath, pendingShare, pendingCreate) } }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         extractSharedText(intent)?.let { pendingShare.value = it }
+        extractCreateAction(intent)?.let { pendingCreate.value = it }
     }
 
     private fun extractSharedText(intent: Intent?): String? {
         if (intent?.action != Intent.ACTION_SEND) return null
         @Suppress("DEPRECATION")
         return intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun extractCreateAction(intent: Intent?): String? = when (intent?.action) {
+        ACTION_NEW_NOTE -> "note"
+        ACTION_NEW_CHECKLIST -> "checklist"
+        else -> null
+    }
+
+    companion object {
+        const val ACTION_NEW_NOTE = "com.enclave.app.NEW_NOTE"
+        const val ACTION_NEW_CHECKLIST = "com.enclave.app.NEW_CHECKLIST"
     }
 }
 
@@ -150,13 +170,19 @@ private data class NoteRow(val doc: Document, val snippet: String, val tags: Lis
 private data class TaskItem(val text: String, val checked: Boolean)
 
 @Composable
-private fun KeepApp(appDir: String, pendingShare: MutableState<String?>) {
+private fun KeepApp(
+    appDir: String,
+    pendingShare: MutableState<String?>,
+    pendingCreate: MutableState<String?>,
+) {
     val scope = rememberCoroutineScope()
     val core = remember { FfiCore(appDir) }
     var stage by remember { mutableStateOf<Stage>(Stage.Loading) }
     var error by remember { mutableStateOf<String?>(null) }
     var openDocId by remember { mutableStateOf<String?>(null) }
+    var openDocChecklist by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
+    var syncLoopStarted by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         stage = withContext(Dispatchers.IO) {
@@ -164,20 +190,43 @@ private fun KeepApp(appDir: String, pendingShare: MutableState<String?>) {
         }
     }
 
+    // One core-owned sync loop per process: peers connect and snapshots merge
+    // even when the WebView editor island is not open.
+    LaunchedEffect(stage) {
+        if (stage is Stage.Notes && !syncLoopStarted) {
+            syncLoopStarted = true
+            scope.launch(Dispatchers.IO) { core.runSyncLoop() }
+        }
+    }
+
+    // Launcher shortcut: create a fresh note/checklist once the vault is open.
+    // NOTE: clear the pending flag *after* the async work — clearing it first
+    // re-keys this effect, cancels the coroutine at the next suspension point
+    // and the note never opens.
+    LaunchedEffect(stage, pendingCreate.value) {
+        val action = pendingCreate.value ?: return@LaunchedEffect
+        if (stage !is Stage.Notes) return@LaunchedEffect
+        val doc = withContext(Dispatchers.IO) { core.createDocument("Untitled") }
+        refreshKey++
+        openDocChecklist = action == "checklist"
+        openDocId = doc.id
+        pendingCreate.value = null
+    }
+
     // Shared text becomes a note as soon as the vault is open (share target).
     LaunchedEffect(stage, pendingShare.value) {
-        val shared = pendingShare.value
-        if (stage is Stage.Notes && shared != null) {
-            pendingShare.value = null
-            val doc = withContext(Dispatchers.IO) {
-                val title = shared.lineSequence().firstOrNull()?.take(80)?.ifBlank { null } ?: "Shared note"
-                val created = core.createDocument(title)
-                core.upsertBlock("${created.id}-content", created.id, "doc", docJson(shared), 0.0)
-                created
-            }
-            refreshKey++
-            openDocId = doc.id
+        val shared = pendingShare.value ?: return@LaunchedEffect
+        if (stage !is Stage.Notes) return@LaunchedEffect
+        val doc = withContext(Dispatchers.IO) {
+            val title = shared.lineSequence().firstOrNull()?.take(80)?.ifBlank { null } ?: "Shared note"
+            val created = core.createDocument(title)
+            core.upsertBlock("${created.id}-content", created.id, "doc", docJson(shared), 0.0)
+            created
         }
+        refreshKey++
+        openDocChecklist = false
+        openDocId = doc.id
+        pendingShare.value = null
     }
 
     when (val s = stage) {
@@ -219,9 +268,14 @@ private fun KeepApp(appDir: String, pendingShare: MutableState<String?>) {
             core = core,
             refreshKey = refreshKey,
             openDocId = openDocId,
-            onOpen = { openDocId = it },
+            openDocChecklist = openDocChecklist,
+            onOpen = { id, checklist ->
+                openDocChecklist = checklist
+                openDocId = id
+            },
             onCloseDetail = {
                 openDocId = null
+                openDocChecklist = false
                 refreshKey++
             },
             onLock = {
@@ -384,7 +438,8 @@ private fun NotesScreen(
     core: FfiCore,
     refreshKey: Int,
     openDocId: String?,
-    onOpen: (String) -> Unit,
+    openDocChecklist: Boolean,
+    onOpen: (String, Boolean) -> Unit,
     onCloseDetail: () -> Unit,
     onLock: () -> Unit,
 ) {
@@ -394,6 +449,7 @@ private fun NotesScreen(
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
+    var syncing by remember { mutableStateOf(false) }
 
     suspend fun reload() {
         val (rows, tags) = withContext(Dispatchers.IO) {
@@ -415,8 +471,14 @@ private fun NotesScreen(
         NoteDetailScreen(
             core = core,
             docId = openDocId,
+            initialChecklist = openDocChecklist,
             onBack = onCloseDetail,
         )
+        return
+    }
+
+    if (syncing) {
+        SyncScreen(core = core, onBack = { syncing = false })
         return
     }
 
@@ -425,6 +487,9 @@ private fun NotesScreen(
             TopAppBar(
                 title = { Text("Enclave", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { syncing = true }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Sync")
+                    }
                     IconButton(onClick = onLock) { Icon(Icons.Default.Lock, contentDescription = "Lock vault") }
                 },
             )
@@ -435,7 +500,7 @@ private fun NotesScreen(
                     scope.launch {
                         val newDoc = withContext(Dispatchers.IO) { core.createDocument("Untitled") }
                         reload()
-                        onOpen(newDoc.id)
+                        onOpen(newDoc.id, false)
                     }
                 },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -508,7 +573,7 @@ private fun NotesScreen(
                 items(shown, key = { it.doc.id }) { row ->
                     NoteCard(
                         row = row,
-                        onOpen = { onOpen(row.doc.id) },
+                        onOpen = { onOpen(row.doc.id, false) },
                         onToggleFavorite = {
                             scope.launch {
                                 withContext(Dispatchers.IO) { core.toggleFavorite(row.doc.id) }
@@ -570,11 +635,146 @@ private fun NoteCard(row: NoteRow, onOpen: () -> Unit, onToggleFavorite: () -> U
     }
 }
 
+// ── Sync screen ────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SyncScreen(core: FfiCore, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
+    var status by remember { mutableStateOf<NetworkStatus?>(null) }
+    var host by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // Poll status while the screen is open (mDNS peers appear over time).
+    LaunchedEffect(Unit) {
+        while (true) {
+            status = runCatching { withContext(Dispatchers.IO) { core.networkStatus() } }.getOrNull()
+            delay(3000)
+        }
+    }
+
+    fun run(block: suspend () -> Unit) {
+        scope.launch {
+            busy = true
+            error = null
+            try {
+                withContext(Dispatchers.IO) { block() }
+            } catch (e: EnclaveException) {
+                error = e.message
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Sync", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)) {
+            val running = status?.running == true
+            Text(
+                if (running) "Sync is on" else "Sync is off",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (running) "Peers on this network connect automatically; nothing leaves your LAN."
+                else "Turn on sync to exchange notes with your other devices on this network.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            if (!running) {
+                Button(
+                    onClick = { run { core.startNetwork(null) } },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Start sync on this network") }
+            } else if (status != null) {
+                val st = status!!
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("This device", style = MaterialTheme.typography.labelMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${st.localHost}:${st.port}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                clipboard.setText(AnnotatedString("${st.localHost}:${st.port}"))
+                            }) { Text("Copy") }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("${st.peers.size} peer(s) discovered", style = MaterialTheme.typography.labelMedium)
+                        st.peers.forEach { peer ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                                Text(
+                                    if (peer.connected) "●" else "○",
+                                    color = if (peer.connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(peer.name.ifBlank { peer.id.take(8) }, modifier = Modifier.weight(1f))
+                                Text(peer.host, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = { host = it },
+                    label = { Text("Add peer — 192.168.1.5:4242") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val parts = host.trim().split(":")
+                        val h = parts[0]
+                        val port = parts.getOrNull(1)?.toUShortOrNull() ?: 4242u
+                        if (h.isNotEmpty()) {
+                            run { core.connectPeer(h, port) }
+                            host = ""
+                        }
+                    },
+                    enabled = !busy && host.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Connect") }
+                Spacer(Modifier.height(10.dp))
+                TextButton(
+                    onClick = { run { core.stopNetwork() } },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Stop sync") }
+            }
+
+            error?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 // ── Note detail: text or checklist, tags, favorite, archive ────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NoteDetailScreen(core: FfiCore, docId: String, onBack: () -> Unit) {
+private fun NoteDetailScreen(
+    core: FfiCore,
+    docId: String,
+    initialChecklist: Boolean,
+    onBack: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
@@ -598,7 +798,7 @@ private fun NoteDetailScreen(core: FfiCore, docId: String, onBack: () -> Unit) {
         tasks = loadedState[2] as List<TaskItem>
         tags = loadedState[3] as List<String>
         favorite = loadedState[4] as Boolean
-        checklist = tasks.isNotEmpty()
+        checklist = initialChecklist || tasks.isNotEmpty()
         loaded = true
     }
 
@@ -796,8 +996,17 @@ private fun TagEditor(
 private fun snippetOf(core: FfiCore, docId: String): String {
     return try {
         val blocks = core.getBlocks(docId)
-        val doc = blocks.firstOrNull { it.blockType == "doc" } ?: return ""
-        jsonText(JSONObject(doc.contentJson)).trim().replace(Regex("\\s+"), " ")
+        val fromDoc = blocks.firstOrNull { it.blockType == "doc" }
+            ?.let { jsonText(JSONObject(it.contentJson)) }
+            ?.trim()
+            .orEmpty()
+        val text = fromDoc.ifBlank {
+            blocks.firstOrNull { it.blockType == "taskList" }
+                ?.let { jsonText(JSONObject(it.contentJson)) }
+                ?.trim()
+                .orEmpty()
+        }
+        text.replace(Regex("\\s+"), " ")
     } catch (_: Exception) {
         ""
     }
