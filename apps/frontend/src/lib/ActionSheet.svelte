@@ -10,6 +10,15 @@
 		title?: string;
 		items?: { icon: string; label: string; danger?: boolean; action: () => void }[];
 	} = $props();
+
+	// The dialog element itself is not focusable, so Escape is caught on the
+	// window — otherwise the sheet could only be dismissed by tapping.
+	$effect(() => {
+		if (!open) return;
+		const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') open = false; };
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
 </script>
 
 {#if open}
@@ -21,9 +30,10 @@
 	<div
 		class="sheet"
 		role="dialog"
+		aria-modal="true"
 		aria-label={title || 'Actions'}
+		tabindex="-1"
 		onclick={(e: MouseEvent) => e.stopPropagation()}
-		onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') open = false; }}
 	>
 		<div class="sheet-handle" aria-hidden="true"></div>
 		{#if title}
@@ -67,6 +77,11 @@
 		border-radius: 20px;
 		padding: 8px 10px calc(14px + env(safe-area-inset-bottom));
 		box-shadow: var(--shadow-lg);
+		/* Many actions must scroll instead of pushing the handle off-screen. */
+		max-height: calc(100vh - 24px - env(safe-area-inset-bottom));
+		max-height: calc(100dvh - 24px - env(safe-area-inset-bottom));
+		display: flex;
+		flex-direction: column;
 		animation: sheet-up 0.22s ease;
 	}
 
@@ -96,6 +111,7 @@
 	.sheet-list {
 		display: flex;
 		flex-direction: column;
+		overflow-y: auto;
 	}
 
 	.sheet-item {

@@ -641,7 +641,7 @@
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<div class="export-backdrop" onclick={() => (menuOpen = false)}></div>
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<div class="export-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
+						<div class="export-menu" role="presentation" onclick={(e: MouseEvent) => e.stopPropagation()}>
 							<div class="info-row"><span>Created</span><span>{formatDate(document.created_at)}</span></div>
 							<div class="info-row"><span>Modified</span><span>{formatDate(document.updated_at)}</span></div>
 							<div class="info-row"><span>Words</span><span>{wordCount}</span></div>
@@ -660,7 +660,7 @@
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div class="export-backdrop" onclick={() => (infoOpen = false)}></div>
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div class="export-menu info-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
+					<div class="export-menu info-menu" role="presentation" onclick={(e: MouseEvent) => e.stopPropagation()}>
 						<div class="info-row"><span>Created</span><span>{formatDate(document.created_at)}</span></div>
 						<div class="info-row"><span>Modified</span><span>{formatDate(document.updated_at)}</span></div>
 						<div class="info-row"><span>Words</span><span>{wordCount}</span></div>
@@ -678,7 +678,7 @@
 		<div class="ai-backdrop" onclick={() => (aiOpen = false)}></div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<aside class="ai-panel" role="dialog" aria-label="Ask AI" onclick={(e: MouseEvent) => e.stopPropagation()}>
+		<div class="ai-panel" role="dialog" aria-modal="true" aria-label="Ask AI" tabindex="-1" onclick={(e: MouseEvent) => e.stopPropagation()}>
 			<div class="ai-head">
 				<span>Ask AI</span>
 				<button class="ai-close" onclick={() => (aiOpen = false)} aria-label="Close">✕</button>
@@ -717,7 +717,7 @@
 					<button class="ai-send" onclick={askAi} disabled={!aiQuestion.trim()}>Ask</button>
 				{/if}
 			</div>
-		</aside>
+		</div>
 	{/if}
 
 		{#if mode === 'paper' && metaOpen}
@@ -725,7 +725,7 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="meta-backdrop" onclick={() => (metaOpen = false)}></div>
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="meta-popover" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="meta-popover" role="presentation" onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<div class="meta-section-title">Page icon</div>
 				<EmojiPicker value={icon} onPick={setIcon} />
 				<div class="meta-section-title">Cover</div>
@@ -1411,16 +1411,18 @@
 
 		/* Tags: chips big enough to tap the ✕ off. */
 		.doc-tags { gap: 8px; padding: 2px 2px 6px; }
-		.tag-chip { font-size: 13px; padding: 5px 12px; min-height: 28px; }
+		.tag-chip { font-size: 13px; padding: 5px 8px 5px 12px; min-height: 28px; }
 		.tag-x {
 			font-size: 13px;
-			width: 26px;
-			height: 26px;
+			width: 32px;
+			height: 32px;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 			border-radius: 50%;
-			margin-right: -6px;
+			/* Negative vertical margins keep the chip compact while the
+			   button still offers a 32px tap target. */
+			margin: -4px -4px -4px 0;
 		}
 		.tag-input { font-size: 14px; min-height: 36px; }
 

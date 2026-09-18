@@ -9,6 +9,7 @@
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
 	import { importMarkdownFiles, exportVaultAsMarkdown } from '$lib/importExport.js';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 
 	let { children } = $props();
 
@@ -20,6 +21,58 @@
 	let documents = $state<Document[]>([]);
 	let archivedDocs = $state<Document[]>([]);
 	let sidebarOpen = $state(true);
+	// ── Desktop sidebar width: user-resizable, persisted per device ──
+	// 0 = use the density preset from CSS; a saved drag wins.
+	let sidebarWidth = $state(0);
+	let sidebarEl = $state<HTMLElement | undefined>();
+	let sidebarRealWidth = $state(260);
+	let resizingSidebar = $state(false);
+	try {
+		const saved = Number(localStorage.getItem('enclave-sidebar-width'));
+		if (saved >= 200 && saved <= 560) sidebarWidth = saved;
+	} catch { /* ignore */ }
+
+	function startSidebarResize(e: PointerEvent) {
+		e.preventDefault();
+		const startX = e.clientX;
+		const startW = sidebarEl?.getBoundingClientRect().width ?? sidebarRealWidth;
+		const max = Math.min(560, Math.max(260, window.innerWidth * 0.45));
+		resizingSidebar = true;
+		const move = (ev: PointerEvent) => {
+			sidebarWidth = Math.round(Math.min(max, Math.max(200, startW + ev.clientX - startX)));
+		};
+		const up = () => {
+			resizingSidebar = false;
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			try { localStorage.setItem('enclave-sidebar-width', String(sidebarWidth)); } catch { /* ignore */ }
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+	}
+
+	function resetSidebarWidth() {
+		sidebarWidth = 0;
+		try { localStorage.removeItem('enclave-sidebar-width'); } catch { /* ignore */ }
+	}
+
+	// Track the rendered width (density presets included) so the resize handle
+	// can sit exactly on the sidebar edge without living inside its scroll box.
+	$effect(() => {
+		if (!sidebarEl) return;
+		const ro = new ResizeObserver(() => {
+			sidebarRealWidth = sidebarEl!.getBoundingClientRect().width;
+		});
+		ro.observe(sidebarEl);
+		return () => ro.disconnect();
+	});
+
+	// Keep the native window chrome in the same theme as the app (Windows
+	// title bar) — the applied theme is universal, not just in-page.
+	$effect(() => {
+		const t = theme.value;
+		try { getCurrentWindow().setTheme(t).catch(() => {}); } catch { /* browser/build */ }
+	});
 	// Phone layout: the sidebar becomes a slide-in drawer behind a hamburger.
 	let isMobile = $state(false);
 	$effect(() => {
@@ -462,6 +515,20 @@
 		};
 	}
 
+	/** Floating menus are sized by their content (folder list included), so a
+	    static clamp at open time can still overflow — nudge them back in once
+	    they have been laid out. */
+	function fitMenu(node: HTMLElement) {
+		const margin = 8;
+		const r = node.getBoundingClientRect();
+		if (r.right > window.innerWidth - margin) {
+			node.style.left = `${Math.max(margin, window.innerWidth - r.width - margin)}px`;
+		}
+		if (r.bottom > window.innerHeight - margin) {
+			node.style.top = `${Math.max(margin, window.innerHeight - r.height - margin)}px`;
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		const mod = e.ctrlKey || e.metaKey;
 		if (commandPaletteOpen) {
@@ -502,11 +569,15 @@
 			}
 		}
 		if (e.key === 'Escape') {
-			commandPaletteOpen = false;
-			contextMenu = null;
-			folderMenu = null;
-			if (editingFolder) editingFolder = null;
-			shortcutsOpen = false;
+			// Close the topmost overlay only, so Escape inside a dialog doesn't
+			// also collapse the chrome behind it.
+			if (confirmDelete) confirmDelete = null;
+			else if (confirmFolderDelete) confirmFolderDelete = null;
+			else if (contextMenu) contextMenu = null;
+			else if (folderMenu) folderMenu = null;
+			else if (shortcutsOpen) shortcutsOpen = false;
+			else if (commandPaletteOpen) commandPaletteOpen = false;
+			else if (editingFolder) editingFolder = null;
 		}
 	}
 
@@ -675,27 +746,7 @@
 	{:else}
 	<div class="app-shell">
 	<!-- Left Sidebar (drawer on phones) -->
-	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen}>
-		<div class="sidebar-header" class:mini={!sidebarOpen}>
-			<a href="/" class="sidebar-brand" title="Enclave home">
-				<span class="brand-mark">
-					<Logo size={20} />
-				</span>
-				{#if sidebarOpen}
-					<span class="brand-name">Enclave</span>
-				{/if}
-			</a>
-			{#if sidebarOpen}
-				<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)} title="Collapse sidebar (Ctrl+B)">
-					<Icon name="chevronLeft" size={14} />
-				</button>
-			{:else}
-				<button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)} title="Expand sidebar (Ctrl+B)">
-					<Icon name="chevronRight" size={14} />
-				</button>
-			{/if}
-		</div>
-
+	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen} class:resizing={resizingSidebar} bind:this={sidebarEl} style={sidebarOpen && sidebarWidth ? `width:${sidebarWidth}px;min-width:${sidebarWidth}px` : ''}>
 		{#if sidebarOpen}
 			<nav class="side-nav">
 				<a href="/" class="nav-item" class:active={currentPath === '/'}>
@@ -749,6 +800,7 @@
 							<div
 								class="folder-row"
 								class:collapsed={collapsedFolders.has(folder.id)}
+								role="presentation"
 								oncontextmenu={(e: MouseEvent) => showFolderContextMenu(e, folder)}
 							>
 								<button class="folder-toggle" onclick={() => toggleFolder(folder.id)} aria-label="Toggle folder" title={collapsedFolders.has(folder.id) ? 'Expand' : 'Collapse'}>
@@ -975,6 +1027,9 @@
 				</div>
 				<div class="footer-row">
 					<div class="footer-actions">
+						<button class="icon-btn collapse-btn" onclick={() => (sidebarOpen = false)} title="Collapse sidebar (Ctrl+B)" aria-label="Collapse sidebar">
+							<Icon name="panelLeftClose" size={15} />
+						</button>
 						<button class="icon-btn" onclick={toggleNetwork} title="Toggle P2P sync">
 							<Icon name="network" size={15} />
 							<span class="btn-label">Sync</span>
@@ -1023,6 +1078,9 @@
 			</nav>
 			<div class="mini-spacer"></div>
 			<div class="mini-footer">
+				<button class="mini-btn" onclick={() => (sidebarOpen = true)} title="Expand sidebar (Ctrl+B)" aria-label="Expand sidebar">
+					<Icon name="panelLeftOpen" size={17} />
+				</button>
 				<button class="mini-btn" class:online={networkRunning} onclick={toggleNetwork} title="Toggle P2P sync">
 					<Icon name="network" size={17} />
 				</button>
@@ -1036,6 +1094,21 @@
 		{/if}
 	</aside>
 
+	<!-- Desktop sidebar resize handle (double-click resets to the density preset). -->
+	{#if sidebarOpen && !isMobile}
+		<div
+			class="sidebar-resizer"
+			class:active={resizingSidebar}
+			style="left:{sidebarRealWidth}px"
+			role="separator"
+			aria-orientation="vertical"
+			aria-label="Resize sidebar"
+			title="Drag to resize · double-click to reset"
+			onpointerdown={startSidebarResize}
+			ondblclick={resetSidebarWidth}
+		></div>
+	{/if}
+
 	<!-- Context Menu -->
 	{#if contextMenu}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1043,7 +1116,7 @@
 		<div class="context-overlay" onclick={() => (contextMenu = null)}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="context-menu" style="left:{contextMenu.x}px;top:{contextMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="context-menu" use:fitMenu style="left:{contextMenu.x}px;top:{contextMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<button class="context-item" onclick={() => { toggleFavorite(contextMenu!.doc.id); contextMenu = null; }}>
 					<Icon name={contextMenu.doc.is_favorite ? 'star' : 'star'} size={14} />
 					{contextMenu.doc.is_favorite ? 'Unfavorite' : 'Add to favorites'}
@@ -1080,7 +1153,7 @@
 		<div class="context-overlay" onclick={() => (folderMenu = null)}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="context-menu" style="left:{folderMenu.x}px;top:{folderMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="context-menu" use:fitMenu style="left:{folderMenu.x}px;top:{folderMenu.y}px;" onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<button class="context-item" onclick={() => { startRenameFolder(folderMenu!.folder); folderMenu = null; }}>
 					<Icon name="edit" size={14} />
 					Rename
@@ -1121,7 +1194,7 @@
 				</a>
 			{/if}
 			<div class="topbar-spacer"></div>
-			<button class="topbar-btn" onclick={() => { sidebarOpen = true; syncCardOpen = true; haptic(); }} aria-label="P2P sync" title="P2P sync">
+			<button class="topbar-btn" onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }} aria-label="P2P sync" title="P2P sync">
 				<span class="topbar-sync-dot" class:online={networkRunning} class:peers={connectedCount > 0}></span>
 			</button>
 			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
@@ -1144,7 +1217,7 @@
 				<span class="nav-tab-pill"><Icon name="graph" size={20} /></span>
 				<span>Graph</span>
 			</a>
-			<button class="nav-tab" class:active={sidebarOpen} onclick={() => { sidebarOpen = true; syncCardOpen = true; haptic(); }}>
+			<button class="nav-tab" class:active={sidebarOpen && syncCardOpen} onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }}>
 				<span class="nav-tab-pill">
 					<Icon name="network" size={20} />
 					{#if networkRunning}<span class="nav-tab-dot" class:online={connectedCount > 0}></span>{/if}
@@ -1173,7 +1246,7 @@
 		{@const doc = confirmDelete}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="confirm-backdrop" role="alertdialog" aria-modal="true" aria-label="Confirm permanent delete" onclick={() => (confirmDelete = null)}>
+		<div class="confirm-backdrop" role="alertdialog" aria-modal="true" aria-label="Confirm permanent delete" tabindex="-1" onclick={() => (confirmDelete = null)}>
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="confirm-dialog" onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<h3>Delete permanently?</h3>
@@ -1191,7 +1264,7 @@
 		{@const fld = confirmFolderDelete}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="confirm-backdrop" role="alertdialog" aria-modal="true" aria-label="Confirm folder delete" onclick={() => (confirmFolderDelete = null)}>
+		<div class="confirm-backdrop" role="alertdialog" aria-modal="true" aria-label="Confirm folder delete" tabindex="-1" onclick={() => (confirmFolderDelete = null)}>
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="confirm-dialog" onclick={(e: MouseEvent) => e.stopPropagation()}>
 				<h3>Delete folder?</h3>
@@ -1292,6 +1365,7 @@
 		flex: 1;
 		min-height: 0;
 		overflow: hidden;
+		position: relative;
 	}
 	.vault-wrap {
 		flex: 1;
@@ -1375,6 +1449,33 @@
 		transition: width 0.2s, min-width 0.2s;
 	}
 	.sidebar.collapsed { width: 48px; min-width: 48px; }
+	/* Dragging must track the pointer, not animate behind it. */
+	.sidebar.resizing { transition: none; }
+	/* Desktop-only handle sitting exactly on the sidebar's right edge. It lives
+	 * outside the sidebar's scroll box so sticky header/footer can't cover it. */
+	.sidebar-resizer {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 12px;
+		transform: translateX(-6px);
+		cursor: col-resize;
+		touch-action: none;
+		z-index: 6;
+	}
+	.sidebar-resizer::after {
+		content: '';
+		position: absolute;
+		left: 5px;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		border-radius: 2px;
+		background: transparent;
+		transition: background 0.12s;
+	}
+	.sidebar-resizer:hover::after,
+	.sidebar-resizer.active::after { background: var(--color-accent); }
 	:global([data-density="narrow"]) .sidebar { width: 220px; min-width: 220px; }
 	:global([data-density="wide"]) .sidebar { width: 320px; min-width: 320px; }
 	/* Same specificity as the density rules above — must come last so a
@@ -1394,60 +1495,13 @@
 	:global([data-density="wide"]) .nav-item { padding: 8px 12px; }
 	:global([data-density="wide"]) .tree-item { min-height: 34px; }
 
-	/* Native OS window chrome is back, so the sidebar owns the brand again. */
-	.sidebar-header {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 10px 10px 10px 14px;
-		background: var(--color-surface);
-	}
-
-	.sidebar-brand {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		color: var(--color-text);
-		text-decoration: none;
-	}
-	.brand-mark {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border-radius: 8px;
-	}
-	.brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
-
-	.sidebar-toggle {
-		background: none;
-		border: none;
-		color: var(--color-text-muted);
-		cursor: pointer;
-		padding: 5px;
-		border-radius: var(--radius-sm);
-		display: flex;
-	}
-	.sidebar-toggle:hover { color: var(--color-text); background: var(--color-surface-hover); }
-
 	/* ── Collapsed (mini) sidebar: icon rail ── */
-	.sidebar-header.mini {
-		flex-direction: column;
-		gap: 6px;
-		padding: 12px 0 8px;
-	}
-	.sidebar-header.mini .sidebar-brand { justify-content: center; }
-
 	.mini-nav {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 2px;
-		padding: 8px 0;
+		padding: 12px 0 8px;
 		border-bottom: 1px solid var(--color-border);
 	}
 	.mini-btn {
@@ -1501,7 +1555,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		padding: 6px 8px;
+		padding: 10px 8px 6px;
 		border-bottom: 1px solid var(--color-border);
 	}
 	.nav-item {
@@ -1799,13 +1853,13 @@
 	.footer-row {
 		display: flex;
 		align-items: center;
-		justify-content: flex-end;
+		justify-content: center;
 		gap: 8px;
 	}
 	.footer-actions {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
 	}
 	.sync-dot {
 		width: 7px;
@@ -1952,8 +2006,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		border: none;
 		border-radius: var(--radius-md);
 		background: none;
@@ -2035,6 +2089,9 @@
 		box-shadow: var(--shadow-lg);
 		padding: 5px;
 		min-width: 180px;
+		/* Tall menus scroll instead of running off the bottom. */
+		max-height: calc(100vh - 16px);
+		overflow-y: auto;
 	}
 	.context-item {
 		display: flex;
@@ -2147,7 +2204,7 @@
 		transition: background 0.1s;
 	}
 	.palette-item:hover { background: var(--color-surface-hover); }
-	.palette-item.palette-active { background: var(--color-surface-hover); box-shadow: inset 2px 0 0 var(--color-accent); }
+	:global(.palette-item.palette-active) { background: var(--color-surface-hover); box-shadow: inset 2px 0 0 var(--color-accent); }
 	.palette-icon { display: flex; color: var(--color-text-faint); }
 	.palette-item-text {
 		display: flex;
@@ -2293,10 +2350,7 @@
 			border-right: 1px solid var(--color-border);
 		}
 		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
-		.sidebar-header { padding: calc(10px + env(safe-area-inset-top)) 16px 8px; }
-		.sidebar-header .brand-mark { width: 30px; height: 30px; border-radius: 9px; }
-		.brand-name { font-size: 18px; }
-		.side-nav { gap: 4px; padding: 10px; }
+		.side-nav { gap: 4px; padding: calc(12px + env(safe-area-inset-top)) 10px 10px; }
 		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
 		.section-head { padding: 14px 16px 6px; }
 		.section-title { font-size: 12px; }
@@ -2339,7 +2393,8 @@
 		.peer-add-input { font-size: 13px; padding: 9px 10px; }
 		.peer-add-btn { padding: 0 14px; }
 
-		.sidebar-toggle { display: none; }
+		/* Sidebar collapse is desktop-only (phones use the drawer + back). */
+		.collapse-btn { display: none; }
 		.sidebar.open { transform: translateX(0); }
 
 		.mobile-topbar { display: flex; }
@@ -2403,7 +2458,7 @@
 		}
 
 		/* Command palette: near-full-screen, thumb-reachable. */
-		.overlay { padding-top: 6vh; align-items: flex-start; }
+		.overlay { padding-top: calc(6vh + env(safe-area-inset-top)); align-items: flex-start; }
 		.command-palette {
 			width: 94vw;
 			max-width: 94vw;
@@ -2415,5 +2470,11 @@
 		.palette-input { font-size: 16px; min-height: 28px; }
 		.palette-item { padding: 12px 10px; min-height: 48px; }
 		.palette-group-title { padding: 10px 10px 4px; }
+
+		/* Long-press menus are the sidebar's mobile context UI too — give them
+		   thumb-sized rows and a bit more width. */
+		.context-menu { min-width: 210px; }
+		.context-item { padding: 12px 12px; font-size: 15px; min-height: 48px; }
+		.context-group-label { padding: 8px 12px 4px; }
 	}
 </style>

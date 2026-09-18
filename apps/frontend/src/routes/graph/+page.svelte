@@ -9,6 +9,11 @@
 	let links = $state<Array<{ source: string; target: string }>>([]);
 	let canvasEl = $state<HTMLCanvasElement | undefined>();
 	let loading = $state(true);
+	// Simulation lifecycle: one rAF loop per render pass, cancelled on resize,
+	// theme change and unmount — overlapped loops burned CPU and kept drawing
+	// after the page was gone.
+	let rafId = 0;
+	let canvasObserver: ResizeObserver | undefined;
 
 	async function loadGraph() {
 		try {
@@ -32,6 +37,7 @@
 		if (!canvasEl || documents.length === 0) return;
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
+		cancelAnimationFrame(rafId);
 
 		// Read matte tokens live so the canvas tracks theme + accent changes.
 		const cssVar = (n: string, fb: string) =>
@@ -141,7 +147,7 @@
 			}
 
 			if (totalEnergy > 0.5) {
-				requestAnimationFrame(simulate);
+				rafId = requestAnimationFrame(simulate);
 			}
 		}
 
@@ -149,27 +155,39 @@
 			const rect = canvasEl!.getBoundingClientRect();
 			const mx = e.clientX - rect.left;
 			const my = e.clientY - rect.top;
+			// Fingers need a much bigger hit target than a mouse pointer.
+			const hitRadius = matchMedia('(pointer: coarse)').matches ? 24 : 12;
 			for (const n of nodes) {
 				const dx = mx - n.x;
 				const dy = my - n.y;
-				if (dx * dx + dy * dy < 100) {
+				if (dx * dx + dy * dy < hitRadius * hitRadius) {
 					goto(`/${n.id}`);
 					return;
 				}
 			}
 		};
 
-		requestAnimationFrame(simulate);
+		rafId = requestAnimationFrame(simulate);
 	}
 
 	$effect(() => {
 		loadGraph();
 	});
-	// Re-render when the graph is ready, the window resizes, or the theme
-	// changes (canvas colors are read from live CSS tokens).
+	// Re-render when the graph is ready, the theme changes (canvas colors are
+	// read from live CSS tokens) or the canvas is resized.
 	$effect(() => {
 		const _t = theme.value;
-		if (!loading && canvasEl) render();
+		if (loading || !canvasEl) return;
+		// Fit node positions to the bitmap whenever the pane changes size —
+		// without this the canvas bitmap stays stretched on window resize.
+		canvasObserver = new ResizeObserver(() => render());
+		canvasObserver.observe(canvasEl);
+		render();
+		return () => {
+			cancelAnimationFrame(rafId);
+			canvasObserver?.disconnect();
+			canvasObserver = undefined;
+		};
 	});
 </script>
 

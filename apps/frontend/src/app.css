@@ -3,6 +3,9 @@
    diffused shadows. No translucency or backdrop blur is used anywhere by
    design — surfaces are solid so contrast stays crisp on every screen. */
 :root {
+	/* Native widgets (scrollbars, selects, autofill, selection) follow the
+	   rendered theme, not the static <meta name="color-scheme"> preference. */
+	color-scheme: dark;
 	--color-bg: #16130f;          /* window base — deep warm charcoal */
 	--color-surface: #201c17;     /* sidebar, panels, cards */
 	--color-surface-hover: #2a251f;
@@ -38,6 +41,7 @@
 
 /* Warm-paper matte light theme */
 [data-theme="light"] {
+	color-scheme: light;
 	--color-bg: #f1ede5;
 	--color-surface: #faf7f1;
 	--color-surface-hover: #ebe5db;
@@ -134,7 +138,8 @@ html[data-bg="glassy"] .picker,
 html[data-bg="glassy"] .export-menu,
 html[data-bg="glassy"] .meta-popover,
 html[data-bg="glassy"] .ai-panel,
-html[data-bg="glassy"] .confirm-dialog {
+html[data-bg="glassy"] .confirm-dialog,
+html[data-bg="glassy"] .vault-card {
 	background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
 	backdrop-filter: blur(24px) saturate(160%);
 	-webkit-backdrop-filter: blur(24px) saturate(160%);

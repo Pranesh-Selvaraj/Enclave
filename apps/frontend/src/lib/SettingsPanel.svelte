@@ -95,15 +95,24 @@
 		if (ai.enabled) refreshModels();
 	}
 
-	function handleBackdropKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') open = false;
-	}
+	// Own the Escape key while open: the backdrop never gets focus, so a
+	// keydown handler on it would never fire. The child update dialog gets
+	// first refusal so Escape doesn't collapse the panel behind it too.
+	$effect(() => {
+		if (!open) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape' || updateDialogOpen) return;
+			open = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
 </script>
 
 {#if open}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Settings" onclick={() => (open = false)} onkeydown={handleBackdropKeydown}>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+	<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1" onclick={() => (open = false)}>
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<div class="settings-panel" role="document" onclick={(e: MouseEvent) => e.stopPropagation()}>
 			<div class="settings-header">
 				<h2>Settings</h2>
@@ -414,11 +423,12 @@ sentinel check</pre>
 	.settings-panel {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		width: 420px;
 		max-width: 100%;
 		max-height: min(90vh, 760px);
 		overflow-y: auto;
+		overscroll-behavior: contain;
 		box-shadow: var(--shadow-lg);
 		animation: settings-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
 	}
@@ -469,6 +479,7 @@ sentinel check</pre>
 	.swatch {
 		width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
 		cursor: pointer; padding: 0;
+		transition: transform 0.12s ease-out, border-color 0.12s;
 	}
 	.swatch.active { border-color: var(--color-text); }
 	.swatch:hover { transform: scale(1.15); }
@@ -576,6 +587,7 @@ sentinel check</pre>
 			width: 100%;
 			max-width: 100%;
 			max-height: 92vh;
+			max-height: 92dvh;
 			border-radius: 18px 18px 0 0;
 			border-bottom: none;
 		}

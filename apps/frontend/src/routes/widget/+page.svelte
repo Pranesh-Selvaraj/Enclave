@@ -88,7 +88,13 @@
 	function close() {
 		invoke('hide_widget').catch(() => {});
 	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') close();
+	}
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <main class="widget">
 	<header class="w-head">
@@ -153,6 +159,7 @@
 	.widget {
 		width: 100vw;
 		height: 100vh;
+		height: 100dvh;
 		box-sizing: border-box;
 		padding: 10px;
 		background: transparent;

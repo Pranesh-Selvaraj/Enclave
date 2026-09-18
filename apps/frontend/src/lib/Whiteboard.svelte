@@ -1070,14 +1070,26 @@
 	/* ── Phone layout: toolbar within thumb reach, real touch targets ── */
 	@media (max-width: 768px) {
 		.wb-wrap { margin-bottom: 12px; }
+		/* One thumb-high row pinned to the bottom; the groups scroll
+		   horizontally instead of stacking five rows over the canvas. */
 		.wb-toolbar {
 			top: auto;
 			bottom: 10px;
-			gap: 4px;
+			left: 8px;
+			right: 8px;
+			transform: none;
+			max-width: none;
+			flex-wrap: nowrap;
+			justify-content: flex-start;
+			overflow-x: auto;
+			overscroll-behavior-x: contain;
+			gap: 2px;
 			padding: 4px;
-			max-width: calc(100% - 16px);
+			scrollbar-width: none;
 		}
-		.tool-group { padding: 0 2px; gap: 1px; }
-		.tool-btn { width: 36px; height: 36px; }
+		.wb-toolbar::-webkit-scrollbar { display: none; }
+		.tool-group { flex: 0 0 auto; padding: 0 2px; gap: 1px; }
+		.wb-toolbar .tool-btn { width: 40px; height: 40px; }
+		.wb-toolbar .pres-btn { width: auto; padding: 0 12px; }
 	}
 </style>

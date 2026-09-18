@@ -311,7 +311,9 @@
 		display: flex;
 		height: 100%;
 		width: 100%;
-		background-color: var(--color-bg);
+		/* Transparent so the window background (soft/glassy gradients included)
+		   shows through — the login page uses the same theme as the app. */
+		background-color: transparent;
 		/* Tall cards (seed phrase, password setup) must scroll on short
 		   screens instead of being clipped. */
 		overflow-y: auto;
@@ -334,11 +336,6 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-	}
-	/* The brand logo is its own tile — center it like the old text mark. */
-	.vault-card > svg {
-		display: block;
-		margin: 0 auto 18px;
 	}
 
 	.brand-mark {

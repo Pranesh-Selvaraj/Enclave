@@ -76,6 +76,7 @@
 	{:else if status === 'locked'}
 		<div class="hint">Vault is locked — unlock Enclave, then try Quick Capture again.</div>
 	{:else}
+		<!-- svelte-ignore a11y_autofocus -->
 		<textarea
 			class="note"
 			bind:value={note}
@@ -101,7 +102,12 @@
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
-		background: var(--color-bg);
+		/* Dynamic viewport height: the software keyboard/toolbars on Android
+		   must not push the composer under the screen. */
+		height: 100dvh;
+		/* Transparent: the window background carries the theme (incl. soft/
+		   glassy gradients) so quick capture matches the main app. */
+		background: transparent;
 	}
 	.note {
 		flex: 1;
@@ -113,14 +119,14 @@
 		font-size: 15px;
 		line-height: 1.6;
 		font-family: inherit;
-		padding: 14px 16px;
+		padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
 	}
 	.note::placeholder { color: var(--color-text-faint); }
 	.bar {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 8px 16px;
+		padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
 		border-top: 1px solid var(--color-border);
 		color: var(--color-text-faint);
 		font-size: 12px;
@@ -134,8 +140,13 @@
 		font-family: var(--font-mono);
 	}
 	.hint {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		padding: 24px;
 		color: var(--color-text-muted);
 		font-size: 14px;
+		text-align: center;
 	}
 </style>
