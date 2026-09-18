@@ -748,20 +748,45 @@
 		return () => unlisten?.();
 	});
 
-	// Android: lock the vault when the app loses visibility (app switcher,
-	// screen off, another app on top). Desktop keeps its behavior — minimizing
-	// a window must not wipe the session (issue #2, docs/android-mobile.md).
+	// Bridge for the Android shell: native surfaces (widgets, share sheet,
+	// launcher shortcuts) call `window.__enclaveRoute(path)` so routing stays
+	// inside the SPA. A full page load would mark the old document hidden and
+	// trip the Android auto-lock, wiping the open vault.
+	$effect(() => {
+		(window as Window & { __enclaveRoute?: (path: string) => void }).__enclaveRoute = (path: string) => goto(path);
+		return () => {
+			delete (window as Window & { __enclaveRoute?: (path: string) => void }).__enclaveRoute;
+		};
+	});
+
+	// Android: lock the vault when the app really leaves the foreground (app
+	// switcher, screen off, another app on top). A short grace period is
+	// required: Android pauses/resumes the activity for a share or widget
+	// intent, which also reports the document hidden for a moment. Desktop
+	// keeps its behavior — minimizing must not wipe the session (issue #2).
 	$effect(() => {
 		if (!vaultUnlocked || !navigator.userAgent.includes('Android')) return;
+		let hideTimer: ReturnType<typeof setTimeout> | undefined;
 		const onHide = () => {
-			if (document.hidden) {
-				invoke('lock_vault')
-					.then(() => (vaultUnlocked = false))
-					.catch(() => {});
-			}
+			clearTimeout(hideTimer);
+			if (!document.hidden) return;
+			hideTimer = setTimeout(() => {
+				if (document.hidden) invoke('lock_vault').then(() => (vaultUnlocked = false)).catch(() => {});
+			}, 1500);
 		};
 		document.addEventListener('visibilitychange', onHide);
-		return () => document.removeEventListener('visibilitychange', onHide);
+		return () => {
+			clearTimeout(hideTimer);
+			document.removeEventListener('visibilitychange', onHide);
+		};
+	});
+
+	// Capture unlocks through its own VaultGuard (sharing into a backgrounded
+	// app lands there); keep this shell's state in step.
+	$effect(() => {
+		const onUnlocked = () => (vaultUnlocked = true);
+		window.addEventListener('enclave:unlocked', onUnlocked);
+		return () => window.removeEventListener('enclave:unlocked', onUnlocked);
 	});
 </script>
 

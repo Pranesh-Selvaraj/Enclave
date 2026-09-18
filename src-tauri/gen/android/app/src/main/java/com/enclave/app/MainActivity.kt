@@ -40,8 +40,7 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     this.webView = webView as? RustWebView
-    pendingRoute?.let { routeTo(it) }
-    pendingRoute = null
+    applyPendingRoute()
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,8 +58,7 @@ class MainActivity : TauriActivity() {
     // the pending route already set.
     pendingRoute = routeFor(intent)
     super.onCreate(savedInstanceState)
-    pendingRoute?.let { routeTo(it) }
-    pendingRoute = null
+    applyPendingRoute()
     startWidgetCacheLoop()
   }
 
@@ -103,7 +101,47 @@ class MainActivity : TauriActivity() {
   }
 
   private fun routeTo(path: String) {
-    webView?.loadUrlMainThread("tauri://localhost$path")
+    val wv = webView ?: return
+    // Warm route: navigate inside the SPA through the bridge the web app
+    // installs. A full page load would mark the old document hidden, and the
+    // Android auto-lock would then wipe the open vault out from under us.
+    wv.evaluateJavascript(
+      "window.__enclaveRoute && window.__enclaveRoute(${org.json.JSONObject.quote(path)})",
+      null,
+    )
+  }
+
+  /** Cold start: load the route URL once the web view has an origin. */
+  private fun loadRouteUrl(path: String) {
+    val wv = webView ?: return
+    // Tauri serves the app from `http://tauri.localhost` on Android (and
+    // Windows) — `tauri://localhost` exists on desktop WebKit only and fails
+    // here with ERR_UNKNOWN_URL_SCHEME. Dev builds resolve the same way.
+    val base = wv.url?.let { runCatching { java.net.URI(it) }.getOrNull() }
+    val target = if (base?.authority != null) {
+      java.net.URI(
+        base.scheme,
+        base.authority,
+        path.substringBefore('?'),
+        if ('?' in path) path.substringAfter('?') else null,
+        null,
+      ).toString()
+    } else {
+      "http://tauri.localhost$path"
+    }
+    wv.loadUrlMainThread(target)
+  }
+
+  /** Applies a cold-start route once the web view has an origin to resolve it. */
+  private fun applyPendingRoute() {
+    val route = pendingRoute ?: return
+    val wv = webView
+    if (wv == null || wv.url == null) {
+      wv?.postDelayed({ applyPendingRoute() }, 50)
+      return
+    }
+    pendingRoute = null
+    loadRouteUrl(route)
   }
 
   /**

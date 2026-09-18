@@ -1,17 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { invoke } from '$lib/backend.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import VaultGuard from '$lib/VaultGuard.svelte';
 
-	// Shared text (Android share target, widgets) arrives as ?text=…
-	let note = $state($page.url.searchParams.get('text') ?? '');
+	// Shared text (Android share target, widgets) arrives as ?text=… — read it
+	// on mount; touching searchParams during prerender throws.
+	let note = $state('');
 	let status = $state<'loading' | 'ready' | 'locked' | 'novault'>('loading');
 	let saving = $state(false);
 
 	onMount(async () => {
-		// Auto-unlock with the stored key (password vaults). Seed-phrase vaults
-		// keep no key file — user must unlock the main window first.
+		note = $page.url.searchParams.get('text') ?? '';
 		try {
 			const init = await invoke<boolean>('is_vault_initialized');
 			if (!init) {
@@ -19,9 +21,11 @@
 				return;
 			}
 			try {
-				const key = await invoke<number[]>('load_vault_key');
-				await invoke('unlock_vault', { key });
-				status = 'ready';
+				// The vault is shared with the main app; a cold start or a share
+				// from a backgrounded app is locked (the stored key file is
+				// password-encrypted, by design) — the guard below unlocks inline.
+				const unlocked = await invoke<boolean>('is_vault_unlocked');
+				status = unlocked ? 'ready' : 'locked';
 			} catch {
 				status = 'locked';
 			}
@@ -30,7 +34,19 @@
 		}
 	});
 
-	function close() {
+	function handleUnlock() {
+		// Tell the shell so it doesn't show the guard again on the way back.
+		window.dispatchEvent(new CustomEvent('enclave:unlocked'));
+		status = 'ready';
+	}
+
+	function leave() {
+		// Android renders capture in the main window — land on the app home.
+		// Desktop capture is its own popup window: close it.
+		if (navigator.userAgent.includes('Android')) {
+			goto('/');
+			return;
+		}
 		getCurrentWindow().close();
 	}
 
@@ -51,7 +67,7 @@
 				},
 				sortOrder: 0,
 			});
-			close();
+			leave();
 		} catch (e) {
 			console.error('Quick capture failed:', e);
 			saving = false;
@@ -63,7 +79,7 @@
 			e.preventDefault();
 			save();
 		} else if (e.key === 'Escape') {
-			close();
+			leave();
 		}
 	}
 </script>
@@ -76,7 +92,7 @@
 	{:else if status === 'novault'}
 		<div class="hint">No vault yet — open Enclave and create one first.</div>
 	{:else if status === 'locked'}
-		<div class="hint">Vault is locked — unlock Enclave, then try Quick Capture again.</div>
+		<VaultGuard onunlock={handleUnlock} />
 	{:else}
 		<!-- svelte-ignore a11y_autofocus -->
 		<textarea
