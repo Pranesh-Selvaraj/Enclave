@@ -1,6 +1,8 @@
 package com.enclave.app
 
 import android.appwidget.AppWidgetManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -65,6 +67,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -266,6 +269,50 @@ private fun KeepApp(
             // locked, reading it would throw). Unlocking: rebuild + render.
             if (unlocked) WidgetStore.refreshAndUpdate(context, core)
             else WidgetStore.updateAll(context)
+        }
+    }
+
+    // Seamless sync: remember that sync is on, re-arm it when the vault opens
+    // (the key is only available then), when the network returns and as a slow
+    // safety net — the foreground service keeps the socket alive meanwhile.
+    DisposableEffect(stage) {
+        if (stage !is Stage.Notes) return@DisposableEffect onDispose {}
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        fun rearm() {
+            if (!SyncPrefs.enabled(context)) return
+            scope.launch {
+                try {
+                    val status = withContext(Dispatchers.IO) { core.networkStatus() }
+                    if (!status.running) {
+                        withContext(Dispatchers.IO) { core.startNetwork(null) }
+                        android.util.Log.i("EnclaveSync", "sync re-armed after network change")
+                    }
+                } catch (_: Exception) {
+                    // vault locked mid-flight — next unlock re-arms
+                }
+            }
+        }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = rearm()
+        }
+        cm.registerDefaultNetworkCallback(callback)
+        rearm()
+        onDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
+    }
+
+    // Slow safety net while unlocked (silent socket death, missed callbacks).
+    LaunchedEffect(stage) {
+        if (stage !is Stage.Notes) return@LaunchedEffect
+        while (true) {
+            delay(30_000)
+            if (!SyncPrefs.enabled(context)) continue
+            try {
+                val status = withContext(Dispatchers.IO) { core.networkStatus() }
+                if (!status.running) {
+                    withContext(Dispatchers.IO) { core.startNetwork(null) }
+                    android.util.Log.i("EnclaveSync", "sync re-armed by keep-alive")
+                }
+            } catch (_: Exception) { /* locked — ignore */ }
         }
     }
 
@@ -799,7 +846,12 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
 
             if (!running) {
                 Button(
-                    onClick = { run { core.startNetwork(null) } },
+                    onClick = {
+                        run {
+                            core.startNetwork(null)
+                            SyncPrefs.setEnabled(context, true)
+                        }
+                    },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Start sync on this network") }
@@ -873,7 +925,12 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
                 }
                 Spacer(Modifier.height(10.dp))
                 TextButton(
-                    onClick = { run { core.stopNetwork() } },
+                    onClick = {
+                        run {
+                            core.stopNetwork()
+                            SyncPrefs.setEnabled(context, false)
+                        }
+                    },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Stop sync") }
