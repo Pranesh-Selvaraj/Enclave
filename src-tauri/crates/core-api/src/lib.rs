@@ -24,6 +24,13 @@ pub use core_db::{
 };
 pub use core_network::{NetworkState, NetworkStatus, Peer, PeerMessage};
 
+// UniFFI surface for native shells (Android Kotlin). See `ffi.rs`.
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
+
+#[cfg(feature = "uniffi")]
+pub mod ffi;
+
 const DB_FILENAME: &str = "enclave.db";
 const KEY_FILENAME: &str = "vault.key";
 
@@ -489,6 +496,12 @@ impl EnclaveCore {
         self.network.status().await
     }
 
+    /// Merge a peer snapshot (doc-level LWW). Used by the built-in message
+    /// handler and by shells that drive the sync loop themselves.
+    pub fn merge_snapshot(&self, docs: &[Document], blocks: &[Block]) -> CoreResult<SyncStats> {
+        self.with_db(|db| core_db::sync_merge(db, docs, blocks).map_err(db_err))
+    }
+
     // ── Sync protocol (LAN v3 — incremental) ────────────────────────────────
 
     /// Wire protocol: both sides send hello on connect; each answers with a
@@ -573,7 +586,7 @@ impl EnclaveCore {
                         return;
                     }
                 };
-                match self.with_db(|db| core_db::sync_merge(db, &docs, &blocks).map_err(db_err)) {
+                match self.merge_snapshot(&docs, &blocks) {
                     Ok(stats) => {
                         self.network.mark_synced().await;
                         let ack = serde_json::json!({
