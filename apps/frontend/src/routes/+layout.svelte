@@ -18,6 +18,13 @@
 	theme.init();
 
 	let vaultUnlocked = $state(false);
+	// Native Android shell + this WebView share one core: if it is already
+	// unlocked (editor island opened from the Keep shell), skip the guard.
+	$effect(() => {
+		invoke<boolean>('is_vault_unlocked').then((u) => {
+			if (u) vaultUnlocked = true;
+		}).catch(() => {});
+	});
 	let documents = $state<Document[]>([]);
 	let archivedDocs = $state<Document[]>([]);
 	let sidebarOpen = $state(true);

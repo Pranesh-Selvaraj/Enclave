@@ -61,6 +61,9 @@ rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"]
 # JNI bridge to the foreground SyncService (issue #60) — already in the tree
 # via tao, this makes it a direct dependency for android_sync.rs.
 jni = "0.21"
+# UniFFI bindings live in this cdylib on Android so the native Keep shell and
+# the Tauri editor island share one core (one vault, one network, one loop).
+core-api = { path = "crates/core-api", features = ["uniffi"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

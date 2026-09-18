@@ -59,16 +59,6 @@ android {
     }
 }
 
-// Native shell support: build core-api for the Android ABIs and drop the
-// .so files into jniLibs before the JNI folders are merged.
-val buildCoreApi by tasks.registering(Exec::class) {
-    workingDir = file("${projectDir}/../../..")
-    commandLine("bash", "scripts/build-core-api-android.sh")
-}
-tasks.matching { it.name.contains("JniLibFolders") }.configureEach {
-    dependsOn(buildCoreApi)
-}
-
 rust {
     rootDirRel = "../../../"
 }

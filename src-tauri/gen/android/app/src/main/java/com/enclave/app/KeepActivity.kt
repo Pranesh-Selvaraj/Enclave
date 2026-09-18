@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -67,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -102,11 +104,15 @@ class KeepActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // JNA finds libcore_api.so through the app's native library dir.
+        // JNA loads the UniFFI surface from the Tauri library so both shells
+        // share one Rust core (one vault, one network stack, one sync loop).
         System.setProperty("jna.library.path", applicationInfo.nativeLibraryDir)
+        System.setProperty("uniffi.component.core_api.libraryOverride", "enclave_lib")
         pendingShare.value = extractSharedText(intent)
         pendingCreate.value = extractCreateAction(intent)
-        setContent { EnclaveTheme { KeepApp(filesDir.absolutePath, pendingShare, pendingCreate) } }
+        // Tauri resolves app_data_dir to the app data dir; use the same one so
+        // vaults created before the native shell keep working.
+        setContent { EnclaveTheme { KeepApp(applicationInfo.dataDir, pendingShare, pendingCreate) } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -776,6 +782,7 @@ private fun NoteDetailScreen(
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     var tasks by remember { mutableStateOf<List<TaskItem>>(emptyList()) }
@@ -823,10 +830,11 @@ private fun NoteDetailScreen(
         delay(700)
         withContext(Dispatchers.IO) {
             core.updateDocumentTitle(docId, title)
-            when {
-                checklist -> core.upsertBlock("$docId-checklist", docId, "taskList", taskJson(tasks), 1.0)
-                else -> core.upsertBlock("$docId-content", docId, "doc", docJson(body), 0.0)
-            }
+            // Both modes write the SAME content block the web editor uses:
+            // checklists are taskList nodes inside the doc JSON, not a
+            // separate block (the web editor would not render those).
+            val json = if (checklist) taskListDocJson(tasks) else docJson(body)
+            core.upsertBlock("$docId-content", docId, "doc", json, 0.0)
         }
     }
 
@@ -838,6 +846,11 @@ private fun NoteDetailScreen(
                 },
                 title = {},
                 actions = {
+                    IconButton(onClick = {
+                        // Full block editor (whiteboards, tables, databases) in
+                        // the Tauri WebView — same core, already unlocked.
+                        context.startActivity(Intent(context, MainActivity::class.java))
+                    }) { Icon(Icons.Default.ExitToApp, contentDescription = "Open full editor") }
                     IconButton(onClick = {
                         // Switch text ↔ checklist, converting the content.
                         if (checklist) {
@@ -1038,10 +1051,14 @@ private fun bodyOf(core: FfiCore, docId: String): String {
 /** Checklist items from the document's `taskList` block. */
 private fun tasksOf(core: FfiCore, docId: String): List<TaskItem> {
     return try {
-        val block = core.getBlocks(docId).firstOrNull { it.blockType == "taskList" } ?: return emptyList()
-        val content = JSONObject(block.contentJson).optJSONArray("content") ?: return emptyList()
-        (0 until content.length()).mapNotNull { i ->
-            val item = content.optJSONObject(i) ?: return@mapNotNull null
+        val doc = core.getBlocks(docId).firstOrNull { it.blockType == "doc" } ?: return emptyList()
+        val nodes = JSONObject(doc.contentJson).optJSONArray("content") ?: return emptyList()
+        val taskList = (0 until nodes.length())
+            .mapNotNull { nodes.optJSONObject(it) }
+            .firstOrNull { it.optString("type") == "taskList" } ?: return emptyList()
+        val items = taskList.optJSONArray("content") ?: return emptyList()
+        (0 until items.length()).mapNotNull { i ->
+            val item = items.optJSONObject(i) ?: return@mapNotNull null
             if (item.optString("type") != "taskItem") return@mapNotNull null
             TaskItem(
                 text = jsonText(item).trim(),
@@ -1058,6 +1075,8 @@ private fun jsonText(node: JSONObject, out: StringBuilder = StringBuilder()): St
     when (node.optString("type")) {
         "text" -> out.append(node.optString("text"))
         "hardBreak" -> out.append("\n")
+        // Checklist rows are siblings; keep their texts apart in snippets.
+        "taskItem" -> out.append(" ")
     }
     node.optJSONArray("content")?.let { children ->
         for (i in 0 until children.length()) {
@@ -1082,6 +1101,14 @@ private fun docJson(text: String): String {
         }
     }
     return JSONObject().put("type", "doc").put("content", JSONArray(paragraphs)).toString()
+}
+
+/** Checklist items → a `doc` whose content is one `taskList` node. */
+private fun taskListDocJson(tasks: List<TaskItem>): String {
+    return JSONObject()
+        .put("type", "doc")
+        .put("content", JSONArray().put(JSONObject(taskJson(tasks))))
+        .toString()
 }
 
 /** Checklist items → TipTap `taskList` JSON (what the web editor renders). */

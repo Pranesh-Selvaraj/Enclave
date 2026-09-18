@@ -39,6 +39,13 @@ fn is_vault_initialized(state: tauri::State<AppState>) -> bool {
     state.core.is_vault_initialized()
 }
 
+/// True when the shared core is already unlocked — the editor island uses it
+/// to skip the vault guard after the native shell unlocked the vault.
+#[tauri::command(async)]
+fn is_vault_unlocked(state: tauri::State<AppState>) -> bool {
+    state.core.is_unlocked()
+}
+
 #[tauri::command(async)]
 fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
     state.core.init_vault(&key).map_err(msg)
@@ -510,7 +517,9 @@ pub fn run() {
                 .expect("Failed to create app data directory");
 
             // DB starts locked — user must call init_vault or unlock_vault.
-            let core = Arc::new(core_api::EnclaveCore::new(app_dir));
+            // Shared process-wide core: the native shell may have created and
+            // unlocked it before the editor island opened.
+            let core = core_api::EnclaveCore::global(app_dir);
             app.manage(AppState { core: core.clone() });
 
             // The core owns the peer-message loop; events fan out to shells.
@@ -555,6 +564,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // vault lifecycle
             is_vault_initialized,
+            is_vault_unlocked,
             init_vault,
             unlock_vault,
             lock_vault,

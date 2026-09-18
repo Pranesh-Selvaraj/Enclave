@@ -257,7 +257,8 @@ pub struct FfiCore {
 impl FfiCore {
     #[uniffi::constructor]
     pub fn new(app_dir: String) -> Arc<Self> {
-        Arc::new(Self { core: Arc::new(EnclaveCore::new(app_dir)) })
+        // Shared with the Tauri editor island when both run in one process.
+        Arc::new(Self { core: EnclaveCore::global(app_dir) })
     }
 
     /// Consume peer sync messages for the process lifetime (merges snapshots

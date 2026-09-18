@@ -13,7 +13,7 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rusqlite::Connection;
 
@@ -35,6 +35,11 @@ pub mod ffi;
 
 const DB_FILENAME: &str = "enclave.db";
 const KEY_FILENAME: &str = "vault.key";
+
+/// Process-wide core. One process = one vault, one network stack, one sync
+/// loop. Native Android and the Tauri editor island live in the same process,
+/// so they must share this instead of opening two connections.
+static GLOBAL_CORE: OnceLock<Arc<EnclaveCore>> = OnceLock::new();
 
 // ── Errors ──────────────────────────────────────────────────────────────────
 
@@ -131,6 +136,22 @@ impl EnclaveCore {
     /// Subscribe to sync events (sync-done / peer-connect-failed).
     pub fn subscribe_sync_events(&self) -> tokio::sync::broadcast::Receiver<SyncEvent> {
         self.sync_events.subscribe()
+    }
+
+    /// The process-wide core, created on first use. The first caller's
+    /// `app_dir` wins — shells must resolve the same directory.
+    pub fn global(app_dir: impl Into<PathBuf>) -> Arc<Self> {
+        GLOBAL_CORE.get_or_init(|| Arc::new(Self::new(app_dir))).clone()
+    }
+
+    /// The process-wide core if anything created it yet.
+    pub fn global_if_init() -> Option<Arc<Self>> {
+        GLOBAL_CORE.get().cloned()
+    }
+
+    /// True while the vault connection is open (password/seed entered).
+    pub fn is_unlocked(&self) -> bool {
+        self.db.lock().map(|g| g.is_some()).unwrap_or(false)
     }
 
     pub fn app_dir(&self) -> &Path {
