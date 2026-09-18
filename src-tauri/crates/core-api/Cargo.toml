@@ -5,6 +5,9 @@ edition = "2021"
 description = "Shell-agnostic Enclave API: vault, documents, blocks, search and sync. Consumed by the Tauri desktop shell and by the native Android app (UniFFI/JNI)."
 license = "MIT"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 core-db = { path = "../core-db" }
 core-network = { path = "../core-network" }
