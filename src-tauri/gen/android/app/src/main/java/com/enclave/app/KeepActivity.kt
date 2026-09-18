@@ -285,6 +285,7 @@ private fun KeepApp(
                     val status = withContext(Dispatchers.IO) { core.networkStatus() }
                     if (!status.running) {
                         withContext(Dispatchers.IO) { core.startNetwork(null) }
+                        withContext(Dispatchers.Main) { SyncServiceCtl.start(context) }
                         android.util.Log.i("EnclaveSync", "sync re-armed after network change")
                     }
                 } catch (_: Exception) {
@@ -310,6 +311,7 @@ private fun KeepApp(
                 val status = withContext(Dispatchers.IO) { core.networkStatus() }
                 if (!status.running) {
                     withContext(Dispatchers.IO) { core.startNetwork(null) }
+                    withContext(Dispatchers.Main) { SyncServiceCtl.start(context) }
                     android.util.Log.i("EnclaveSync", "sync re-armed by keep-alive")
                 }
             } catch (_: Exception) { /* locked — ignore */ }
@@ -417,6 +419,7 @@ private fun KeepApp(
             onLock = {
                 scope.launch {
                     withContext(Dispatchers.IO) { core.lockVault() }
+                    withContext(Dispatchers.Main) { SyncServiceCtl.stop(context) }
                     error = null
                     openDocId = null
                     stage = Stage.Unlock
@@ -850,6 +853,7 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
                         run {
                             core.startNetwork(null)
                             SyncPrefs.setEnabled(context, true)
+                            SyncServiceCtl.start(context)
                         }
                     },
                     enabled = !busy,
@@ -929,6 +933,7 @@ private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Uni
                         run {
                             core.stopNetwork()
                             SyncPrefs.setEnabled(context, false)
+                            SyncServiceCtl.stop(context)
                         }
                     },
                     enabled = !busy,
