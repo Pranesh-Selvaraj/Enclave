@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { invoke } from '$lib/backend.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 
-	let note = $state('');
+	// Shared text (Android share target, widgets) arrives as ?text=…
+	let note = $state($page.url.searchParams.get('text') ?? '');
 	let status = $state<'loading' | 'ready' | 'locked' | 'novault'>('loading');
 	let saving = $state(false);
 

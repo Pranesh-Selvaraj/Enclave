@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { invoke } from '$lib/backend.js';
 	import { Button, Icon } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES, BACKGROUNDS } from '@enclave/ui';
@@ -44,6 +45,29 @@
 			open = false;
 			onlock?.();
 		} catch { /* ignore */ }
+	}
+
+	// Android-only: widgets render a Keystore-wrapped cache; this decides
+	// whether they blank out while the vault is locked.
+	const isAndroid = browser && navigator.userAgent.includes('Android');
+	let hideWidgetsLocked = $state(false);
+
+	$effect(() => {
+		if (!open || !isAndroid) return;
+		invoke<string | null>('get_setting', { key: 'widget_hide_locked' })
+			.then((v) => (hideWidgetsLocked = v === 'true'))
+			.catch(() => {});
+	});
+
+	async function saveHideWidgetsLocked() {
+		try {
+			await invoke('set_setting', {
+				key: 'widget_hide_locked',
+				value: hideWidgetsLocked ? 'true' : 'false',
+			});
+		} catch (e) {
+			console.error('Failed to save widget setting:', e);
+		}
 	}
 
 	let backingUp = $state(false);
@@ -370,6 +394,23 @@ sentinel check</pre>
 					<div class="backup-hint">Point this at any OpenAI-compatible server — Ollama, llama.cpp, LM Studio, vLLM on this machine, or a frontier API (add its key above). With <b>offline embeddings</b> on, RAG retrieval needs no endpoint at all; chat still does.</div>
 				{/if}
 			</div>
+
+			{#if isAndroid}
+				<div class="settings-section">
+					<h3>Android widgets</h3>
+					<div class="setting-row">
+						<span>Hide widgets while vault is locked</span>
+						<label class="switch" title="Widgets show a lock placeholder until you unlock the vault">
+							<input type="checkbox" bind:checked={hideWidgetsLocked} onchange={saveHideWidgetsLocked} />
+							<span class="switch-slider"></span>
+						</label>
+					</div>
+					<div class="backup-hint">
+						Home-screen widgets show notes you marked “Show in Android widgets”.
+						With this on, they blank out whenever the vault is locked.
+					</div>
+				</div>
+			{/if}
 
 			<div class="settings-section">
 				<h3>Backup</h3>

@@ -39,8 +39,8 @@ fn is_vault_initialized(state: tauri::State<AppState>) -> bool {
     state.core.is_vault_initialized()
 }
 
-/// True when the shared core is already unlocked — the editor island uses it
-/// to skip the vault guard after the native shell unlocked the vault.
+/// True when the shared core is already unlocked — Android surfaces use it
+/// to skip the vault guard when the core is already open.
 #[tauri::command(async)]
 fn is_vault_unlocked(state: tauri::State<AppState>) -> bool {
     state.core.is_unlocked()
@@ -517,13 +517,13 @@ pub fn run() {
                 .expect("Failed to create app data directory");
 
             // DB starts locked — user must call init_vault or unlock_vault.
-            // Shared process-wide core: the native shell may have created and
-            // unlocked it before the editor island opened.
+            // Shared process-wide core: a native surface may have created and
+            // unlocked it before this web view loaded.
             let core = core_api::EnclaveCore::global(app_dir);
             app.manage(AppState { core: core.clone() });
 
             // The core owns the peer-message loop; events fan out to shells.
-            // This keeps sync alive when the native shell is the only UI.
+            // This keeps sync alive when no web view is around.
             let loop_core = core.clone();
             tauri::async_runtime::spawn(async move { loop_core.run_sync_loop().await });
 

@@ -109,7 +109,7 @@ class SyncService : Service() {
     val open = PendingIntent.getActivity(
       this,
       0,
-      Intent(this, KeepActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+      Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -135,25 +135,5 @@ class SyncService : Service() {
   companion object {
     private const val CHANNEL_ID = "sync"
     private const val NOTIFICATION_ID = 42
-  }
-}
-
-/**
- * Start/stop the foreground sync service from the native shell. The Tauri
- * command layer does this from Rust (android_sync.rs); the Kotlin shell talks
- * to the core directly, so it owns the service lifecycle for its own calls.
- */
-internal object SyncServiceCtl {
-  fun start(context: Context) {
-    val intent = Intent(context, SyncService::class.java)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent)
-    } else {
-      context.startService(intent)
-    }
-  }
-
-  fun stop(context: Context) {
-    context.stopService(Intent(context, SyncService::class.java))
   }
 }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 1×1 quick capture — the Keep-style "new note" tile. -->
+<!-- 1×1 quick capture — one tap into a new note. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="60dp"
     android:minHeight="60dp"

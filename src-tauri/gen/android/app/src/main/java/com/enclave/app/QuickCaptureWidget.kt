@@ -25,7 +25,7 @@ import androidx.glance.color.ColorProvider as DayNightColorProvider
 import androidx.glance.text.TextStyle
 
 /**
- * 1×1 quick capture: tapping opens the Keep shell straight into a new note
+ * 1×1 quick capture: tapping opens the app straight into a new note
  * (same path as the launcher shortcut). No vault data involved.
  */
 class QuickCaptureWidget : GlanceAppWidget() {
@@ -61,12 +61,7 @@ class QuickCaptureWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 internal fun quickCaptureIntent(context: Context): Intent =
-    Intent(context, KeepActivity::class.java)
-        .setAction(KeepActivity.ACTION_NEW_NOTE)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    EnclaveIntents.capture(context)
 
 internal fun openNoteIntent(context: Context, docId: String): Intent =
-    Intent(context, KeepActivity::class.java)
-        .setAction(KeepActivity.ACTION_OPEN_NOTE)
-        .putExtra(KeepActivity.EXTRA_DOC_ID, docId)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    EnclaveIntents.openNote(context, docId)

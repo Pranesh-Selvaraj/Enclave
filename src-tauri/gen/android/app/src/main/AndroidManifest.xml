@@ -27,12 +27,12 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.enclave"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
-        <!-- Native Keep-like shell (Compose): the app's front door. -->
+        <!-- The full Enclave app (Tauri web view): desktop UI, all features. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"
             android:label="@string/app_name"
-            android:name=".KeepActivity"
+            android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -40,7 +40,7 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-            <!-- Share target: "Share → Enclave" turns shared text into a note. -->
+            <!-- Share target: "Share → Enclave" pre-fills the capture screen. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -51,15 +51,6 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
-
-        <!-- WebView editor island (Tauri): opened from the native shell for
-             whiteboards, tables and databases. -->
-        <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
-            android:launchMode="singleTask"
-            android:label="@string/main_activity_title"
-            android:name=".MainActivity"
-            android:exported="false" />
 
         <provider
           android:name="androidx.core.content.FileProvider"

@@ -9,7 +9,7 @@
         <intent
             android:action="com.enclave.app.NEW_NOTE"
             android:targetPackage="com.enclave.app"
-            android:targetClass="com.enclave.app.KeepActivity" />
+            android:targetClass="com.enclave.app.MainActivity" />
     </shortcut>
     <shortcut
         android:shortcutId="new_checklist"
@@ -19,6 +19,6 @@
         <intent
             android:action="com.enclave.app.NEW_CHECKLIST"
             android:targetPackage="com.enclave.app"
-            android:targetClass="com.enclave.app.KeepActivity" />
+            android:targetClass="com.enclave.app.MainActivity" />
     </shortcut>
 </shortcuts>

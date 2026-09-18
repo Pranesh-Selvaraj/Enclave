@@ -18,8 +18,8 @@
 	theme.init();
 
 	let vaultUnlocked = $state(false);
-	// Native Android shell + this WebView share one core: if it is already
-	// unlocked (editor island opened from the Keep shell), skip the guard.
+	// The native surfaces (widgets, share, shortcuts) and this web view share
+	// one core; if it is already unlocked, skip the guard.
 	$effect(() => {
 		invoke<boolean>('is_vault_unlocked').then((u) => {
 			if (u) vaultUnlocked = true;
@@ -470,24 +470,43 @@
 		}
 	}
 
+	// Per-device sync preference: after a restart or a lock/unlock the app
+	// re-arms P2P when the user had it on. The Android foreground service
+	// keeps sync alive in the background; this covers process death.
+	const SYNC_PREF = 'enclave-sync-enabled';
+	function syncEnabledPref(): boolean {
+		try { return localStorage.getItem(SYNC_PREF) === '1'; } catch { return false; }
+	}
+	function setSyncEnabledPref(on: boolean) {
+		try { localStorage.setItem(SYNC_PREF, on ? '1' : '0'); } catch { /* ignore */ }
+	}
+
+	async function startSync() {
+		await invoke('start_network', { name: null });
+		networkRunning = true;
+		setSyncEnabledPref(true);
+		networkStatus = await invoke<typeof networkStatus>('network_status');
+		// Poll so mDNS-discovered peers show up without an event bridge.
+		clearInterval(statusTimer);
+		statusTimer = setInterval(async () => {
+			try {
+				networkStatus = await invoke<typeof networkStatus>('network_status');
+			} catch { /* ignore */ }
+		}, 3000);
+	}
+
+	async function stopSync() {
+		await invoke('stop_network');
+		networkRunning = false;
+		networkStatus = null;
+		setSyncEnabledPref(false);
+		clearInterval(statusTimer);
+	}
+
 	async function toggleNetwork() {
 		try {
-			if (networkRunning) {
-				await invoke('stop_network');
-				networkRunning = false;
-				networkStatus = null;
-				clearInterval(statusTimer);
-			} else {
-				await invoke('start_network', { name: null });
-				networkRunning = true;
-				networkStatus = await invoke<typeof networkStatus>('network_status');
-				// Poll so mDNS-discovered peers show up without an event bridge.
-				statusTimer = setInterval(async () => {
-					try {
-						networkStatus = await invoke<typeof networkStatus>('network_status');
-					} catch { /* ignore */ }
-				}, 3000);
-			}
+			if (networkRunning) await stopSync();
+			else await startSync();
 		} catch (e) {
 			console.error('Network toggle failed:', e);
 			networkRunning = false;
@@ -654,6 +673,12 @@
 			loadTags();
 			loadFolders();
 		}
+	});
+
+	// Restart-safe sync: re-arm after unlock when the user had enabled it.
+	$effect(() => {
+		if (!vaultUnlocked || networkRunning || !syncEnabledPref()) return;
+		startSync().catch(() => { /* no network yet — the toggle still works */ });
 	});
 
 	// Restore collapsed-folder state once on mount.

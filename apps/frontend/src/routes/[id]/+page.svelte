@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { invoke } from '$lib/backend.js';
 	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu, EditorContextMenu, TableMenu } from '@enclave/editor';
@@ -46,6 +47,10 @@
 	let menuOpen = $state(false);
 	let infoOpen = $state(false);
 	let toast = $state<string | null>(null);
+	// Android home-screen widgets render from an opt-in, Keystore-wrapped
+	// cache; this flag decides whether this note is part of it.
+	const isAndroid = browser && navigator.userAgent.includes('Android');
+	let widgetShared = $state(false);
 	let toastTimer: ReturnType<typeof setTimeout>;	// Save feedback: 'saving' while writing, 'error' if it failed after retries.
 	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
 	let saveVersion = 0;
@@ -60,6 +65,9 @@
 			: [{ icon: 'text', label: 'Paper view', action: () => setMode('paper') }]),
 		{ icon: 'star', label: document?.is_favorite ? 'Remove from favorites' : 'Add to favorites', action: toggleFavorite },
 		...(aiEnabled ? [{ icon: 'sparkles', label: 'Ask AI', action: () => (aiOpen = true) }] : []),
+		...(isAndroid
+			? [{ icon: widgetShared ? 'checkCircle' : 'grid', label: widgetShared ? 'Shown in Android widgets' : 'Show in Android widgets', action: toggleWidgetShared }]
+			: []),
 		{ icon: 'download', label: 'Export Markdown…', action: exportMarkdown },
 		{ icon: 'download', label: 'Export HTML…', action: exportHtml },
 		{ icon: 'print', label: 'Print (PDF)…', action: printPage },
@@ -224,6 +232,8 @@
 			icon = meta.icon ?? '';
 			cover = meta.cover ?? '';
 			hasWhiteboard = blocks.some(b => b.type === 'whiteboard');
+			const widgetBlock = blocks.find(b => b.type === 'widget');
+			widgetShared = !!((widgetBlock?.content as { enabled?: boolean } | undefined)?.enabled);
 			try { fullWidth = localStorage.getItem(`enclave-fullwidth-${docId}`) === 'true'; } catch { fullWidth = false; }
 			if (blocks.length > 0) {
 				const contentBlock = blocks.find(b => {
@@ -487,6 +497,24 @@
 		}
 	}
 
+	async function toggleWidgetShared() {
+		widgetShared = !widgetShared;
+		try {
+			await invoke('upsert_block', {
+				id: `${docId}-widget`,
+				documentId: docId,
+				blockType: 'widget',
+				content: { enabled: widgetShared },
+				sortOrder: 4,
+			});
+			toast = widgetShared ? 'This page can be shown in widgets' : 'Hidden from widgets';
+			clearTimeout(toastTimer);
+			toastTimer = setTimeout(() => (toast = null), 3000);
+		} catch (e) {
+			console.error('Failed to save widget sharing:', e);
+		}
+	}
+
 	async function toggleFavorite() {
 		if (!document) return;
 		try {
@@ -649,6 +677,12 @@
 							<button class="export-item" onclick={exportMarkdown}><Icon name="download" size={14} />Export Markdown…</button>
 							<button class="export-item" onclick={exportHtml}><Icon name="download" size={14} />Export HTML…</button>
 							<button class="export-item" onclick={printPage}><Icon name="print" size={14} />Print (PDF)…</button>
+							{#if isAndroid}
+								<button class="export-item" onclick={toggleWidgetShared}>
+									<Icon name={widgetShared ? 'checkCircle' : 'grid'} size={14} />
+									{widgetShared ? 'Shown in Android widgets' : 'Show in Android widgets'}
+								</button>
+							{/if}
 							<div class="menu-sep"></div>
 							<button class="export-item danger" onclick={() => { menuOpen = false; deleteDocument(); }}><Icon name="trash" size={14} />Move to trash</button>
 						</div>

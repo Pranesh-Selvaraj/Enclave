@@ -3,7 +3,7 @@ package com.enclave.app
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Note content helpers shared by the Keep shell and the widget cache.
+// Note content helpers shared by the app UI and the widget cache.
 // Everything is plain TipTap/ProseMirror JSON — the same shape the web
 // editor reads and writes.
 

@@ -70,7 +70,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
 
-    // Keep-like native shell (Jetpack Compose).
+    // Compose (widget configuration activity + widget theming).
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.material3:material3")
@@ -81,9 +81,6 @@ dependencies {
 
     // UniFFI Kotlin bindings load libcore_api.so through JNA.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
-
-    // QR pairing (display + scan) — bundled zxing, no camera code.
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     // Home-screen widgets (Glance).
     implementation("androidx.glance:glance-appwidget:1.1.1")
