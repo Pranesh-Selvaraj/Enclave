@@ -4,6 +4,21 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.10.1] — 2026-09-18
+
+Hotfix for an Android launch crash in v1.10.0.
+
+### Fixed
+
+- **Android release builds crashed on launch** — R8 minification stripped
+  JNA's own static hook (`com.sun.jna.Native.fromNative`), so the first
+  UniFFI core call (the widget-cache tick) threw `UnsatisfiedLinkError` and
+  killed the process. ProGuard now keeps the whole `uniffi.*` and JNA
+  surface; verified on a minified release build (launch, vault creation,
+  widget tick).
+- Widget interactions and the widget-cache tick catch `Throwable` now, so
+  a locked vault or a native-bridge hiccup can never take the app down.
+
 ## [1.10.0] — 2026-09-18
 
 Enclave for Android is now the **full app** — the same editor, whiteboards,

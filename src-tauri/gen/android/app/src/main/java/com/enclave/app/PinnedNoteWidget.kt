@@ -270,12 +270,12 @@ class ToggleCheckAction : ActionCallback {
     ) {
         val docId = parameters[DOC_ID_KEY] ?: return
         val index = parameters[ITEM_INDEX_KEY] ?: return
-        val core = FfiCore(context.applicationInfo.dataDir)
-        if (!core.isUnlocked()) {
-            context.startActivity(openNoteIntent(context, docId))
-            return
-        }
         try {
+            val core = FfiCore(context.applicationInfo.dataDir)
+            if (!core.isUnlocked()) {
+                context.startActivity(openNoteIntent(context, docId))
+                return
+            }
             val blocks = core.getBlocks(docId)
             val docJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson ?: return
             val items = docChecklist(docJson).toMutableList()
@@ -284,8 +284,11 @@ class ToggleCheckAction : ActionCallback {
             core.upsertBlock("$docId-content", docId, "doc", taskListDocJson(items), 0.0)
             WidgetStore.refreshAndUpdate(context, core)
             PinnedNoteWidget().update(context, glanceId)
-        } catch (e: Exception) {
-            android.util.Log.e("EnclaveWidgets", "widget toggle failed", e)
+        } catch (t: Throwable) {
+            // Never let a widget interaction take the process down (a locked
+            // vault or a mid-flight core just falls back to opening the app).
+            android.util.Log.e("EnclaveWidgets", "widget toggle failed", t)
+            context.startActivity(openNoteIntent(context, docId))
         }
     }
 }

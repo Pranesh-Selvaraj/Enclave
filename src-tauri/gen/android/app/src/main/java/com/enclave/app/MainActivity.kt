@@ -168,8 +168,10 @@ class MainActivity : TauriActivity() {
           } else if (changed) {
             WidgetStore.updateAll(applicationContext)
           }
-        } catch (_: Exception) {
-          // Vault locked or core mid-flight — the next tick recovers.
+        } catch (t: Throwable) {
+          // Vault locked, core mid-flight or the native bridge unavailable — a
+          // background tick must never take the app down.
+          android.util.Log.w("EnclaveWidgets", "cache tick skipped: " + t.message)
         }
         delay(20_000)
       }
