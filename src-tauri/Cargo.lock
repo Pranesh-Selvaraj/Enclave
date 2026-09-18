@@ -640,6 +640,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-api"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "core-db",
+ "core-network",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "core-db"
 version = "1.0.0"
 dependencies = [
@@ -1162,6 +1177,7 @@ name = "enclave"
 version = "1.9.0"
 dependencies = [
  "chrono",
+ "core-api",
  "core-db",
  "core-network",
  "fastembed",

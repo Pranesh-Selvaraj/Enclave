@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core-db", "crates/core-network"]
+members = ["crates/core-db", "crates/core-network", "crates/core-api"]
 resolver = "2"
 
 [package]
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # ── Internal Crates ──
 core-db = { path = "crates/core-db" }
+core-api = { path = "crates/core-api" }
 core-network = { path = "crates/core-network" }
 
 # ── Tauri v2 Core ──
