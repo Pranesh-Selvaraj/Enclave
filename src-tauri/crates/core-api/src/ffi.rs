@@ -286,6 +286,32 @@ impl FfiCore {
         Ok(self.core.reset_vault()?)
     }
 
+    /// Create a vault protected by `password`; returns the recovery mnemonic
+    /// to show once. CPU-heavy (Argon2id) — call off the main thread.
+    pub fn create_vault(&self, password: String) -> Result<String, EnclaveError> {
+        Ok(self.core.create_vault(&password)?)
+    }
+
+    /// Unlock using the stored password. CPU-heavy — call off the main thread.
+    pub fn unlock_with_password(&self, password: String) -> Result<(), EnclaveError> {
+        Ok(self.core.unlock_with_password(&password)?)
+    }
+
+    /// Unlock with the 12-word recovery phrase. CPU-heavy — background it.
+    pub fn unlock_with_mnemonic(&self, mnemonic: String) -> Result<(), EnclaveError> {
+        Ok(self.core.unlock_with_mnemonic(&mnemonic)?)
+    }
+
+    /// After a mnemonic unlock, store a password for next time.
+    pub fn set_vault_password(&self, mnemonic: String, password: String) -> Result<(), EnclaveError> {
+        Ok(self.core.set_vault_password(&mnemonic, &password)?)
+    }
+
+    /// BIP39 validation for live form feedback.
+    pub fn validate_mnemonic(&self, mnemonic: String) -> bool {
+        super::crypto::validate_mnemonic(&mnemonic)
+    }
+
     // ── Documents ───────────────────────────────────────────────────────────
 
     pub fn list_documents(&self) -> Result<Vec<Document>, EnclaveError> {

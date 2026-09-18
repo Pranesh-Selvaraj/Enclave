@@ -17,6 +17,8 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
 
+pub mod crypto;
+
 // Re-exported so shells never need to depend on core-db directly.
 pub use core_db::{
     Backlink, Block, DocIndexEntry, Document, Embedding, Folder, PageInfo, SearchResult,
@@ -181,6 +183,57 @@ impl EnclaveCore {
             let _ = std::fs::remove_file(self.app_dir.join(f));
         }
         Ok(())
+    }
+
+    // ── Password / mnemonic flows (native shell parity with VaultGuard) ──────
+
+    /// Create a vault protected by `password`; returns the recovery mnemonic
+    /// (shown once). Mirrors the web flow: init the encrypted DB, then store
+    /// the password-encrypted phrase in vault.key. A partial failure resets
+    /// the half-created vault so the user cannot be locked out.
+    pub fn create_vault(&self, password: &str) -> CoreResult<String> {
+        let mnemonic = crypto::generate_mnemonic()?;
+        let key = crypto::derive_master_key(&mnemonic)?;
+        if let Err(e) = self.init_vault(&key) {
+            let _ = self.reset_vault();
+            return Err(e);
+        }
+        let blob = crypto::encrypt_with_password(&mnemonic, password)?;
+        if let Err(e) = self.store_vault_key(&blob) {
+            let _ = self.reset_vault();
+            return Err(e);
+        }
+        Ok(mnemonic)
+    }
+
+    /// Unlock using the password stored in vault.key.
+    pub fn unlock_with_password(&self, password: &str) -> CoreResult<()> {
+        let blob = self.load_vault_key()?;
+        let mnemonic = crypto::decrypt_with_password(&blob, password)?;
+        if !crypto::validate_mnemonic(&mnemonic) {
+            return Err(CoreError::InvalidInput(
+                "Invalid vault key — recovery phrase may be needed".into(),
+            ));
+        }
+        self.unlock_with_mnemonic(&mnemonic)
+    }
+
+    /// Unlock with the 12-word recovery phrase.
+    pub fn unlock_with_mnemonic(&self, mnemonic: &str) -> CoreResult<()> {
+        let normalized = mnemonic.trim().to_lowercase();
+        if !crypto::validate_mnemonic(&normalized) {
+            return Err(CoreError::InvalidInput(
+                "Invalid seed phrase. Check each word and try again.".into(),
+            ));
+        }
+        let key = crypto::derive_master_key(&normalized)?;
+        self.unlock_vault(&key)
+    }
+
+    /// Store (or replace) the password that protects the recovery phrase.
+    pub fn set_vault_password(&self, mnemonic: &str, password: &str) -> CoreResult<()> {
+        let blob = crypto::encrypt_with_password(mnemonic, password)?;
+        self.store_vault_key(&blob)
     }
 
     // ── Documents ───────────────────────────────────────────────────────────
@@ -810,6 +863,41 @@ mod tests {
         // Unlocking again restores access (same key).
         core.unlock_vault(&[7u8; 32]).unwrap();
         assert_eq!(core.get_document(&doc.id).unwrap().title, "Doc");
+    }
+
+    #[tokio::test]
+    async fn password_vault_flow() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        let mnemonic = core.create_vault("s3cret-password").unwrap();
+        assert_eq!(mnemonic.split(' ').count(), 12);
+        assert!(dir.path().join("enclave.db").exists());
+        assert!(dir.path().join("vault.key").exists());
+
+        let doc = core.create_document("Note").unwrap();
+        core.lock_vault().await.unwrap();
+        assert!(matches!(core.list_documents(), Err(CoreError::VaultLocked)));
+        assert!(core.unlock_with_password("wrong").is_err());
+
+        core.unlock_with_password("s3cret-password").unwrap();
+        assert_eq!(core.get_document(&doc.id).unwrap().title, "Note");
+    }
+
+    #[tokio::test]
+    async fn mnemonic_unlock_then_password_setup() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        let mnemonic = core.create_vault("first-password").unwrap();
+        core.lock_vault().await.unwrap();
+
+        // Seed-phrase unlock, then opt into a new password (VaultGuard flow).
+        core.unlock_with_mnemonic(&mnemonic.to_uppercase()).unwrap();
+        core.set_vault_password(&mnemonic, "second-password").unwrap();
+        core.lock_vault().await.unwrap();
+
+        assert!(core.unlock_with_password("first-password").is_err());
+        core.unlock_with_password("second-password").unwrap();
+        assert!(core.is_vault_initialized());
     }
 
     #[test]

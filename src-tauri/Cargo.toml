@@ -64,3 +64,11 @@ jni = "0.21"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+
+# Argon2id in debug builds is painfully slow (64 MiB, 3 passes) and vault
+# tests hit it repeatedly; optimize just this dependency.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.aes-gcm]
+opt-level = 3
