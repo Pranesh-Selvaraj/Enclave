@@ -1,5 +1,8 @@
 package com.enclave.app
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -51,6 +54,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -102,6 +106,13 @@ class KeepActivity : ComponentActivity() {
     /** Launcher shortcut that should create a fresh note ("note" | "checklist"). */
     private val pendingCreate = mutableStateOf<String?>(null)
 
+    /** Widget tap: open this note once the vault is unlocked. */
+    private val pendingOpen = mutableStateOf<String?>(null)
+
+    /** "Add widget" request (Sync screen button / adb) → system pin dialog. */
+    private val pendingPin = mutableStateOf(false)
+    private val pendingPinCapture = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // JNA loads the UniFFI surface from the Tauri library so both shells
@@ -110,15 +121,25 @@ class KeepActivity : ComponentActivity() {
         System.setProperty("uniffi.component.core_api.libraryOverride", "enclave_lib")
         pendingShare.value = extractSharedText(intent)
         pendingCreate.value = extractCreateAction(intent)
+        pendingOpen.value = extractOpenDoc(intent)
+        pendingPin.value = intent?.action == ACTION_PIN_WIDGET
+        pendingPinCapture.value = intent?.getBooleanExtra(EXTRA_CAPTURE_WIDGET, false) == true
         // Tauri resolves app_data_dir to the app data dir; use the same one so
         // vaults created before the native shell keep working.
-        setContent { EnclaveTheme { KeepApp(applicationInfo.dataDir, pendingShare, pendingCreate) } }
+        setContent {
+            EnclaveTheme {
+                KeepApp(applicationInfo.dataDir, pendingShare, pendingCreate, pendingOpen, pendingPin, pendingPinCapture)
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         extractSharedText(intent)?.let { pendingShare.value = it }
         extractCreateAction(intent)?.let { pendingCreate.value = it }
+        extractOpenDoc(intent)?.let { pendingOpen.value = it }
+        if (intent.action == ACTION_PIN_WIDGET) pendingPin.value = true
+        if (intent.getBooleanExtra(EXTRA_CAPTURE_WIDGET, false)) pendingPinCapture.value = true
     }
 
     private fun extractSharedText(intent: Intent?): String? {
@@ -133,9 +154,16 @@ class KeepActivity : ComponentActivity() {
         else -> null
     }
 
+    private fun extractOpenDoc(intent: Intent?): String? =
+        if (intent?.action == ACTION_OPEN_NOTE) intent.getStringExtra(EXTRA_DOC_ID) else null
+
     companion object {
         const val ACTION_NEW_NOTE = "com.enclave.app.NEW_NOTE"
         const val ACTION_NEW_CHECKLIST = "com.enclave.app.NEW_CHECKLIST"
+        const val ACTION_OPEN_NOTE = "com.enclave.app.OPEN_NOTE"
+        const val ACTION_PIN_WIDGET = "com.enclave.app.PIN_WIDGET"
+        const val EXTRA_CAPTURE_WIDGET = "enclave:captureWidget"
+        const val EXTRA_DOC_ID = "enclave:docId"
     }
 }
 
@@ -173,15 +201,26 @@ private sealed interface Stage {
 }
 
 private data class NoteRow(val doc: Document, val snippet: String, val tags: List<String>)
-private data class TaskItem(val text: String, val checked: Boolean)
+private data class LoadedNote(
+    val title: String,
+    val body: String,
+    val tasks: List<TaskItem>,
+    val tags: List<String>,
+    val favorite: Boolean,
+    val widgetShared: Boolean,
+)
 
 @Composable
 private fun KeepApp(
     appDir: String,
     pendingShare: MutableState<String?>,
     pendingCreate: MutableState<String?>,
+    pendingOpen: MutableState<String?>,
+    pendingPin: MutableState<Boolean>,
+    pendingPinCapture: MutableState<Boolean>,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val core = remember { FfiCore(appDir) }
     var stage by remember { mutableStateOf<Stage>(Stage.Loading) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -203,6 +242,31 @@ private fun KeepApp(
             syncLoopStarted = true
             scope.launch(Dispatchers.IO) { core.runSyncLoop() }
         }
+    }
+
+    // Keep the Keystore-wrapped widget cache in step with the vault whenever
+    // the vault opens (covers sync merges from other devices too).
+    LaunchedEffect(stage) {
+        if (stage is Stage.Notes) WidgetStore.refreshAndUpdate(context, core)
+    }
+
+    // Widget tap → open the note once unlocked.
+    LaunchedEffect(stage, pendingOpen.value) {
+        val id = pendingOpen.value ?: return@LaunchedEffect
+        if (stage !is Stage.Notes) return@LaunchedEffect
+        refreshKey++
+        openDocChecklist = false
+        openDocId = id
+        pendingOpen.value = null
+    }
+
+    // "Add widget" request → system pin dialog (launcher must support it).
+    LaunchedEffect(stage, pendingPin.value) {
+        if (!pendingPin.value) return@LaunchedEffect
+        if (stage !is Stage.Notes) return@LaunchedEffect
+        pendingPin.value = false
+        pinNoteListWidget(context, pendingPinCapture.value)
+        pendingPinCapture.value = false
     }
 
     // Launcher shortcut: create a fresh note/checklist once the vault is open.
@@ -284,6 +348,7 @@ private fun KeepApp(
                 openDocChecklist = false
                 refreshKey++
             },
+            onPinWidget = { pinNoteListWidget(context) },
             onLock = {
                 scope.launch {
                     withContext(Dispatchers.IO) { core.lockVault() }
@@ -447,6 +512,7 @@ private fun NotesScreen(
     openDocChecklist: Boolean,
     onOpen: (String, Boolean) -> Unit,
     onCloseDetail: () -> Unit,
+    onPinWidget: () -> Unit,
     onLock: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -462,7 +528,7 @@ private fun NotesScreen(
             val tagRows = core.getAllTags()
             val byDoc = tagRows.associate { it.docId to it.tags }
             val docs = core.listDocuments().map { doc ->
-                NoteRow(doc, snippetOf(core, doc.id), byDoc[doc.id] ?: emptyList())
+                NoteRow(doc, snippetFor(core, doc.id), byDoc[doc.id] ?: emptyList())
             }
             docs to tagRows.flatMap { it.tags }.distinct().sorted()
         }
@@ -484,7 +550,7 @@ private fun NotesScreen(
     }
 
     if (syncing) {
-        SyncScreen(core = core, onBack = { syncing = false })
+        SyncScreen(core = core, onPinWidget = onPinWidget, onBack = { syncing = false })
         return
     }
 
@@ -645,7 +711,7 @@ private fun NoteCard(row: NoteRow, onOpen: () -> Unit, onToggleFavorite: () -> U
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SyncScreen(core: FfiCore, onBack: () -> Unit) {
+private fun SyncScreen(core: FfiCore, onPinWidget: () -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     var status by remember { mutableStateOf<NetworkStatus?>(null) }
@@ -767,7 +833,30 @@ private fun SyncScreen(core: FfiCore, onBack: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
+
+            Spacer(Modifier.height(18.dp))
+            TextButton(onClick = onPinWidget, modifier = Modifier.fillMaxWidth()) {
+                Text("Add a home-screen widget")
+            }
+            Text(
+                "Widgets show only notes with “Show in widgets” enabled — titles, labels, checklists and text, cached with an Android Keystore key.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+    }
+}
+
+/** Ask the launcher to pin a widget (system dialog). */
+private fun pinNoteListWidget(context: Context, capture: Boolean = false) {
+    val manager = AppWidgetManager.getInstance(context)
+    if (manager.isRequestPinAppWidgetSupported) {
+        val receiver = if (capture) {
+            ComponentName(context, QuickCaptureWidgetReceiver::class.java)
+        } else {
+            ComponentName(context, NoteListWidgetReceiver::class.java)
+        }
+        manager.requestPinAppWidget(receiver, null, null)
     }
 }
 
@@ -790,21 +879,32 @@ private fun NoteDetailScreen(
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var tagInput by remember { mutableStateOf("") }
     var favorite by remember { mutableStateOf(false) }
+    var widgetShared by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var dirty by remember { mutableStateOf(false) }
 
     LaunchedEffect(docId) {
-        val loadedState = withContext(Dispatchers.IO) {
+        val note = withContext(Dispatchers.IO) {
             val doc = core.getDocument(docId)
-            val docTasks = tasksOf(core, docId)
-            val docTags = core.getAllTags().firstOrNull { it.docId == docId }?.tags ?: emptyList()
-            listOf(doc.title, bodyOf(core, docId), docTasks, docTags, doc.isFavorite)
+            val blocks = core.getBlocks(docId)
+            val contentJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson
+            LoadedNote(
+                title = doc.title,
+                body = docBodyText(contentJson),
+                tasks = docChecklist(contentJson),
+                tags = tagsOf(blocks.firstOrNull { it.blockType == "tags" }?.contentJson),
+                favorite = doc.isFavorite,
+                widgetShared = widgetBlockEnabled(
+                    blocks.firstOrNull { it.blockType == "widget" }?.contentJson,
+                ),
+            )
         }
-        title = loadedState[0] as String
-        body = loadedState[1] as String
-        tasks = loadedState[2] as List<TaskItem>
-        tags = loadedState[3] as List<String>
-        favorite = loadedState[4] as Boolean
+        title = note.title
+        body = note.body
+        tasks = note.tasks
+        tags = note.tags
+        favorite = note.favorite
+        widgetShared = note.widgetShared
         checklist = initialChecklist || tasks.isNotEmpty()
         loaded = true
     }
@@ -836,6 +936,7 @@ private fun NoteDetailScreen(
             val json = if (checklist) taskListDocJson(tasks) else docJson(body)
             core.upsertBlock("$docId-content", docId, "doc", json, 0.0)
         }
+        if (widgetShared) WidgetStore.refreshAndUpdate(context, core)
     }
 
     Scaffold(
@@ -880,6 +981,7 @@ private fun NoteDetailScreen(
                     IconButton(onClick = {
                         scope.launch {
                             withContext(Dispatchers.IO) { core.archiveDocument(docId) }
+                            WidgetStore.refreshAndUpdate(context, core)
                             onBack()
                         }
                     }) { Icon(Icons.Default.Delete, contentDescription = "Move to trash") }
@@ -924,6 +1026,39 @@ private fun NoteDetailScreen(
                 },
                 onRemove = { saveTags(tags - it) },
             )
+
+            // Per-note widget access: only notes with this on are cached
+            // (Keystore-encrypted) for home-screen widgets.
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = widgetShared,
+                    onCheckedChange = { on ->
+                        widgetShared = on
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                core.upsertBlock(
+                                    "$docId-widget",
+                                    docId,
+                                    "widget",
+                                    JSONObject().put("enabled", on).toString(),
+                                    3.0,
+                                )
+                            }
+                            WidgetStore.refreshAndUpdate(context, core)
+                        }
+                    },
+                )
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Show in widgets", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Widgets can show this note entirely — even while the vault is locked.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
@@ -1003,134 +1138,13 @@ private fun TagEditor(
     }
 }
 
-// ── Block JSON helpers (the same document format the web editor uses) ───────
+// ── Local helpers ───────────────────────────────────────────────────────────
 
-/** Plain-text snippet from the document's `doc` block. */
-private fun snippetOf(core: FfiCore, docId: String): String {
+/** Snippet for the note grid (text note text, else checklist items). */
+private fun snippetFor(core: FfiCore, docId: String): String {
     return try {
-        val blocks = core.getBlocks(docId)
-        val fromDoc = blocks.firstOrNull { it.blockType == "doc" }
-            ?.let { jsonText(JSONObject(it.contentJson)) }
-            ?.trim()
-            .orEmpty()
-        val text = fromDoc.ifBlank {
-            blocks.firstOrNull { it.blockType == "taskList" }
-                ?.let { jsonText(JSONObject(it.contentJson)) }
-                ?.trim()
-                .orEmpty()
-        }
-        text.replace(Regex("\\s+"), " ")
+        docSnippet(core.getBlocks(docId).firstOrNull { it.blockType == "doc" }?.contentJson)
     } catch (_: Exception) {
         ""
     }
-}
-
-/** Full body text (paragraphs joined by blank lines) for the flat editor. */
-private fun bodyOf(core: FfiCore, docId: String): String {
-    return try {
-        val blocks = core.getBlocks(docId)
-        val doc = blocks.firstOrNull { it.blockType == "doc" } ?: return ""
-        val root = JSONObject(doc.contentJson)
-        val out = StringBuilder()
-        root.optJSONArray("content")?.let { nodes ->
-            for (i in 0 until nodes.length()) {
-                val node = nodes.optJSONObject(i) ?: continue
-                val text = jsonText(node).trim()
-                if (text.isNotEmpty()) {
-                    if (out.isNotEmpty()) out.append("\n\n")
-                    out.append(text)
-                }
-            }
-        }
-        out.toString()
-    } catch (_: Exception) {
-        ""
-    }
-}
-
-/** Checklist items from the document's `taskList` block. */
-private fun tasksOf(core: FfiCore, docId: String): List<TaskItem> {
-    return try {
-        val doc = core.getBlocks(docId).firstOrNull { it.blockType == "doc" } ?: return emptyList()
-        val nodes = JSONObject(doc.contentJson).optJSONArray("content") ?: return emptyList()
-        val taskList = (0 until nodes.length())
-            .mapNotNull { nodes.optJSONObject(it) }
-            .firstOrNull { it.optString("type") == "taskList" } ?: return emptyList()
-        val items = taskList.optJSONArray("content") ?: return emptyList()
-        (0 until items.length()).mapNotNull { i ->
-            val item = items.optJSONObject(i) ?: return@mapNotNull null
-            if (item.optString("type") != "taskItem") return@mapNotNull null
-            TaskItem(
-                text = jsonText(item).trim(),
-                checked = item.optJSONObject("attrs")?.optBoolean("checked", false) ?: false,
-            )
-        }
-    } catch (_: Exception) {
-        emptyList()
-    }
-}
-
-/** Recursively collect `text` leaves from a TipTap JSON node. */
-private fun jsonText(node: JSONObject, out: StringBuilder = StringBuilder()): String {
-    when (node.optString("type")) {
-        "text" -> out.append(node.optString("text"))
-        "hardBreak" -> out.append("\n")
-        // Checklist rows are siblings; keep their texts apart in snippets.
-        "taskItem" -> out.append(" ")
-    }
-    node.optJSONArray("content")?.let { children ->
-        for (i in 0 until children.length()) {
-            (children.opt(i) as? JSONObject)?.let { jsonText(it, out) }
-            if (children.opt(i) is String) out.append(children.optString(i))
-        }
-    }
-    return out.toString()
-}
-
-/** Flat text → the same doc JSON shape the web editor writes. */
-private fun docJson(text: String): String {
-    val paragraphs = text.split("\n\n").map { paragraph ->
-        JSONObject().apply {
-            put("type", "paragraph")
-            val content = JSONArray()
-            paragraph.split("\n").forEachIndexed { i, line ->
-                if (i > 0) content.put(JSONObject().put("type", "hardBreak"))
-                if (line.isNotEmpty()) content.put(JSONObject().put("type", "text").put("text", line))
-            }
-            put("content", content)
-        }
-    }
-    return JSONObject().put("type", "doc").put("content", JSONArray(paragraphs)).toString()
-}
-
-/** Checklist items → a `doc` whose content is one `taskList` node. */
-private fun taskListDocJson(tasks: List<TaskItem>): String {
-    return JSONObject()
-        .put("type", "doc")
-        .put("content", JSONArray().put(JSONObject(taskJson(tasks))))
-        .toString()
-}
-
-/** Checklist items → TipTap `taskList` JSON (what the web editor renders). */
-private fun taskJson(tasks: List<TaskItem>): String {
-    val content = JSONArray()
-    tasks.forEach { item ->
-        content.put(
-            JSONObject()
-                .put("type", "taskItem")
-                .put("attrs", JSONObject().put("checked", item.checked))
-                .put(
-                    "content",
-                    JSONArray().put(
-                        JSONObject()
-                            .put("type", "paragraph")
-                            .put(
-                                "content",
-                                JSONArray().put(JSONObject().put("type", "text").put("text", item.text)),
-                            ),
-                    ),
-                ),
-        )
-    }
-    return JSONObject().put("type", "taskList").put("content", content).toString()
 }

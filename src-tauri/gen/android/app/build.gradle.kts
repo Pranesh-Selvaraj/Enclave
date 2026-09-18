@@ -82,6 +82,9 @@ dependencies {
     // UniFFI Kotlin bindings load libcore_api.so through JNA.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 
+    // Home-screen widgets (Glance).
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
