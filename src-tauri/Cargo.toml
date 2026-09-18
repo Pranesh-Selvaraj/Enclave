@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core-db", "crates/core-network"]
+members = ["crates/core-db", "crates/core-network", "crates/core-api"]
 resolver = "2"
 
 [package]
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # ── Internal Crates ──
 core-db = { path = "crates/core-db" }
+core-api = { path = "crates/core-api" }
 core-network = { path = "crates/core-network" }
 
 # ── Tauri v2 Core ──
@@ -60,6 +61,17 @@ rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"]
 # JNI bridge to the foreground SyncService (issue #60) — already in the tree
 # via tao, this makes it a direct dependency for android_sync.rs.
 jni = "0.21"
+# UniFFI bindings live in this cdylib on Android so the Android app and the
+# Tauri web view share one core (one vault, one network, one loop).
+core-api = { path = "crates/core-api", features = ["uniffi"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+
+# Argon2id in debug builds is painfully slow (64 MiB, 3 passes) and vault
+# tests hit it repeatedly; optimize just this dependency.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.aes-gcm]
+opt-level = 3

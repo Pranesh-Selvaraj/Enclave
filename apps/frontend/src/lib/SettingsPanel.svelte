@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { invoke } from '$lib/backend.js';
 	import { Button, Icon } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES, BACKGROUNDS } from '@enclave/ui';
@@ -44,6 +45,29 @@
 			open = false;
 			onlock?.();
 		} catch { /* ignore */ }
+	}
+
+	// Android-only: widgets render a Keystore-wrapped cache; this decides
+	// whether they blank out while the vault is locked.
+	const isAndroid = browser && navigator.userAgent.includes('Android');
+	let hideWidgetsLocked = $state(false);
+
+	$effect(() => {
+		if (!open || !isAndroid) return;
+		invoke<string | null>('get_setting', { key: 'widget_hide_locked' })
+			.then((v) => (hideWidgetsLocked = v === 'true'))
+			.catch(() => {});
+	});
+
+	async function saveHideWidgetsLocked() {
+		try {
+			await invoke('set_setting', {
+				key: 'widget_hide_locked',
+				value: hideWidgetsLocked ? 'true' : 'false',
+			});
+		} catch (e) {
+			console.error('Failed to save widget setting:', e);
+		}
 	}
 
 	let backingUp = $state(false);
@@ -95,15 +119,24 @@
 		if (ai.enabled) refreshModels();
 	}
 
-	function handleBackdropKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') open = false;
-	}
+	// Own the Escape key while open: the backdrop never gets focus, so a
+	// keydown handler on it would never fire. The child update dialog gets
+	// first refusal so Escape doesn't collapse the panel behind it too.
+	$effect(() => {
+		if (!open) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape' || updateDialogOpen) return;
+			open = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
 </script>
 
 {#if open}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Settings" onclick={() => (open = false)} onkeydown={handleBackdropKeydown}>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+	<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1" onclick={() => (open = false)}>
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<div class="settings-panel" role="document" onclick={(e: MouseEvent) => e.stopPropagation()}>
 			<div class="settings-header">
 				<h2>Settings</h2>
@@ -362,6 +395,23 @@ sentinel check</pre>
 				{/if}
 			</div>
 
+			{#if isAndroid}
+				<div class="settings-section">
+					<h3>Android widgets</h3>
+					<div class="setting-row">
+						<span>Hide widgets while vault is locked</span>
+						<label class="switch" title="Widgets show a lock placeholder until you unlock the vault">
+							<input type="checkbox" bind:checked={hideWidgetsLocked} onchange={saveHideWidgetsLocked} />
+							<span class="switch-slider"></span>
+						</label>
+					</div>
+					<div class="backup-hint">
+						Home-screen widgets show notes you marked “Show in Android widgets”.
+						With this on, they blank out whenever the vault is locked.
+					</div>
+				</div>
+			{/if}
+
 			<div class="settings-section">
 				<h3>Backup</h3>
 				<div class="setting-row">
@@ -406,7 +456,7 @@ sentinel check</pre>
 		position: fixed;
 		inset: 0;
 		z-index: 300;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -414,12 +464,18 @@ sentinel check</pre>
 	.settings-panel {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 12px;
+		border-radius: var(--radius-lg);
 		width: 420px;
 		max-width: 100%;
 		max-height: min(90vh, 760px);
 		overflow-y: auto;
+		overscroll-behavior: contain;
 		box-shadow: var(--shadow-lg);
+		animation: settings-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+	}
+	@keyframes settings-in {
+		from { opacity: 0; transform: translateY(6px) scale(0.99); }
+		to { opacity: 1; transform: none; }
 	}
 
 	.settings-header {
@@ -464,6 +520,7 @@ sentinel check</pre>
 	.swatch {
 		width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
 		cursor: pointer; padding: 0;
+		transition: transform 0.12s ease-out, border-color 0.12s;
 	}
 	.swatch.active { border-color: var(--color-text); }
 	.swatch:hover { transform: scale(1.15); }
@@ -571,6 +628,7 @@ sentinel check</pre>
 			width: 100%;
 			max-width: 100%;
 			max-height: 92vh;
+			max-height: 92dvh;
 			border-radius: 18px 18px 0 0;
 			border-bottom: none;
 		}

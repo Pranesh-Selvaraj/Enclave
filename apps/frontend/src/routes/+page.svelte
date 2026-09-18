@@ -173,6 +173,18 @@
 	}
 	.home-main { min-width: 0; }
 
+	/* Medium windows: a 300px rail squeezes the page list too hard — stack
+	   the rail on top and lay its actions out side by side. */
+	@media (max-width: 1080px) {
+		/* minmax(0, 1fr): a bare 1fr minimum is min-content, and the nowrap
+		   row titles blow the track past the viewport on phones. */
+		.home-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+		.home-main { order: 2; }
+		.home-rail { order: 1; }
+		.quick-actions { flex-direction: row; }
+		.quick-btn { flex: 1; justify-content: center; }
+	}
+
 	.quick-actions {
 		display: flex;
 		flex-direction: column;
@@ -307,7 +319,7 @@
 		.home-title { font-size: 22px; }
 
 		/* Single column; rail (quick actions + favorites) sits above recents. */
-		.home-grid { grid-template-columns: 1fr; gap: 20px; }
+		.home-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
 		.home-main { order: 2; }
 		.home-rail { order: 1; }
 		.quick-actions { margin-bottom: 18px; gap: 8px; }

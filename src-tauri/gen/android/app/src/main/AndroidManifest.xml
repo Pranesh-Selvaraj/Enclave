@@ -27,10 +27,11 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.enclave"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <!-- The full Enclave app (Tauri web view): desktop UI, all features. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"
-            android:label="@string/main_activity_title"
+            android:label="@string/app_name"
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
@@ -39,6 +40,16 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- Share target: "Share → Enclave" pre-fills the capture screen. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Launcher long-press: New note / New checklist. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <provider
@@ -50,6 +61,69 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Keep-like widgets: Glance + Keystore-wrapped cache. -->
+        <receiver
+          android:name=".QuickCaptureWidgetReceiver"
+          android:exported="false"
+          android:label="@string/widget_capture_title">
+          <intent-filter>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+          </intent-filter>
+          <meta-data
+            android:name="android.appwidget.provider"
+            android:resource="@xml/quick_capture_widget_info" />
+        </receiver>
+
+        <receiver
+          android:name=".NoteListWidgetReceiver"
+          android:exported="false"
+          android:label="@string/widget_list_title">
+          <intent-filter>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+          </intent-filter>
+          <meta-data
+            android:name="android.appwidget.provider"
+            android:resource="@xml/note_list_widget_info" />
+        </receiver>
+
+        <receiver
+          android:name=".PinnedNoteWidgetReceiver"
+          android:exported="false"
+          android:label="@string/widget_pinned_title">
+          <intent-filter>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+          </intent-filter>
+          <meta-data
+            android:name="android.appwidget.provider"
+            android:resource="@xml/pinned_note_widget_info" />
+        </receiver>
+
+        <receiver
+          android:name=".PinResultReceiver"
+          android:exported="false" />
+
+        <!-- The launcher starts this one to configure a new widget instance. -->
+        <activity
+          android:name=".PinnedNoteWidgetConfigureActivity"
+          android:exported="true"
+          android:label="@string/widget_pinned_title">
+          <intent-filter>
+            <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+          </intent-filter>
+        </activity>
+
+        <!-- Quick Settings tile -->
+        <service
+          android:name=".NewNoteTileService"
+          android:exported="true"
+          android:icon="@drawable/ic_tile_note"
+          android:label="@string/tile_new_note"
+          android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+          <intent-filter>
+            <action android:name="android.service.quicksettings.action.QS_TILE" />
+          </intent-filter>
+        </service>
 
         <receiver
           android:name=".EnclaveWidget"

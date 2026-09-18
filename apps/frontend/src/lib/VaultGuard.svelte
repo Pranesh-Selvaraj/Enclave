@@ -309,18 +309,22 @@
 	.vault-wall {
 		position: relative;
 		display: flex;
-		align-items: center;
-		justify-content: center;
 		height: 100%;
 		width: 100%;
-		background-color: var(--color-bg);
-		overflow: hidden;
+		/* Transparent so the window background (soft/glassy gradients included)
+		   shows through — the login page uses the same theme as the app. */
+		background-color: transparent;
+		/* Tall cards (seed phrase, password setup) must scroll on short
+		   screens instead of being clipped. */
+		overflow-y: auto;
+		padding: 24px 16px;
 	}
 
 	.vault-card {
 		position: relative;
 		width: 420px;
-		max-width: 90vw;
+		max-width: 100%;
+		margin: auto;
 		padding: 44px 40px;
 		border-radius: 20px;
 		border: 1px solid var(--color-border);
@@ -332,11 +336,6 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-	}
-	/* The brand logo is its own tile — center it like the old text mark. */
-	.vault-card > svg {
-		display: block;
-		margin: 0 auto 18px;
 	}
 
 	.brand-mark {
@@ -492,4 +491,12 @@
 	}
 
 	@keyframes spin { to { transform: rotate(360deg); } }
+
+	/* ── Phone layout ── */
+	@media (max-width: 480px) {
+		.vault-card { padding: 28px 18px; }
+		.vault-wall { padding: 16px 12px; }
+		.seed-box { grid-template-columns: 1fr 1fr; padding: 10px; }
+		.vault-heading { font-size: 20px; }
+	}
 </style>

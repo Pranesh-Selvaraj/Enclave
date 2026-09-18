@@ -37,6 +37,14 @@
 		goto(`/split/${a}`);
 	}
 
+	// Escape dismisses the page picker wherever focus is.
+	$effect(() => {
+		if (!pickerOpen) return;
+		const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') pickerOpen = false; };
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+
 	// ── Draggable divider: the user owns the split ratio ──
 	let splitPanesEl: HTMLDivElement | undefined = $state();
 	let ratio = $state(0.5);
@@ -410,6 +418,7 @@
 		.split-pane {
 			flex: none !important;
 			min-height: 55vh;
+			min-height: 55dvh;
 		}
 		.split-divider {
 			display: none;
@@ -418,5 +427,27 @@
 			flex: none;
 			min-height: 160px;
 		}
+	}
+
+	/* Phones: thumb-sized chrome; the picker becomes a bottom sheet. */
+	@media (max-width: 768px) {
+		.split-page { padding: 0 8px 8px; }
+		.split-back { min-height: 40px; }
+		.split-add { min-height: 40px; padding: 8px 14px; }
+		.pane-link, .pane-close { width: 34px; height: 34px; align-items: center; justify-content: center; }
+		.picker {
+			top: auto;
+			bottom: 8px;
+			left: 8px;
+			right: 8px;
+			width: auto;
+			max-width: none;
+			transform: none;
+			max-height: 70vh;
+			max-height: 70dvh;
+			border-radius: 18px;
+			padding-bottom: env(safe-area-inset-bottom);
+		}
+		.picker-item { padding: 12px 10px; min-height: 48px; font-size: 15px; }
 	}
 </style>

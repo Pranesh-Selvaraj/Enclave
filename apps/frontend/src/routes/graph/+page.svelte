@@ -9,6 +9,11 @@
 	let links = $state<Array<{ source: string; target: string }>>([]);
 	let canvasEl = $state<HTMLCanvasElement | undefined>();
 	let loading = $state(true);
+	// Simulation lifecycle: one rAF loop per render pass, cancelled on resize,
+	// theme change and unmount — overlapped loops burned CPU and kept drawing
+	// after the page was gone.
+	let rafId = 0;
+	let canvasObserver: ResizeObserver | undefined;
 
 	async function loadGraph() {
 		try {
@@ -32,6 +37,7 @@
 		if (!canvasEl || documents.length === 0) return;
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
+		cancelAnimationFrame(rafId);
 
 		// Read matte tokens live so the canvas tracks theme + accent changes.
 		const cssVar = (n: string, fb: string) =>
@@ -141,7 +147,7 @@
 			}
 
 			if (totalEnergy > 0.5) {
-				requestAnimationFrame(simulate);
+				rafId = requestAnimationFrame(simulate);
 			}
 		}
 
@@ -149,40 +155,53 @@
 			const rect = canvasEl!.getBoundingClientRect();
 			const mx = e.clientX - rect.left;
 			const my = e.clientY - rect.top;
+			// Fingers need a much bigger hit target than a mouse pointer.
+			const hitRadius = matchMedia('(pointer: coarse)').matches ? 24 : 12;
 			for (const n of nodes) {
 				const dx = mx - n.x;
 				const dy = my - n.y;
-				if (dx * dx + dy * dy < 100) {
+				if (dx * dx + dy * dy < hitRadius * hitRadius) {
 					goto(`/${n.id}`);
 					return;
 				}
 			}
 		};
 
-		requestAnimationFrame(simulate);
+		rafId = requestAnimationFrame(simulate);
 	}
 
 	$effect(() => {
 		loadGraph();
 	});
-	// Re-render when the graph is ready, the window resizes, or the theme
-	// changes (canvas colors are read from live CSS tokens).
+	// Re-render when the graph is ready, the theme changes (canvas colors are
+	// read from live CSS tokens) or the canvas is resized.
 	$effect(() => {
 		const _t = theme.value;
-		if (!loading && canvasEl) render();
+		if (loading || !canvasEl) return;
+		// Fit node positions to the bitmap whenever the pane changes size —
+		// without this the canvas bitmap stays stretched on window resize.
+		canvasObserver = new ResizeObserver(() => render());
+		canvasObserver.observe(canvasEl);
+		render();
+		return () => {
+			cancelAnimationFrame(rafId);
+			canvasObserver?.disconnect();
+			canvasObserver = undefined;
+		};
 	});
 </script>
 
 <div class="graph-page">
 	<div class="graph-header">
-		<h1>Graph View</h1>
-		<p class="graph-subtitle">
-			{documents.length} pages, {links.length} connections
-			{#if links.length === 0}
-				— Link pages with <code>[[Page Title]]</code> or /doc links to see connections
-			{/if}
-		</p>
-		<a href="/" class="back-link">← Back to pages</a>
+		<div class="graph-heading">
+			<h1>Graph</h1>
+			<span class="graph-subtitle">
+				{documents.length} pages · {links.length} {links.length === 1 ? 'connection' : 'connections'}
+			</span>
+		</div>
+		{#if links.length === 0 && documents.length > 0}
+			<p class="graph-hint">Link pages with <code>[[Page Title]]</code> to connect them.</p>
+		{/if}
 	</div>
 
 	{#if loading}
@@ -204,39 +223,47 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		padding: 24px 32px;
+		padding: 24px 28px;
 	}
 
 	.graph-header {
-		margin-bottom: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-bottom: 14px;
 		flex-shrink: 0;
 	}
 
+	.graph-heading {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
 	.graph-header h1 {
-		font-size: 22px;
+		font-size: 20px;
 		font-weight: 700;
-		margin: 0 0 4px;
+		letter-spacing: -0.02em;
+		margin: 0;
 	}
 
 	.graph-subtitle {
 		font-size: 13px;
 		color: var(--color-text-muted);
-		margin: 0 0 8px;
 	}
-	.graph-subtitle code {
+	.graph-hint {
+		font-size: 12px;
+		color: var(--color-text-faint);
+		margin: 0;
+	}
+	.graph-hint code {
 		background: var(--color-surface);
 		padding: 1px 5px;
 		border-radius: 3px;
 		font-family: var(--font-mono);
 		font-size: 12px;
 	}
-
-	.back-link {
-		font-size: 13px;
-		color: var(--color-accent);
-		text-decoration: none;
-	}
-	.back-link:hover { text-decoration: underline; }
 
 	.loading {
 		display: flex;

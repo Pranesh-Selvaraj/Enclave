@@ -32,6 +32,8 @@
 		expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
 		print: 'M6 8V3h12v5M6 15H3V8h18v7h-3M6 21h12v-6H6z',
 		layout: 'M4 4h16v16H4zM9 4v16',
+		panelLeftClose: 'M4 4h16v16H4zM9 4v16M16 9l-3 3 3 3',
+		panelLeftOpen: 'M4 4h16v16H4zM9 4v16M13 9l3 3-3 3',
 		grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
 		externalLink: 'M14 4h6v6M20 4 11 13M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5',
 		undo: 'M3 7v6h6M21 17a9 9 0 0 0-15-6.7L3 13',

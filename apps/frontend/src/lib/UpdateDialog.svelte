@@ -72,12 +72,23 @@
 			busy = false;
 		}
 	}
+
+	// Own the Escape key while open (and never mid-install) — the backdrop is
+	// not focusable, so a keydown handler on it would never fire.
+	$effect(() => {
+		if (!open) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape' && !busy) open = false;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
 </script>
 
 {#if open}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Update check" onclick={() => { if (!busy) open = false; }} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) open = false; }}>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+	<div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Update check" tabindex="-1" onclick={() => { if (!busy) open = false; }}>
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<div class="update-dialog" role="document" onclick={(e: MouseEvent) => e.stopPropagation()}>
 			<div class="dialog-header">
 				<h2>Update check</h2>
@@ -146,7 +157,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 400;
-		background: rgba(0, 0, 0, 0.45);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -155,11 +166,11 @@
 	.update-dialog {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 14px;
+		border-radius: var(--radius-lg);
 		width: 520px;
 		max-width: 100%;
 		max-height: min(88vh, 640px);
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
 	}
@@ -172,9 +183,20 @@
 	}
 	.dialog-header h2 { font-size: 15px; font-weight: 600; margin: 0; }
 	.dialog-close {
-		background: none; border: none; color: var(--color-text-muted);
-		cursor: pointer; font-size: 14px; padding: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 14px;
+		padding: 0;
 	}
+	.dialog-close:hover { background: var(--color-surface-hover); color: var(--color-text); }
 	.dialog-close:disabled { opacity: 0.4; cursor: default; }
 
 	.dialog-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
@@ -269,8 +291,10 @@
 		.update-dialog {
 			width: 100%;
 			max-height: 88vh;
-			border-radius: 16px 16px 0 0;
+			max-height: 88dvh;
+			border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 			border-bottom: none;
 		}
+		.dialog-footer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 	}
 </style>

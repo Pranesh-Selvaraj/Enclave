@@ -23,8 +23,13 @@
 				return;
 			}
 			try {
-				const key = await invoke<number[]>('load_vault_key');
-				await invoke('unlock_vault', { key });
+				// The vault is shared with the main window; a cold start is locked
+				// (the stored key file is password-encrypted, by design).
+				const unlocked = await invoke<boolean>('is_vault_unlocked');
+				if (!unlocked) {
+					status = 'locked';
+					return;
+				}
 			} catch {
 				status = 'locked';
 				return;
@@ -88,7 +93,13 @@
 	function close() {
 		invoke('hide_widget').catch(() => {});
 	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') close();
+	}
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <main class="widget">
 	<header class="w-head">
@@ -153,6 +164,7 @@
 	.widget {
 		width: 100vw;
 		height: 100vh;
+		height: 100dvh;
 		box-sizing: border-box;
 		padding: 10px;
 		background: transparent;

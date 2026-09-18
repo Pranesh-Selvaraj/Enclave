@@ -1,10 +1,12 @@
 //! Enclave — Secure, local-first, zero-knowledge knowledge base.
 //!
-//! Tauri v2 backend: IPC commands for vault lifecycle (init / unlock / lock),
-//! document CRUD, and block CRUD.
+//! Tauri v2 desktop/mobile shell. All vault behavior lives in `core-api`;
+//! this crate only adapts it to Tauri: IPC commands, window/tray/widget
+//! management, the updater plugin, and the Android foreground-sync bridge.
+//! Keeping the shell thin is what lets the native Android app reuse the same
+//! core (and therefore the same vault format and sync protocol).
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -18,77 +20,48 @@ mod updater;
 
 mod android_sync;
 
-const DB_FILENAME: &str = "enclave.db";
-
 // ── App State ───────────────────────────────────────────────────────────────
 
 pub struct AppState {
-    pub app_dir: PathBuf,
-    /// None when locked; Some when unlocked.
-    pub db: Mutex<Option<rusqlite::Connection>>,
-    /// Vault-derived sync PSK, present only while the vault is unlocked.
-    /// Same owner = same seed phrase = same vault key = same sync key, so
-    /// P2P sync authenticates and encrypts with it (see core-network/crypto.rs).
-    pub sync_key: Mutex<Option<[u8; 32]>>,
-    pub network: Arc<core_network::NetworkState>,
+    /// Single source of truth for the vault, network and sync protocol.
+    pub core: Arc<core_api::EnclaveCore>,
 }
 
-fn db_path(app_dir: &std::path::Path) -> PathBuf {
-    app_dir.join(DB_FILENAME)
-}
-
-// wrap a fn that needs Connection, returning a "vault locked" error if None
-fn with_db<T>(
-    state: &AppState,
-    f: impl FnOnce(&rusqlite::Connection) -> Result<T, String>,
-) -> Result<T, String> {
-    let guard = state.db.lock().map_err(|e| e.to_string())?;
-    match guard.as_ref() {
-        Some(conn) => f(conn),
-        None => Err("Vault is locked".to_string()),
-    }
+/// Map a core error onto the string contract the existing UI expects.
+fn msg(e: core_api::CoreError) -> String {
+    e.to_string()
 }
 
 // ── Vault Lifecycle Commands ────────────────────────────────────────────────
 
 #[tauri::command(async)]
 fn is_vault_initialized(state: tauri::State<AppState>) -> bool {
-    core_db::vault_exists(&db_path(&state.app_dir))
+    state.core.is_vault_initialized()
+}
+
+/// True when the shared core is already unlocked — Android surfaces use it
+/// to skip the vault guard when the core is already open.
+#[tauri::command(async)]
+fn is_vault_unlocked(state: tauri::State<AppState>) -> bool {
+    state.core.is_unlocked()
 }
 
 #[tauri::command(async)]
 fn init_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
-    let path = db_path(&state.app_dir);
-    if core_db::vault_exists(&path) {
-        return Err("Vault already exists".to_string());
-    }
-    let conn = core_db::init_vault(&path, &key)?;
-    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
-    *guard = Some(conn);
-    *state.sync_key.lock().map_err(|e| e.to_string())? = Some(core_network::crypto::derive_sync_key(&key));
-    Ok(())
+    state.core.init_vault(&key).map_err(msg)
 }
 
 #[tauri::command(async)]
 fn unlock_vault(state: tauri::State<AppState>, key: Vec<u8>) -> Result<(), String> {
-    let path = db_path(&state.app_dir);
-    let conn = core_db::open_vault(&path, &key)?;
-    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
-    *guard = Some(conn);
-    *state.sync_key.lock().map_err(|e| e.to_string())? = Some(core_network::crypto::derive_sync_key(&key));
-    Ok(())
+    state.core.unlock_vault(&key).map_err(msg)
 }
 
 // Lock is async so it can stop the network (which holds the sync key).
 #[tauri::command]
 async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    // Locked vault = no sync: drop the key and stop the network so no
-    // session keeps running with key material after the user locks up.
-    let _ = state.network.stop().await;
+    state.core.lock_vault().await.map_err(msg)?;
+    // Android: no vault key = no foreground sync service.
     let _ = android_sync::set_service(false);
-    *state.sync_key.lock().map_err(|e| e.to_string())? = None;
-    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
-    *guard = None;
     Ok(())
 }
 
@@ -96,133 +69,44 @@ async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
 /// vault creation fails partway and would otherwise lock the user out).
 #[tauri::command(async)]
 fn reset_vault(state: tauri::State<AppState>) -> Result<(), String> {
-    let mut guard = state.db.lock().map_err(|e| e.to_string())?;
-    *guard = None;
-    for f in [DB_FILENAME, "vault.key"] {
-        let _ = std::fs::remove_file(state.app_dir.join(f));
-    }
-    Ok(())
+    state.core.reset_vault().map_err(msg)
 }
 
 // ── Document Commands ───────────────────────────────────────────────────────
 
 #[tauri::command(async)]
-fn get_document_list(state: tauri::State<AppState>) -> Result<Vec<core_db::Document>, String> {
-    with_db(&state, |db| core_db::query_documents(db).map_err(|e| e.to_string()))
-}
-
-// ── Folder Commands ─────────────────────────────────────────────────────────
-
-#[tauri::command(async)]
-fn get_folders(state: tauri::State<AppState>) -> Result<Vec<core_db::Folder>, String> {
-    with_db(&state, |db| core_db::query_folders(db).map_err(|e| e.to_string()))
+fn get_document_list(state: tauri::State<AppState>) -> Result<Vec<core_api::Document>, String> {
+    state.core.list_documents().map_err(msg)
 }
 
 #[tauri::command(async)]
-fn create_folder(state: tauri::State<AppState>, name: String) -> Result<core_db::Folder, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        let folder = core_db::Folder {
-            id: uuid::Uuid::new_v4().to_string(),
-            name,
-            created_at: now,
-        };
-        core_db::insert_folder(db, &folder).map_err(|e| e.to_string())?;
-        Ok(folder)
-    })
+fn get_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
+    state.core.get_document(&id).map_err(msg)
 }
 
 #[tauri::command(async)]
-fn rename_folder(state: tauri::State<AppState>, id: String, name: String) -> Result<(), String> {
-    with_db(&state, |db| core_db::rename_folder(db, &id, &name).map_err(|e| e.to_string()))
-}
-
-/// Deleting a folder never deletes its pages — they fall back to the root.
-#[tauri::command(async)]
-fn delete_folder(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    with_db(&state, |db| core_db::delete_folder(db, &id).map_err(|e| e.to_string()))
-}
-
-/// Move a page into a folder (folder_id null = root).
-#[tauri::command(async)]
-fn move_document(
-    state: tauri::State<AppState>,
-    id: String,
-    folder_id: Option<String>,
-) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::move_document(db, &id, folder_id.as_deref(), &now).map_err(|e| e.to_string())?;
-        core_db::query_document(db, &id).map_err(|e| e.to_string())
-    })
-}
-
-#[tauri::command(async)]
-fn get_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| core_db::query_document(db, &id).map_err(|e| e.to_string()))
-}
-
-#[tauri::command(async)]
-fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        let doc = core_db::Document {
-            id: uuid::Uuid::new_v4().to_string(),
-            title,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            is_favorite: false,
-            is_archived: false,
-            rev: 0,
-            deleted_at: None,
-            folder_id: None,
-        };
-        core_db::insert_document(db, &doc).map_err(|e| e.to_string())?;
-
-        let block = core_db::Block {
-            id: uuid::Uuid::new_v4().to_string(),
-            document_id: doc.id.clone(),
-            block_type: "paragraph".into(),
-            content: serde_json::json!({}),
-            sort_order: 1.0,
-            created_at: now.clone(),
-            updated_at: now,
-        };
-        core_db::insert_block(db, &block).map_err(|e| e.to_string())?;
-
-        Ok(doc)
-    })
+fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_api::Document, String> {
+    state.core.create_document(&title).map_err(msg)
 }
 
 #[tauri::command(async)]
 fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::delete_document(db, &id, &now).map_err(|e| e.to_string())
-    })
+    state.core.delete_document(&id).map_err(msg)
 }
 
 #[tauri::command(async)]
-fn archive_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::archive_document(db, &id, &now).map_err(|e| e.to_string())?;
-        core_db::query_document(db, &id).map_err(|e| e.to_string())
-    })
+fn archive_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
+    state.core.archive_document(&id).map_err(msg)
 }
 
 #[tauri::command(async)]
-fn restore_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::restore_document(db, &id, &now).map_err(|e| e.to_string())?;
-        core_db::query_document(db, &id).map_err(|e| e.to_string())
-    })
+fn restore_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
+    state.core.restore_document(&id).map_err(msg)
 }
 
 #[tauri::command(async)]
-fn get_archived_documents(state: tauri::State<AppState>) -> Result<Vec<core_db::Document>, String> {
-    with_db(&state, |db| core_db::query_archived_documents(db).map_err(|e| e.to_string()))
+fn get_archived_documents(state: tauri::State<AppState>) -> Result<Vec<core_api::Document>, String> {
+    state.core.list_archived_documents().map_err(msg)
 }
 
 #[tauri::command(async)]
@@ -230,12 +114,55 @@ fn update_document_title(
     state: tauri::State<AppState>,
     id: String,
     title: String,
-) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::update_document_title(db, &id, &title, &now).map_err(|e| e.to_string())?;
-        core_db::query_document(db, &id).map_err(|e| e.to_string())
-    })
+) -> Result<core_api::Document, String> {
+    state.core.update_document_title(&id, &title).map_err(msg)
+}
+
+#[tauri::command(async)]
+fn find_or_create_document(state: tauri::State<AppState>, title: String) -> Result<core_api::Document, String> {
+    state.core.find_or_create_document(&title).map_err(msg)
+}
+
+#[tauri::command(async)]
+fn toggle_favorite(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
+    state.core.toggle_favorite(&id).map_err(msg)
+}
+
+#[tauri::command(async)]
+fn duplicate_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
+    state.core.duplicate_document(&id).map_err(msg)
+}
+
+#[tauri::command(async)]
+fn move_document(
+    state: tauri::State<AppState>,
+    id: String,
+    folder_id: Option<String>,
+) -> Result<core_api::Document, String> {
+    state.core.move_document(&id, folder_id.as_deref()).map_err(msg)
+}
+
+// ── Folder Commands ─────────────────────────────────────────────────────────
+
+#[tauri::command(async)]
+fn get_folders(state: tauri::State<AppState>) -> Result<Vec<core_api::Folder>, String> {
+    state.core.list_folders().map_err(msg)
+}
+
+#[tauri::command(async)]
+fn create_folder(state: tauri::State<AppState>, name: String) -> Result<core_api::Folder, String> {
+    state.core.create_folder(&name).map_err(msg)
+}
+
+#[tauri::command(async)]
+fn rename_folder(state: tauri::State<AppState>, id: String, name: String) -> Result<(), String> {
+    state.core.rename_folder(&id, &name).map_err(msg)
+}
+
+/// Deleting a folder never deletes its pages — they fall back to the root.
+#[tauri::command(async)]
+fn delete_folder(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    state.core.delete_folder(&id).map_err(msg)
 }
 
 // ── Block Commands ──────────────────────────────────────────────────────────
@@ -244,8 +171,8 @@ fn update_document_title(
 fn get_blocks(
     state: tauri::State<AppState>,
     document_id: String,
-) -> Result<Vec<core_db::Block>, String> {
-    with_db(&state, |db| core_db::query_blocks(db, &document_id).map_err(|e| e.to_string()))
+) -> Result<Vec<core_api::Block>, String> {
+    state.core.get_blocks(&document_id).map_err(msg)
 }
 
 #[tauri::command(async)]
@@ -256,28 +183,19 @@ fn upsert_block(
     block_type: String,
     content: serde_json::Value,
     sort_order: f64,
-) -> Result<core_db::Block, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        let block = core_db::Block {
-            id,
-            document_id,
-            block_type,
-            content,
-            sort_order,
-            created_at: now.clone(),
-            updated_at: now,
-        };
-        core_db::upsert_block(db, &block).map_err(|e| e.to_string())
-    })
+) -> Result<core_api::Block, String> {
+    state
+        .core
+        .upsert_block(&id, &document_id, &block_type, content, sort_order)
+        .map_err(msg)
 }
 
 #[tauri::command(async)]
 fn delete_block(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    with_db(&state, |db| core_db::delete_block(db, &id).map_err(|e| e.to_string()))
+    state.core.delete_block(&id).map_err(msg)
 }
 
-// ── Embeddings (RAG) ─────────────────────────────────────────────────────────
+// ── Embeddings (RAG storage) ────────────────────────────────────────────────
 
 #[tauri::command(async)]
 fn upsert_embedding(
@@ -287,11 +205,10 @@ fn upsert_embedding(
     text: String,
     vector: Vec<f64>,
 ) -> Result<(), String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::upsert_embedding(db, &block_id, &document_id, &text, &vector, &now)
-            .map_err(|e| e.to_string())
-    })
+    state
+        .core
+        .upsert_embedding(&block_id, &document_id, &text, &vector)
+        .map_err(msg)
 }
 
 /// Ranked retrieval: ANN top-k via the in-DB vec0 index (exact-cosine
@@ -301,10 +218,8 @@ fn search_embeddings(
     state: tauri::State<AppState>,
     query: Vec<f64>,
     limit: usize,
-) -> Result<Vec<core_db::Embedding>, String> {
-    with_db(&state, |db| {
-        core_db::query_embeddings_topk(db, &query, limit).map_err(|e| e.to_string())
-    })
+) -> Result<Vec<core_api::Embedding>, String> {
+    state.core.search_embeddings(&query, limit).map_err(msg)
 }
 
 /// Offline embedding via the built-in ONNX model (fastembed). Inference is
@@ -315,7 +230,7 @@ fn search_embeddings(
 #[cfg(not(all(target_os = "android", target_arch = "x86_64")))]
 #[tauri::command]
 async fn embed_text(state: tauri::State<'_, AppState>, text: String) -> Result<Vec<f64>, String> {
-    let cache_dir = state.app_dir.join("models");
+    let cache_dir = state.core.app_dir().join("models");
     tauri::async_runtime::spawn_blocking(move || crate::embed::embed_text_blocking(&cache_dir, &text))
         .await
         .map_err(|e| e.to_string())?
@@ -325,12 +240,12 @@ async fn embed_text(state: tauri::State<'_, AppState>, text: String) -> Result<V
 
 #[tauri::command(async)]
 fn get_setting(state: tauri::State<AppState>, key: String) -> Result<Option<String>, String> {
-    with_db(&state, |db| core_db::get_setting(db, &key).map_err(|e| e.to_string()))
+    state.core.get_setting(&key).map_err(msg)
 }
 
 #[tauri::command(async)]
 fn set_setting(state: tauri::State<AppState>, key: String, value: String) -> Result<(), String> {
-    with_db(&state, |db| core_db::set_setting(db, &key, &value).map_err(|e| e.to_string()))
+    state.core.set_setting(&key, &value).map_err(msg)
 }
 
 // ── Markdown Import / Export ────────────────────────────────────────────────
@@ -338,11 +253,7 @@ fn set_setting(state: tauri::State<AppState>, key: String, value: String) -> Res
 /// Write arbitrary bytes (markdown text or PNG) into the exports dir.
 #[tauri::command(async)]
 fn export_file(state: tauri::State<AppState>, filename: String, data: Vec<u8>) -> Result<String, String> {
-    let exports_dir = state.app_dir.join("exports");
-    std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
-    let path = exports_dir.join(sanitize_filename(&filename));
-    std::fs::write(&path, &data).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().to_string())
+    state.core.export_file(&filename, &data).map_err(msg)
 }
 
 #[tauri::command(async)]
@@ -361,95 +272,49 @@ fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
 /// the app is closed.
 #[tauri::command(async)]
 fn backup_vault(state: tauri::State<AppState>) -> Result<String, String> {
-    let exports_dir = state.app_dir.join("exports");
-    std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
-    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-    let dest = exports_dir.join(format!("enclave-backup-{stamp}.db"));
-    let sql = format!("VACUUM INTO '{}'", dest.to_string_lossy().replace('\'', "''"));
-    with_db(&state, |db| db.execute(&sql, []).map(|_| ()).map_err(|e| e.to_string()))?;
-    Ok(dest.to_string_lossy().to_string())
+    state.core.backup_vault().map_err(msg)
 }
 
-fn sanitize_filename(name: &str) -> String {
-    // is_alphanumeric is unicode-aware so CJK/accents survive; only path
-    // separators and control chars are replaced.
-    let safe: String = name
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == ' ' { c } else { '_' })
-        .collect();
-    let trimmed = safe.trim();
-    if trimmed.is_empty() { "untitled".into() } else { trimmed.into() }
-}
-
-// ── Backlinks ────────────────────────────────────────────────────────────────
+// ── Backlinks / tags / search ───────────────────────────────────────────────
 
 #[tauri::command(async)]
-fn get_backlinks(state: tauri::State<AppState>, title: String) -> Result<Vec<core_db::Backlink>, String> {
-    with_db(&state, |db| core_db::query_backlinks(db, &title).map_err(|e| e.to_string()))
+fn get_backlinks(state: tauri::State<AppState>, title: String) -> Result<Vec<core_api::Backlink>, String> {
+    state.core.get_backlinks(&title).map_err(msg)
 }
 
 #[tauri::command(async)]
-fn find_relation_backlinks(state: tauri::State<AppState>, doc_id: String) -> Result<Vec<core_db::Backlink>, String> {
-    with_db(&state, |db| core_db::find_relation_backlinks(db, &doc_id).map_err(|e| e.to_string()))
+fn find_relation_backlinks(state: tauri::State<AppState>, doc_id: String) -> Result<Vec<core_api::Backlink>, String> {
+    state.core.find_relation_backlinks(&doc_id).map_err(msg)
 }
 
 #[tauri::command(async)]
-fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<core_db::PageInfo>, String> {
-    with_db(&state, |db| core_db::query_all_page_titles(db).map_err(|e| e.to_string()))
+fn get_page_list(state: tauri::State<AppState>) -> Result<Vec<core_api::PageInfo>, String> {
+    state.core.get_page_list().map_err(msg)
 }
 
 #[tauri::command(async)]
-fn get_all_tags(state: tauri::State<AppState>) -> Result<Vec<core_db::TagInfo>, String> {
-    with_db(&state, |db| core_db::query_all_tags(db).map_err(|e| e.to_string()))
+fn get_all_tags(state: tauri::State<AppState>) -> Result<Vec<core_api::TagInfo>, String> {
+    state.core.get_all_tags().map_err(msg)
 }
 
 #[tauri::command(async)]
-fn search_all(state: tauri::State<AppState>, query: String) -> Result<Vec<core_db::SearchResult>, String> {
-    with_db(&state, |db| core_db::search_all(db, &query).map_err(|e| e.to_string()))
+fn search_all(state: tauri::State<AppState>, query: String) -> Result<Vec<core_api::SearchResult>, String> {
+    state.core.search_all(&query).map_err(msg)
 }
 
-#[tauri::command(async)]
-fn find_or_create_document(state: tauri::State<AppState>, title: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::find_or_create_document(db, &title, &now).map_err(|e| e.to_string())
-    })
-}
-
-// ── Vault Key File (encrypted seed phrase for password-based login) ──────────
+// ── Vault Key File (encrypted seed phrase for password-based login) ─────────
 
 #[tauri::command(async)]
 fn store_vault_key(state: tauri::State<AppState>, key_data: Vec<u8>) -> Result<(), String> {
-    let path = state.app_dir.join("vault.key");
-    std::fs::write(&path, &key_data).map_err(|e| e.to_string())
+    state.core.store_vault_key(&key_data).map_err(msg)
 }
 
 #[tauri::command(async)]
 fn load_vault_key(state: tauri::State<AppState>) -> Result<Vec<u8>, String> {
-    let path = state.app_dir.join("vault.key");
-    std::fs::read(&path).map_err(|_| "No password set".to_string())
+    state.core.load_vault_key().map_err(msg)
 }
 
-// ── Favorites ────────────────────────────────────────────────────────────────
-
-#[tauri::command(async)]
-fn toggle_favorite(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::toggle_document_favorite(db, &id, &now).map_err(|e| e.to_string())?;
-        core_db::query_document(db, &id).map_err(|e| e.to_string())
-    })
-}
-
-#[tauri::command(async)]
-fn duplicate_document(state: tauri::State<AppState>, id: String) -> Result<core_db::Document, String> {
-    with_db(&state, |db| {
-        let now = chrono::Utc::now().to_rfc3339();
-        core_db::duplicate_document(db, &id, &now).map_err(|e| e.to_string())
-    })
-}
-
-// ── Attachments (images etc.) ────────────────────────────────────────────────
+// ── Attachments (images etc.) ───────────────────────────────────────────────
 
 /// Writes an attachment under <app_data>/attachments/<document_id>/ and
 /// returns the absolute path (frontend serves it via the asset protocol).
@@ -460,180 +325,38 @@ fn save_attachment(
     filename: String,
     data: Vec<u8>,
 ) -> Result<String, String> {
-    let dir = state.app_dir.join("attachments").join(&document_id);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let base = sanitize_filename(&filename);
-    let mut path = dir.join(&base);
-    let mut i = 1;
-    while path.exists() {
-        // ponytail: naive "name (2)" dedupe, fine for local usage
-        let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(&base);
-        let ext = base.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
-        path = dir.join(format!("{stem} ({i}).{ext}"));
-        i += 1;
-    }
-    std::fs::write(&path, &data).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
+    state
+        .core
+        .save_attachment(&document_id, &filename, &data)
+        .map_err(msg)
 }
 
 // ── Network Commands ────────────────────────────────────────────────────────
 
-#[tauri::command(async)]
+#[tauri::command]
 async fn start_network(state: tauri::State<'_, AppState>, name: Option<String>) -> Result<(), String> {
-    let name = name.unwrap_or_else(|| "Enclave".to_string());
-    let key = state
-        .sync_key
-        .lock()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Vault is locked — unlock before enabling sync".to_string())?;
-    state.network.start(&name, key).await?;
+    state.core.start_network(name).await.map_err(msg)?;
     // Android: keep the stack alive while backgrounded (no-op elsewhere).
     let _ = android_sync::set_service(true);
     Ok(())
 }
 
-#[tauri::command(async)]
+#[tauri::command]
 async fn stop_network(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.network.stop().await?;
+    state.core.stop_network().await.map_err(msg)?;
     let _ = android_sync::set_service(false);
     Ok(())
 }
 
 /// Manual peer connect for networks where mDNS discovery is blocked.
-#[tauri::command(async)]
+#[tauri::command]
 async fn connect_peer(state: tauri::State<'_, AppState>, host: String, port: u16) -> Result<(), String> {
-    state.network.connect_peer(&host, port).await
+    state.core.connect_peer(&host, port).await.map_err(msg)
 }
 
-#[tauri::command(async)]
-async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_network::NetworkStatus, String> {
-    Ok(state.network.status().await)
-}
-
-// ── Sync Message Handling (LAN v3 — incremental) ───────────────────────────────
-
-/// Wire protocol: both sides send hello on connect; each answers with a
-/// digest of doc metadata (id, rev, updated_at, deleted_at). The digest
-/// receiver diffs it against its own index and pulls only newer/missing docs
-/// via need → partial snapshot → merge (doc-level LWW) → ack. A converged
-/// pair exchanges need([]) → snapshot([]) → ack, which also refreshes
-/// "last synced" without moving payload.
-fn sync_digest(state: &AppState) -> Option<String> {
-    let payload = with_db(state, |db| {
-        let index = core_db::query_doc_index(db).map_err(|e| e.to_string())?;
-        Ok(serde_json::json!({ "kind": "digest", "docs": index }).to_string())
-    });
-    payload.ok()
-}
-
-fn sync_snapshot_for(state: &AppState, ids: &[String]) -> Option<String> {
-    let payload = with_db(state, |db| {
-        let (docs, blocks) = core_db::query_sync_data_for(db, ids).map_err(|e| e.to_string())?;
-        Ok(serde_json::json!({ "kind": "snapshot", "docs": docs, "blocks": blocks }).to_string())
-    });
-    payload.ok()
-}
-
-async fn handle_sync_message(
-    app: &tauri::AppHandle,
-    state: &AppState,
-    net: &core_network::NetworkState,
-    msg: core_network::PeerMessage,
-) {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg.payload) else {
-        return;
-    };
-    match v["kind"].as_str() {
-        Some("hello") => {
-            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
-            if let Some(digest) = sync_digest(state) {
-                net.send_to(&peer_id, digest).await;
-            }
-        }
-        Some("digest") => {
-            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
-            // Strict parse (issue #57 lesson): a malformed digest is dropped,
-            // never silently treated as "nothing changed".
-            let Ok(remote_index) = serde_json::from_value::<Vec<core_db::DocIndexEntry>>(v["docs"].clone()) else {
-                eprintln!("sync: malformed digest from {peer_id} ignored");
-                return;
-            };
-            let want = with_db(state, |db| {
-                let local = core_db::query_doc_index(db).map_err(|e| e.to_string())?;
-                Ok(core_db::diff_doc_index(&local, &remote_index))
-            });
-            if let Ok(want) = want {
-                let need = serde_json::json!({ "kind": "need", "ids": want }).to_string();
-                net.send_to(&peer_id, need).await;
-            }
-        }
-        Some("need") => {
-            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
-            let Ok(ids) = serde_json::from_value::<Vec<String>>(v["ids"].clone()) else {
-                eprintln!("sync: malformed need from {peer_id} ignored");
-                return;
-            };
-            if let Some(snapshot) = sync_snapshot_for(state, &ids) {
-                net.send_to(&peer_id, snapshot).await;
-            }
-        }
-        Some("snapshot") => {
-            let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
-            // Parse strictly: a malformed snapshot must NOT merge an empty set
-            // and must NOT report a successful sync.
-            let (docs, blocks) = match (serde_json::from_value::<Vec<core_db::Document>>(v["docs"].clone()), serde_json::from_value::<Vec<core_db::Block>>(v["blocks"].clone())) {
-                (Ok(d), Ok(b)) => (d, b),
-                (e1, e2) => {
-                    eprintln!("sync: malformed snapshot from {peer_id} ignored (docs: {:?}, blocks: {:?})", e1.err(), e2.err());
-                    return;
-                }
-            };
-            match with_db(state, |db| core_db::sync_merge(db, &docs, &blocks).map_err(|e| e.to_string())) {
-                Ok(stats) => {
-                    net.mark_synced().await;
-                    let ack = serde_json::json!({
-                        "kind": "ack",
-                        "docs_changed": stats.docs_changed,
-                        "blocks_changed": stats.blocks_changed,
-                    })
-                    .to_string();
-                    net.send_to(&peer_id, ack).await;
-                    let _ = app.emit(
-                        "sync-done",
-                        serde_json::json!({
-                            "peer": &peer_id,
-                            "docs_changed": stats.docs_changed,
-                            "blocks_changed": stats.blocks_changed,
-                        }),
-                    );
-                }
-                Err(_) => { /* vault locked — ignore */ }
-            }
-        }
-        Some("session_failed") => {
-            // Transport-level failure worth surfacing (wrong-key peer, dead
-            // handshake) — the UI listens for this and toasts it.
-            let _ = app.emit(
-                "peer-connect-failed",
-                serde_json::json!({
-                    "host": v["host"].as_str().unwrap_or(&msg.from_peer),
-                    "error": v["error"].as_str().unwrap_or("connection failed"),
-                }),
-            );
-        }
-        Some("ack") => {
-            net.mark_synced().await;
-            let _ = app.emit(
-                "sync-done",
-                serde_json::json!({
-                    "peer": v["peer_id"].as_str().unwrap_or(&msg.from_peer),
-                    "docs_changed": v["docs_changed"].as_u64().unwrap_or(0),
-                    "blocks_changed": v["blocks_changed"].as_u64().unwrap_or(0),
-                }),
-            );
-        }
-        _ => {}
-    }
+#[tauri::command]
+async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_api::NetworkStatus, String> {
+    Ok(state.core.network_status().await)
 }
 
 // ── App Entry Point ─────────────────────────────────────────────────────────
@@ -793,32 +516,43 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir)
                 .expect("Failed to create app data directory");
 
-            // DB starts locked — user must call init_vault or unlock_vault
-            let network = Arc::new(core_network::NetworkState::new());
-            let sync_rx = network
-                .message_rx
-                .try_lock()
-                .expect("network rx uncontended at setup")
-                .take()
-                .expect("sync receiver exists once");
-            app.manage(AppState {
-                app_dir: app_dir.clone(),
-                db: Mutex::new(None),
-                sync_key: Mutex::new(None),
-                network: network.clone(),
-            });
+            // DB starts locked — user must call init_vault or unlock_vault.
+            // Shared process-wide core: a native surface may have created and
+            // unlocked it before this web view loaded.
+            let core = core_api::EnclaveCore::global(app_dir);
+            app.manage(AppState { core: core.clone() });
 
-            // Consume peer messages for the lifetime of the app: hello →
-            // send snapshot, snapshot → merge into vault, ack → notify UI.
-            // State is looked up per message so the task doesn't need to own
-            // an Arc (commands resolve State<AppState> by exact type).
+            // The core owns the peer-message loop; events fan out to shells.
+            // This keeps sync alive when no web view is around.
+            let loop_core = core.clone();
+            tauri::async_runtime::spawn(async move { loop_core.run_sync_loop().await });
+
+            // Forward sync events to the web UI (toasts / peer failures).
             let app_handle = app.handle().clone();
+            let mut events = core.subscribe_sync_events();
             tauri::async_runtime::spawn(async move {
-                let mut rx = sync_rx;
-                while let Some(msg) = rx.recv().await {
-                    let st = app_handle.state::<AppState>();
-                    let net = st.network.clone();
-                    handle_sync_message(&app_handle, &st, &net, msg).await;
+                use tokio::sync::broadcast::error::RecvError;
+                loop {
+                    match events.recv().await {
+                        Ok(core_api::SyncEvent::Done { peer, docs_changed, blocks_changed }) => {
+                            let _ = app_handle.emit(
+                                "sync-done",
+                                serde_json::json!({
+                                    "peer": peer,
+                                    "docs_changed": docs_changed,
+                                    "blocks_changed": blocks_changed,
+                                }),
+                            );
+                        }
+                        Ok(core_api::SyncEvent::PeerFailed { host, error }) => {
+                            let _ = app_handle.emit(
+                                "peer-connect-failed",
+                                serde_json::json!({ "host": host, "error": error }),
+                            );
+                        }
+                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Closed) => break,
+                    }
                 }
             });
 
@@ -830,6 +564,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // vault lifecycle
             is_vault_initialized,
+            is_vault_unlocked,
             init_vault,
             unlock_vault,
             lock_vault,
@@ -908,6 +643,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     /// Regression: commands take State<AppState>, so AppState must be managed
     /// as a plain value — managing an Arc<AppState> instead makes every invoke
@@ -916,10 +652,7 @@ mod tests {
     fn app_state_resolves_for_commands() {
         let app = tauri::test::mock_app();
         app.manage(AppState {
-            app_dir: PathBuf::from("/tmp/enclave-test"),
-            db: Mutex::new(None),
-            sync_key: Mutex::new(None),
-            network: Arc::new(core_network::NetworkState::new()),
+            core: Arc::new(core_api::EnclaveCore::new(PathBuf::from("/tmp/enclave-test"))),
         });
         let state = app.state::<AppState>();
         assert!(!is_vault_initialized(state), "no vault in the test dir");

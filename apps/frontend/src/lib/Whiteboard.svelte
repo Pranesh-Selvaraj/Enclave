@@ -1001,7 +1001,7 @@
 		cursor: pointer;
 		font-size: 13px;
 	}
-	.wb-picker-item:hover { background: var(--color-hover); }
+	.wb-picker-item:hover { background: var(--color-surface-hover); }
 
 	/* ── Presentation ── */
 	.wb-present {
@@ -1066,4 +1066,30 @@
 		font-size: 12px;
 	}
 	.wb-pres-exit:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+
+	/* ── Phone layout: toolbar within thumb reach, real touch targets ── */
+	@media (max-width: 768px) {
+		.wb-wrap { margin-bottom: 12px; }
+		/* One thumb-high row pinned to the bottom; the groups scroll
+		   horizontally instead of stacking five rows over the canvas. */
+		.wb-toolbar {
+			top: auto;
+			bottom: 10px;
+			left: 8px;
+			right: 8px;
+			transform: none;
+			max-width: none;
+			flex-wrap: nowrap;
+			justify-content: flex-start;
+			overflow-x: auto;
+			overscroll-behavior-x: contain;
+			gap: 2px;
+			padding: 4px;
+			scrollbar-width: none;
+		}
+		.wb-toolbar::-webkit-scrollbar { display: none; }
+		.tool-group { flex: 0 0 auto; padding: 0 2px; gap: 1px; }
+		.wb-toolbar .tool-btn { width: 40px; height: 40px; }
+		.wb-toolbar .pres-btn { width: auto; padding: 0 12px; }
+	}
 </style>

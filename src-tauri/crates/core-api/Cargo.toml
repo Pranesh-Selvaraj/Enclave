@@ -1,0 +1,40 @@
+[package]
+name = "core-api"
+version = "0.1.0"
+edition = "2021"
+description = "Shell-agnostic Enclave API: vault, documents, blocks, search and sync. Consumed by the Tauri desktop shell and by the native Android app (UniFFI/JNI)."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+core-db = { path = "../core-db" }
+core-network = { path = "../core-network" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher"] }
+uniffi = { version = "0.29", optional = true }
+
+# Vault cryptography — mirrors packages/crypto (TypeScript) exactly.
+argon2 = "0.5"
+aes-gcm = "0.10"
+bip39 = "2"
+rand = "0.9"
+# The core owns the sync message loop; shells just spawn it.
+tokio = { version = "1", features = ["rt", "sync"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[features]
+uniffi = ["dep:uniffi", "uniffi/tokio"]
+cli = ["dep:uniffi", "uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["cli"]
