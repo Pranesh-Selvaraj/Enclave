@@ -1082,6 +1082,9 @@
 			left: 8px;
 			right: 8px;
 			transform: none;
+			/* Reset the desktop width: max-content so left/right stretch applies
+			   and the toolbar scrolls instead of overflowing the canvas. */
+			width: auto;
 			max-width: none;
 			flex-wrap: nowrap;
 			justify-content: flex-start;
