@@ -523,6 +523,16 @@ async function domAudit(s, label) {
       if (!el.matches('button, a, input, textarea, select, h1, h2, h3, .seg, .tree-item, .nav-item, .palette-item, .sheet-item')) continue;
       const r = el.getBoundingClientRect();
       if (r.right <= vw + 4 && r.left >= -4) continue;
+      // A control parked off-screen because its whole container is off-screen
+      // (closed mobile drawer, collapsed rail) is intentional, not a bug: only
+      // flag elements that stick out of an otherwise visible container.
+      let ancestor = el.parentElement, containerParked = false;
+      while (ancestor && ancestor !== document.body) {
+        const ar = ancestor.getBoundingClientRect();
+        if (ar.width > 0 && ar.height > 0 && (ar.right <= 0 || ar.left >= vw)) { containerParked = true; break; }
+        ancestor = ancestor.parentElement;
+      }
+      if (containerParked) continue;
       let p = el.parentElement, scrollable = false;
       while (p && p !== document.body) { const ps = getComputedStyle(p); if ((ps.overflowX === 'auto' || ps.overflowX === 'scroll') && p.scrollWidth > p.clientWidth) { scrollable = true; break; } p = p.parentElement; }
       if (scrollable) continue;
