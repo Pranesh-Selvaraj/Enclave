@@ -140,13 +140,16 @@ export async function selfCheck(): Promise<void> {
 	const encrypted = await encryptWithPassword(plaintext, pw);
 	const decrypted = await decryptWithPassword(encrypted, pw);
 	if (decrypted !== plaintext) throw new Error('Crypto self-check failed: encrypt/decrypt mismatch');
-	// Wrong password must fail
+	// Wrong password must fail. Track the failure instead of throwing inside
+	// the guarded try — a throw here would be caught by the same catch and the
+	// check would silently pass even if decryption accepted any key.
+	let wrongPasswordRejected = false;
 	try {
 		await decryptWithPassword(encrypted, 'wrong-password');
-		throw new Error('Crypto self-check failed: wrong password should have thrown');
 	} catch {
-		// expected
+		wrongPasswordRejected = true;
 	}
+	if (!wrongPasswordRejected) throw new Error('Crypto self-check failed: wrong password was accepted');
 
 	// 2. Mnemonic generation + validation
 	const mnemonic = generateMnemonic();
