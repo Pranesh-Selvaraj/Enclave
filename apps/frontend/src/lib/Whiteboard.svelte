@@ -1089,7 +1089,7 @@
 		}
 		.wb-toolbar::-webkit-scrollbar { display: none; }
 		.tool-group { flex: 0 0 auto; padding: 0 2px; gap: 1px; }
-		.wb-toolbar .tool-btn { width: 40px; height: 40px; }
+		.wb-toolbar .tool-btn { width: 44px; height: 44px; }
 		.wb-toolbar .pres-btn { width: auto; padding: 0 12px; }
 	}
 </style>
