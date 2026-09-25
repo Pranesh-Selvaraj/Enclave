@@ -1154,6 +1154,32 @@ const SCENARIOS = {
 		await s.shot('graph-pan-zoom');
 	},
 
+	async whiteboardScroll(s) {
+		await s.unlock();
+		await s.openDoc('doc-1');
+		await s.clickText('Whiteboard');
+		await s.waitFor(() => document.querySelector('canvas'), 15000, 'whiteboard canvas');
+		await sleep(700);
+		const m = await s.eval(`(() => {
+      const tb = document.querySelector('.wb-toolbar');
+      if (!tb) return null;
+      return { sw: tb.scrollWidth, cw: tb.clientWidth, vw: window.innerWidth };
+    })()`);
+		if (s.profile.mobile) {
+			s.check('wb-toolbar-scrollable', m && m.sw > m.cw, `toolbar does not scroll: ${JSON.stringify(m)}`);
+		}
+		await s.eval(`(() => { const tb = document.querySelector('.wb-toolbar'); tb.scrollLeft = tb.scrollWidth; return true; })()`);
+		await sleep(300);
+		const last = await s.eval(`(() => {
+      const btns = [...document.querySelectorAll('.wb-toolbar .tool-btn')];
+      const b = btns[btns.length - 1];
+      const r = b.getBoundingClientRect();
+      return { right: Math.round(r.right), left: Math.round(r.left), vw: window.innerWidth, visible: r.width > 0 && r.right <= window.innerWidth + 1 && r.left >= -1 };
+    })()`);
+		s.check('wb-toolbar-last-reachable', last && last.visible, JSON.stringify(last));
+		await s.shot('whiteboard-toolbar-scrolled');
+	},
+
 	async capture(s) {
 		await s.boot(`${s.base}/capture`);
 		await s.waitFor(() => document.querySelector('.note'), 15000, 'capture composer');
