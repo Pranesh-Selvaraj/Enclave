@@ -913,6 +913,10 @@
 		padding: 5px;
 		box-shadow: var(--shadow-md);
 		z-index: 5;
+		/* Shrink-to-fit against the right edge instead of the centered left edge:
+		   without an explicit width, an absolutely positioned box at left:50%
+		   only gets ~half the container, so one button wrapped to a second row. */
+		width: max-content;
 		max-width: calc(100% - 24px);
 		flex-wrap: wrap;
 		justify-content: center;
