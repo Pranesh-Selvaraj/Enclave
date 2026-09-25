@@ -73,6 +73,9 @@ export async function exportVaultAsMarkdown(): Promise<number> {
 	if (!dir) return 0;
 	const docs = await invoke<Document[]>('get_document_list');
 	let count = 0;
+	// Titles are not unique: two pages named "Notes" must not overwrite each
+	// other in the export folder. Track used names and add a numeric suffix.
+	const usedNames = new Set<string>();
 	for (const d of docs) {
 		const blocks = await invoke<Block[]>('get_blocks', { documentId: d.id });
 		const contentBlock = blocks.find((b) => b.type === 'doc');
@@ -86,7 +89,11 @@ export async function exportVaultAsMarkdown(): Promise<number> {
 			'---',
 			'',
 		].join('\n');
-		const safe = (d.title || 'untitled').replace(/[\\/:*?"<>|]/g, '_');
+		const base =
+			(d.title || 'untitled').replace(/[\\/:*?"<>|]/g, '_').replace(/^[.\s]+|[.\s]+$/g, '') || 'untitled';
+		let safe = base;
+		for (let n = 2; usedNames.has(safe); n++) safe = `${base} (${n})`;
+		usedNames.add(safe);
 		await invoke('write_file', {
 			path: await join(dir, `${safe}.md`),
 			data: Array.from(new TextEncoder().encode(fm + md)),
