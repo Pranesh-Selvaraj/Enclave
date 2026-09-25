@@ -169,7 +169,7 @@
 		border-radius: var(--radius-lg);
 		width: 520px;
 		max-width: 100%;
-		max-height: min(88vh, 640px);
+		max-height: min(calc(88vh * var(--ui-fit)), 640px);
 		box-shadow: var(--shadow-lg);
 		display: flex;
 		flex-direction: column;
@@ -290,8 +290,8 @@
 		.modal-backdrop { align-items: flex-end; padding: 0; }
 		.update-dialog {
 			width: 100%;
-			max-height: 88vh;
-			max-height: 88dvh;
+			max-height: calc(88vh * var(--ui-fit));
+			max-height: calc(88dvh * var(--ui-fit));
 			border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 			border-bottom: none;
 		}

@@ -377,7 +377,7 @@
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 		padding: 5px;
 		min-width: 200px;
-		max-height: calc(100vh - 16px);
+		max-height: calc(100vh * var(--ui-fit) - 16px);
 		overflow-y: auto;
 	}
 

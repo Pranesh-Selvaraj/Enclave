@@ -73,7 +73,7 @@
 	.sd-dialog {
 		width: 480px;
 		max-width: 90vw;
-		max-height: 60vh;
+		max-height: calc(60vh * var(--ui-fit));
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
