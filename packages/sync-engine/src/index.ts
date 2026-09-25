@@ -1,5 +1,11 @@
-// Enclave Sync Engine — Yjs CRDT documents with encrypted P2P sync.
-// Manages Y.Doc instances and provides hooks for the network transport layer.
+// Standalone Yjs CRDT experiment — NOT the sync used by the app. The desktop
+// and Android app sync through the Rust core (core-network: authenticated
+// WebSocket transport; core-db: full JSON snapshots + doc-level LWW merge).
+// Kept as an isolated library for experimentation; nothing imports it.
+//
+// Manages Y.Doc instances and provides hooks for a network transport layer.
+// ponytail: String.fromCharCode(...bytes) would blow the call stack on large
+// updates — chunk it before this is ever wired into a real transport.
 
 import * as Y from 'yjs';
 
