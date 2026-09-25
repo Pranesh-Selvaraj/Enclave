@@ -41,12 +41,16 @@ struct GhAsset {
     size: u64,
 }
 
-/// "1.2.0" / "v1.2.0" → [1, 2, 0]. Non-numeric segments (prerelease suffixes
-/// like "-rc.1") are skipped — GitHub's "latest" already excludes
-/// prereleases, so a skipped suffix can only make versions look equal, and
-/// equal never triggers an update.
+/// "1.2.0" / "v1.2.0" → [1, 2, 0]. Only the numeric version core is parsed:
+/// prerelease (`-rc.1`) and build (`+build5`) suffixes are ignored, so
+/// `1.2.0-rc.1` compares equal to `1.2.0` instead of looking newer because of
+/// the extra numeric component.
 fn parse_version(v: &str) -> Vec<u32> {
-    v.trim_start_matches('v')
+    let start = v.find(|c: char| c.is_ascii_digit()).unwrap_or(v.len());
+    v[start..]
+        .split(['-', '+'])
+        .next()
+        .unwrap_or("")
         .split(|c: char| !c.is_ascii_digit())
         .filter_map(|p| p.parse::<u32>().ok())
         .collect()
@@ -297,6 +301,19 @@ mod tests {
         assert!(!is_newer("1.2.0", "1.2.0"));
         assert!(!is_newer("1.2.0", "1.2.1"));
         assert!(!is_newer("1.2.0", "1.10.0"));
+    }
+
+    #[test]
+    fn version_compare_ignores_prerelease_and_build_suffixes() {
+        assert!(!is_newer("1.2.0-rc.1", "1.2.0"));
+        assert!(!is_newer("1.2.0+build5", "1.2.0"));
+        assert!(!is_newer("v1.2.0-rc.1", "1.2.0"));
+        // A pre-release of a newer patch is still newer than the old release.
+        assert!(is_newer("1.2.1-rc.1", "1.2.0"));
+        // Tags are not always plain "vX.Y.Z" — scan to the first digit.
+        assert!(is_newer("enclave-1.3.0", "1.2.0"));
+        assert_eq!(parse_version("1.2.0-rc.1"), vec![1, 2, 0]);
+        assert_eq!(parse_version("1.2.0+build5"), vec![1, 2, 0]);
     }
 
     #[test]
