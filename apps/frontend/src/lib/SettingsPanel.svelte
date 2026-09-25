@@ -643,11 +643,12 @@ sentinel check</pre>
 			gap: 4px 10px;
 		}
 		.seg { padding: 8px 14px; font-size: 13px; border-radius: 8px; }
-		.swatch { width: 28px; height: 28px; }
+		.swatch { width: 44px; height: 44px; }
 		.switch { width: 46px; height: 26px; }
 		.switch-slider::before { width: 18px; height: 18px; left: 4px; top: 4px; }
 		.switch input:checked + .switch-slider::before { transform: translateX(20px); }
 		.ai-input { width: 100%; box-sizing: border-box; }
+		.danger-btn { min-height: 44px; padding: 10px 16px; }
 		.settings-footer { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 	}
 </style>

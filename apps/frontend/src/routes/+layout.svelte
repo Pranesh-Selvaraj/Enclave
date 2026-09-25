@@ -2424,15 +2424,16 @@
 			border-radius: var(--radius-lg);
 		}
 		.folder-row { min-height: 48px; }
-		.folder-toggle { width: 30px; height: 30px; flex-shrink: 0; }
+		.folder-toggle { width: 44px; height: 44px; flex-shrink: 0; }
 		.folder-label { font-size: 15px; padding: 8px 6px; min-height: 44px; }
 		.tag-row { padding: 11px 12px; font-size: 14px; border-radius: var(--radius-lg); min-height: 48px; }
 		.new-page-btn { padding: 13px 14px; min-height: 48px; font-size: 15px; border-radius: var(--radius-lg); }
 		/* Row actions need real touch targets, not desktop 22px ghosts. */
 		.tree-item-actions { gap: 6px; }
+		.sidebar .row-btn,
 		.tree-item-actions .row-btn {
-			width: 34px;
-			height: 34px;
+			width: 44px;
+			height: 44px;
 			border-radius: 9px;
 			color: var(--color-text-muted);
 		}
@@ -2459,6 +2460,7 @@
 		.sidebar.open { transform: translateX(0); }
 
 		.mobile-topbar { display: flex; }
+		.topbar-brand { min-height: 44px; }
 
 		/* Touch: no hover — row actions must be tappable without a long-press.
 		   Favoriting stays one tap away in the ⋯ menu; dropping the star here
