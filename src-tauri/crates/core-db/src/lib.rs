@@ -1796,6 +1796,7 @@ mod tests {
         assert!(docs.iter().all(|d| d.deleted_at.is_some() || d.id == "d1"));
     }
 
+    #[test]
     fn diff_doc_index_is_symmetric_and_minimal() {
         let e = |id: &str, rev: i64, ts: &str, deleted: Option<&str>| DocIndexEntry {
             id: id.into(), rev, updated_at: ts.into(), deleted_at: deleted.map(|s| s.to_string()),
@@ -1822,10 +1823,11 @@ mod tests {
         let a = vec![e("x", 1, "t", None)];
         let b = vec![e("x", 1, "t", None)];
         assert!(diff_doc_index(&a, &b).is_empty());
-        // Empty local vault pulls everything.
-        assert_eq!(diff_doc_index(&[], &remote).len(), 4);
+        // Empty local vault pulls everything (all five remote entries).
+        assert_eq!(diff_doc_index(&[], &remote).len(), 5);
     }
 
+    #[test]
     fn sync_merge_lww_converges_and_honors_tombstones() {
         // Two devices, same doc edited concurrently to different titles.
         let a = Connection::open_in_memory().unwrap();
