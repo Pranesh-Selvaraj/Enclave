@@ -13,6 +13,7 @@
     "build:android": "cd src-tauri && npx tauri android build --target aarch64",
     "build:all": "npm run build && npm run build:android",
     "check": "npm run check -w @enclave/frontend",
+    "audit:ui": "npm run build -w @enclave/frontend && node tools/ui-audit/run.mjs",
     "tauri": "tauri",
     "release:check": "bash scripts/release-check.sh"
   }

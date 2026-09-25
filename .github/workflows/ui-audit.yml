@@ -1,0 +1,51 @@
+name: UI audit
+
+# Opt-in, never on the release path: run on demand or weekly to catch layout,
+# settings and touch-target regressions on desktop and phone viewports.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+
+      - name: npm install
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build -w @enclave/frontend
+
+      - name: Run UI audit (desktop + phone)
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          node tools/ui-audit/run.mjs \
+            --profiles desktop,phone \
+            --scenario all,flows,auditPages,settingsMatrix,settingsScales,overlaysXlarge
+
+      - name: Upload screenshots + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-audit
+          path: tools/ui-audit/shots/**
+          if-no-files-found: warn
