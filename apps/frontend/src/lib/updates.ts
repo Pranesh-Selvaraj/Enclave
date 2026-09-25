@@ -34,8 +34,10 @@ export function checkForUpdate(): Promise<UpdateInfo> {
 	return invoke('check_for_update');
 }
 
-export function downloadUpdate(url: string, filename: string): Promise<string> {
-	return invoke('download_update', { url, filename });
+/** Download the asset selected by the last check. The backend owns the URL
+ *  (the UI cannot point it anywhere) and verifies the file before installing. */
+export function downloadUpdate(): Promise<string> {
+	return invoke('download_update');
 }
 
 export function installUpdate(path: string): Promise<void> {
