@@ -67,6 +67,23 @@ async function main() {
 	);
 	console.log('  PASS\n');
 
+	// 7. selfCheck must fail when the wrong password is (wrongly) accepted.
+	// Stub WebCrypto decrypt to always succeed: encrypt/decrypt round-trips pass,
+	// so the wrong-password guard is the only thing that can catch this.
+	console.log('[bonus] selfCheck rejects a decrypt that accepts any password...');
+	const realDecrypt = globalThis.crypto.subtle.decrypt.bind(globalThis.crypto.subtle);
+	(globalThis.crypto.subtle as { decrypt: unknown }).decrypt = async () =>
+		new TextEncoder().encode('crypto works').buffer;
+	try {
+		await selfCheck();
+		console.error('  FAIL: selfCheck passed although wrong-password decryption succeeded');
+		process.exit(1);
+	} catch {
+		console.log('  PASS: selfCheck rejected the broken decrypt\n');
+	} finally {
+		(globalThis.crypto.subtle as { decrypt: unknown }).decrypt = realDecrypt;
+	}
+
 	console.log('=== All crypto checks passed ===');
 }
 
