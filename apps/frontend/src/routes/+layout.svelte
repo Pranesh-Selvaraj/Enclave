@@ -2147,7 +2147,7 @@
 		padding: 5px;
 		min-width: 180px;
 		/* Tall menus scroll instead of running off the bottom. */
-		max-height: calc(100vh - 16px);
+		max-height: calc(100vh * var(--ui-fit) - 16px);
 		overflow-y: auto;
 	}
 	.context-item {
@@ -2515,11 +2515,11 @@
 		}
 
 		/* Command palette: near-full-screen, thumb-reachable. */
-		.overlay { padding-top: calc(6vh + env(safe-area-inset-top)); align-items: flex-start; }
+		.overlay { padding-top: calc(6vh * var(--ui-fit) + env(safe-area-inset-top)); align-items: flex-start; }
 		.command-palette {
 			width: 94vw;
 			max-width: 94vw;
-			max-height: 84vh;
+			max-height: calc(84vh * var(--ui-fit));
 			border-radius: 16px;
 			margin-top: 4px;
 		}

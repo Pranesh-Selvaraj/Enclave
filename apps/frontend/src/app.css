@@ -92,10 +92,15 @@
 /* Whole-UI scale — applied as CSS zoom on <html> so every px-sized control
    scales consistently. zoom is supported in every Enclave webview (WebKitGTK,
    WKWebView, WebView2, Android WebView); fallback engines just ignore it.
+   --ui-fit compensates viewport-unit caps: zoom scales rendered boxes but not
+   vh/dvh, so a 92dvh sheet would render 92*zoom % of the viewport and slide
+   its header off-screen. Overlays multiply their caps by 1/zoom
+   (calc(92dvh * var(--ui-fit))) to stay inside the physical viewport.
    ponytail: zoom is the lazy lever vs converting the codebase to rem. */
-[data-ui-scale="compact"] { zoom: 0.92; }
-[data-ui-scale="large"] { zoom: 1.08; }
-[data-ui-scale="xlarge"] { zoom: 1.18; }
+:root { --ui-fit: 1; }
+[data-ui-scale="compact"] { zoom: 0.92; --ui-fit: 1.087; } /* 1 / 0.92 */
+[data-ui-scale="large"] { zoom: 1.08; --ui-fit: 0.926; } /* 1 / 1.08 */
+[data-ui-scale="xlarge"] { zoom: 1.18; --ui-fit: 0.847; } /* 1 / 1.18 */
 
 /* ── Background styles: matte (default) · soft gradient · frosted glass ──
    The ambient blobs are accent-aware — changing the accent color re-tints

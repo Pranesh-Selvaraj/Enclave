@@ -467,7 +467,7 @@ sentinel check</pre>
 		border-radius: var(--radius-lg);
 		width: 420px;
 		max-width: 100%;
-		max-height: min(90vh, 760px);
+		max-height: min(calc(90vh * var(--ui-fit)), 760px);
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		box-shadow: var(--shadow-lg);
@@ -627,8 +627,8 @@ sentinel check</pre>
 		.settings-panel {
 			width: 100%;
 			max-width: 100%;
-			max-height: 92vh;
-			max-height: 92dvh;
+			max-height: calc(92vh * var(--ui-fit));
+			max-height: calc(92dvh * var(--ui-fit));
 			border-radius: 18px 18px 0 0;
 			border-bottom: none;
 		}
