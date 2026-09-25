@@ -577,7 +577,10 @@ sentinel check</pre>
 		font-size: 13px; font-family: var(--font-mono); padding: 3px 8px; width: 190px;
 	}
 	.ai-status-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-	.ai-status { font-size: 12px; color: var(--color-text-muted); line-height: 1.4; }
+	/* The status message can be long; keep the action on one line and let the
+	 * text take the remaining width (wrapping instead of squeezing the button). */
+	.ai-status-row :global(.btn) { flex-shrink: 0; white-space: nowrap; }
+	.ai-status { font-size: 12px; color: var(--color-text-muted); line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
 	.backup-msg { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); word-break: break-all; }
 	.backup-hint { margin-top: 8px; font-size: 12px; color: var(--color-text-faint); line-height: 1.5; }
 	.backup-hint code {
