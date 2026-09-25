@@ -122,17 +122,13 @@
 	});
 
 	function saveTags() {
-		try {
-			invoke('upsert_block', {
-				id: `${docId}-tags`,
-				documentId: docId,
-				blockType: 'tags',
-				content: { tags },
-				sortOrder: 2,
-			});
-		} catch (e) {
-			console.error('Failed to save tags:', e);
-		}
+		invoke('upsert_block', {
+			id: `${docId}-tags`,
+			documentId: docId,
+			blockType: 'tags',
+			content: { tags },
+			sortOrder: 2,
+		}).catch((e) => console.error('Failed to save tags:', e));
 	}
 
 	function addTag() {
@@ -155,17 +151,13 @@
 	}
 
 	function saveMeta() {
-		try {
-			invoke('upsert_block', {
-				id: `${docId}-meta`,
-				documentId: docId,
-				blockType: 'meta',
-				content: { icon, cover },
-				sortOrder: 3,
-			});
-		} catch (e) {
-			console.error('Failed to save page meta:', e);
-		}
+		invoke('upsert_block', {
+			id: `${docId}-meta`,
+			documentId: docId,
+			blockType: 'meta',
+			content: { icon, cover },
+			sortOrder: 3,
+		}).catch((e) => console.error('Failed to save page meta:', e));
 	}
 
 	function setIcon(next: string) {
