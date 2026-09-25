@@ -61,7 +61,7 @@
 		progress = 0;
 		statusText = 'Downloading…';
 		try {
-			const path = await downloadUpdate(info.asset_url, info.asset_name);
+			const path = await downloadUpdate();
 			statusText = 'Installing…';
 			await installUpdate(path);
 			progress = 100;

@@ -9,7 +9,9 @@
 //! over-install — user data is kept, no uninstall needed.
 
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
+use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -27,6 +29,27 @@ pub struct UpdateInfo {
     pub asset_size: Option<u64>,
 }
 
+#[derive(Clone)]
+struct UpdateAsset {
+    name: String,
+    url: String,
+    size: u64,
+    digest: Option<String>,
+}
+
+/// The asset selected by the last check plus the path of the one download
+/// that passed verification. The download command takes no URL from the
+/// frontend — it streams exactly what GitHub advertised — and install only
+/// runs a file this process verified.
+#[derive(Default)]
+pub struct UpdateStateInner {
+    pending: Option<UpdateAsset>,
+    verified_path: Option<String>,
+}
+
+#[derive(Default)]
+pub struct UpdateState(pub Mutex<UpdateStateInner>);
+
 #[derive(Deserialize)]
 struct GhRelease {
     tag_name: String,
@@ -39,6 +62,26 @@ struct GhAsset {
     name: String,
     browser_download_url: String,
     size: u64,
+    /// GitHub's `sha256:<hex>` asset digest (optional in older API responses).
+    digest: Option<String>,
+}
+
+/// `sha256:<hex>` → lowercase hex. Any other scheme is refused (fail closed).
+fn expected_sha256(digest: &str) -> Result<String, String> {
+    let hex = digest
+        .strip_prefix("sha256:")
+        .ok_or_else(|| format!("unsupported update digest scheme: {digest}"))?;
+    if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!("malformed sha256 digest: {digest}"));
+    }
+    Ok(hex.to_ascii_lowercase())
+}
+
+#[cfg(test)]
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// "1.2.0" / "v1.2.0" → [1, 2, 0]. Non-numeric segments (prerelease suffixes
@@ -105,7 +148,7 @@ pub fn app_version() -> String {
 }
 
 #[tauri::command]
-pub async fn check_for_update() -> Result<UpdateInfo, String> {
+pub async fn check_for_update(state: tauri::State<'_, UpdateState>) -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let json = tauri::async_runtime::spawn_blocking(move || {
         let mut resp = ureq::get(&format!("https://api.github.com/repos/{REPO}/releases/latest"))
@@ -121,6 +164,16 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
     let release: GhRelease = serde_json::from_str(&json).map_err(|e| e.to_string())?;
     let latest = release.tag_name.trim_start_matches('v').to_string();
     let asset = pick_asset(&release.assets);
+    {
+        let mut guard = state.0.lock().map_err(|_| "updater state poisoned".to_string())?;
+        guard.pending = asset.map(|a| UpdateAsset {
+            name: a.name.clone(),
+            url: a.browser_download_url.clone(),
+            size: a.size,
+            digest: a.digest.clone(),
+        });
+        guard.verified_path = None;
+    }
     Ok(UpdateInfo {
         current_version: current.clone(),
         latest_version: latest.clone(),
@@ -132,21 +185,30 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
     })
 }
 
-/// Streams the release asset into the app cache dir; emits `update-progress`
-/// events ({received, total, percent}) and returns the local file path.
+/// Streams the asset chosen by the last `check_for_update` into the app cache
+/// dir; emits `update-progress` events ({received, total, percent}), verifies
+/// the SHA-256 digest GitHub reported for the asset, and returns the local
+/// path. A digest mismatch deletes the file and aborts.
 #[tauri::command]
 pub async fn download_update(
     app: tauri::AppHandle,
-    url: String,
-    filename: String,
+    state: tauri::State<'_, UpdateState>,
 ) -> Result<String, String> {
+    let asset = {
+        let guard = state.0.lock().map_err(|_| "updater state poisoned".to_string())?;
+        guard.pending.clone().ok_or("Run an update check first")?
+    };
+    let expected = asset.digest.as_deref().map(expected_sha256).transpose()?;
+
     let cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
-    let dest = cache_dir.join(sanitize_filename(&filename));
+    let dest = cache_dir.join(sanitize_filename(&asset.name));
     let dest_clone = dest.clone();
     let app_clone = app.clone();
+    let url = asset.url.clone();
+    let expected_size = asset.size;
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let verified = tauri::async_runtime::spawn_blocking(move || {
         let resp = ureq::get(&url)
             .header("User-Agent", UA)
             .call()
@@ -160,6 +222,7 @@ pub async fn download_update(
         let mut body = resp.into_body();
         let mut reader = body.as_reader();
         let mut out = std::fs::File::create(&dest_clone).map_err(|e| e.to_string())?;
+        let mut hasher = Sha256::new();
         let mut buf = [0u8; 64 * 1024];
         let mut received = 0u64;
         let mut last_pct = u32::MAX;
@@ -169,6 +232,7 @@ pub async fn download_update(
                 break;
             }
             out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+            hasher.update(&buf[..n]);
             received += n as u64;
             if total > 0 {
                 let pct = (received * 100 / total) as u32;
@@ -181,20 +245,54 @@ pub async fn download_update(
                 }
             }
         }
+        drop(out);
+
+        let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        if let Some(expected) = &expected {
+            if !actual.eq_ignore_ascii_case(expected) {
+                let _ = std::fs::remove_file(&dest_clone);
+                return Err("Update failed its integrity check (sha256 mismatch) — the download was discarded".to_string());
+            }
+        }
+        // A short/truncated body must not be installed even when no digest is
+        // advertised; GitHub always reports the asset size.
+        if expected_size > 0 && received != expected_size {
+            let _ = std::fs::remove_file(&dest_clone);
+            return Err(format!(
+                "Update size mismatch ({received} bytes received, {expected_size} expected) — the download was discarded"
+            ));
+        }
         Ok::<String, String>(dest_clone.to_string_lossy().into_owned())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    {
+        let mut guard = state.0.lock().map_err(|_| "updater state poisoned".to_string())?;
+        guard.verified_path = Some(verified.clone());
+    }
+    Ok(verified)
 }
 
 /// Launches the downloaded installer/APK. Over-installs — no uninstall, user
 /// data is kept on every platform.
 #[tauri::command]
-pub async fn install_update(app: tauri::AppHandle, path: String) -> Result<(), String> {
+pub async fn install_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, UpdateState>,
+    path: String,
+) -> Result<(), String> {
+    // Only the file this process downloaded and verified may be executed.
+    {
+        let guard = state.0.lock().map_err(|_| "updater state poisoned".to_string())?;
+        if guard.verified_path.as_deref() != Some(path.as_str()) {
+            return Err("Refusing to install an update that was not verified by this session".into());
+        }
+    }
     #[cfg(target_os = "android")]
     {
-        let state = app.state::<UpdaterState>();
-        state
+        let plugin_state = app.state::<UpdaterState>();
+        plugin_state
             .0
             .run_mobile_plugin::<serde_json::Value>("installApk", serde_json::json!({ "path": path }))
             .map(|_| ())
@@ -269,6 +367,7 @@ pub struct UpdaterState(pub tauri::plugin::PluginHandle<tauri::Wry>);
 pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::new("enclave-updater")
         .setup(|_app, _api| {
+            _app.manage(UpdateState::default());
             #[cfg(target_os = "android")]
             {
                 // Kotlin class: com.enclave.app.UpdaterPlugin (see
@@ -305,6 +404,7 @@ mod tests {
             name: name.into(),
             browser_download_url: format!("https://example.com/{name}"),
             size: 1024,
+            digest: Some(format!("sha256:{}", sha256_hex(name.as_bytes()))),
         };
         let assets = vec![
             mk("enclave_1.3.0_amd64.deb"),
@@ -324,5 +424,23 @@ mod tests {
                 | "enclave_1.3.0_aarch64.dmg"
                 | "app-universal-release.apk"
         ));
+    }
+
+    #[test]
+    fn sha256_digest_parsing_is_strict_and_case_insensitive() {
+        // Known vector: sha256("abc").
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let hex = sha256_hex(b"enclave");
+        assert_eq!(expected_sha256(&format!("sha256:{hex}")).unwrap(), hex);
+        assert_eq!(
+            expected_sha256(&format!("sha256:{}", hex.to_uppercase())).unwrap(),
+            hex
+        );
+        assert!(expected_sha256("md5:abcd").is_err());
+        assert!(expected_sha256("sha256:not-a-hex-digest").is_err());
+        assert!(expected_sha256(&format!("sha256:{hex}00")).is_err());
     }
 }

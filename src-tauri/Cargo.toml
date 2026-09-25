@@ -36,6 +36,8 @@ serde_json = "1"
 # ── Self-update: checks GitHub Releases + streams the platform installer ──
 # (rustls/ring, pure Rust — cross-compiles to Android; no OpenSSL needed)
 ureq = { version = "~3.2" }
+# SHA-256 over downloaded update assets before they are ever executed.
+sha2 = "0.10"
 
 # ── Utilities ──
 chrono = { version = "0.4", features = ["serde"] }
