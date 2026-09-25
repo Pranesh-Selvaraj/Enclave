@@ -5,6 +5,15 @@
 	import { theme } from '@enclave/ui';
 	import { extractLinks } from '$lib/graphLinks.js';
 
+	interface GraphNode {
+		id: string;
+		title: string;
+		x: number;
+		y: number;
+		vx: number;
+		vy: number;
+	}
+
 	let documents = $state<Document[]>([]);
 	let links = $state<Array<{ source: string; target: string }>>([]);
 	let canvasEl = $state<HTMLCanvasElement | undefined>();
@@ -14,6 +23,18 @@
 	// after the page was gone.
 	let rafId = 0;
 	let canvasObserver: ResizeObserver | undefined;
+
+	// Canvas view transform: screen = world * zoom + pan. Plain locals — they
+	// change per frame and must not trigger Svelte reactivity.
+	let nodes: GraphNode[] = [];
+	let nodeMap = new Map<string, GraphNode>();
+	let cam = { x: 0, y: 0, zoom: 1 };
+	let width = 0;
+	let height = 0;
+	// Active pointers keyed by id (local canvas coords) for drag + pinch.
+	const pointers = new Map<number, { x: number; y: number }>();
+	let dragMoved = false;
+	let pinchDist = 0;
 
 	async function loadGraph() {
 		try {
@@ -33,141 +54,215 @@
 		}
 	}
 
+	function cssVar(n: string, fb: string): string {
+		return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb;
+	}
+
+	/** Draw the current nodes/edges through the pan/zoom transform. */
+	function draw() {
+		const ctx = canvasEl?.getContext('2d');
+		if (!ctx || !canvasEl) return;
+		// Read matte tokens live so the canvas tracks theme + accent changes.
+		const edgeColor = cssVar('--color-border-strong', '#3f3830');
+		const nodeColor = cssVar('--color-accent', '#8b7cf6');
+		const labelColor = cssVar('--color-text-muted', '#a39b90');
+
+		ctx.clearRect(0, 0, width, height);
+		ctx.save();
+		ctx.translate(cam.x, cam.y);
+		ctx.scale(cam.zoom, cam.zoom);
+
+		ctx.strokeStyle = edgeColor;
+		ctx.lineWidth = 1;
+		for (const edge of links) {
+			const s = nodeMap.get(edge.source);
+			const t = nodeMap.get(edge.target);
+			if (!s || !t) continue;
+			ctx.beginPath();
+			ctx.moveTo(s.x, s.y);
+			ctx.lineTo(t.x, t.y);
+			ctx.stroke();
+		}
+
+		for (const n of nodes) {
+			ctx.fillStyle = nodeColor;
+			ctx.beginPath();
+			ctx.arc(n.x, n.y, 6, 0, Math.PI * 2);
+			ctx.fill();
+
+			ctx.fillStyle = labelColor;
+			ctx.font = '11px Inter, sans-serif';
+			const label = n.title.length > 20 ? `${n.title.slice(0, 19)}…` : n.title;
+			ctx.fillText(label, n.x + 10, n.y + 4);
+		}
+		ctx.restore();
+	}
+
+	/** One physics step; returns the total kinetic energy (0 = settled). */
+	function step(): number {
+		const kRepel = 5000;
+		const damping = 0.85;
+
+		for (const n of nodes) {
+			for (const m of nodes) {
+				if (n === m) continue;
+				const dx = n.x - m.x;
+				const dy = n.y - m.y;
+				const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+				const force = kRepel / (dist * dist);
+				n.vx += (dx / dist) * force;
+				n.vy += (dy / dist) * force;
+			}
+			n.vx += (width / 2 - n.x) * 0.005;
+			n.vy += (height / 2 - n.y) * 0.005;
+		}
+
+		for (const edge of links) {
+			const s = nodeMap.get(edge.source);
+			const t = nodeMap.get(edge.target);
+			if (!s || !t) continue;
+			const dx = t.x - s.x;
+			const dy = t.y - s.y;
+			const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+			const force = (dist - 100) * 0.01;
+			const fx = (dx / dist) * force;
+			const fy = (dy / dist) * force;
+			s.vx += fx;
+			s.vy += fy;
+			t.vx -= fx;
+			t.vy -= fy;
+		}
+
+		let totalEnergy = 0;
+		for (const n of nodes) {
+			n.vx *= damping;
+			n.vy *= damping;
+			n.x += n.vx;
+			n.y += n.vy;
+			totalEnergy += Math.abs(n.vx) + Math.abs(n.vy);
+		}
+		return totalEnergy;
+	}
+
 	function render() {
 		if (!canvasEl || documents.length === 0) return;
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
 		cancelAnimationFrame(rafId);
 
-		// Read matte tokens live so the canvas tracks theme + accent changes.
-		const cssVar = (n: string, fb: string) =>
-			getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb;
-		const edgeColor = cssVar('--color-border-strong', '#3f3830');
-		const nodeColor = cssVar('--color-accent', '#8b7cf6');
-		const labelColor = cssVar('--color-text-muted', '#a39b90');
+		width = canvasEl.clientWidth;
+		height = canvasEl.clientHeight;
+		const dpr = devicePixelRatio || 1;
+		canvasEl.width = width * dpr;
+		canvasEl.height = height * dpr;
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-		const w = canvasEl.width = canvasEl.clientWidth * devicePixelRatio;
-		const h = canvasEl.height = canvasEl.clientHeight * devicePixelRatio;
-		ctx.scale(devicePixelRatio, devicePixelRatio);
-
-		const width = canvasEl.clientWidth;
-		const height = canvasEl.clientHeight;
-
-		interface GraphNode {
-			id: string;
-			title: string;
-			x: number;
-			y: number;
-			vx: number;
-			vy: number;
+		// Seed once per document set; resize/theme passes keep positions.
+		if (nodes.length !== documents.length || !documents.every((d, i) => nodes[i]?.id === d.id)) {
+			nodes = documents.map((d) => ({
+				id: d.id,
+				title: d.title || 'Untitled',
+				x: width / 2 + (Math.random() - 0.5) * 200,
+				y: height / 2 + (Math.random() - 0.5) * 200,
+				vx: 0,
+				vy: 0,
+			}));
+			nodeMap = new Map(nodes.map((n) => [n.id, n]));
 		}
 
-		const nodes: GraphNode[] = documents.map(() => ({
-			id: '',
-			title: '',
-			x: width / 2 + (Math.random() - 0.5) * 200,
-			y: height / 2 + (Math.random() - 0.5) * 200,
-			vx: 0,
-			vy: 0,
-		}));
-
-		for (let i = 0; i < documents.length; i++) {
-			nodes[i].id = documents[i].id;
-			nodes[i].title = documents[i].title || 'Untitled';
-		}
-
-		const nodeMap = new Map(nodes.map(n => [n.id, n]));
-
-		function simulate() {
-			ctx!.clearRect(0, 0, width, height);
-
-			const kRepel = 5000;
-			const damping = 0.85;
-
-			for (const n of nodes) {
-				for (const m of nodes) {
-					if (n === m) continue;
-					const dx = n.x - m.x;
-					const dy = n.y - m.y;
-					const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-					const force = kRepel / (dist * dist);
-					n.vx += (dx / dist) * force;
-					n.vy += (dy / dist) * force;
-				}
-				n.vx += (width / 2 - n.x) * 0.005;
-				n.vy += (height / 2 - n.y) * 0.005;
-			}
-
-			for (const edge of links) {
-				const s = nodeMap.get(edge.source);
-				const t = nodeMap.get(edge.target);
-				if (!s || !t) continue;
-				const dx = t.x - s.x;
-				const dy = t.y - s.y;
-				const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-				const force = (dist - 100) * 0.01;
-				const fx = (dx / dist) * force;
-				const fy = (dy / dist) * force;
-				s.vx += fx;
-				s.vy += fy;
-				t.vx -= fx;
-				t.vy -= fy;
-			}
-
-			let totalEnergy = 0;
-			for (const n of nodes) {
-				n.vx *= damping;
-				n.vy *= damping;
-				n.x += n.vx;
-				n.y += n.vy;
-				totalEnergy += Math.abs(n.vx) + Math.abs(n.vy);
-			}
-
-			ctx!.strokeStyle = edgeColor;
-			ctx!.lineWidth = 1;
-			for (const edge of links) {
-				const s = nodeMap.get(edge.source);
-				const t = nodeMap.get(edge.target);
-				if (!s || !t) continue;
-				ctx!.beginPath();
-				ctx!.moveTo(s.x, s.y);
-				ctx!.lineTo(t.x, t.y);
-				ctx!.stroke();
-			}
-
-			for (const n of nodes) {
-				ctx!.fillStyle = nodeColor;
-				ctx!.beginPath();
-				ctx!.arc(n.x, n.y, 6, 0, Math.PI * 2);
-				ctx!.fill();
-
-				ctx!.fillStyle = labelColor;
-				ctx!.font = '11px Inter, sans-serif';
-				ctx!.fillText(n.title.slice(0, 20), n.x + 10, n.y + 4);
-			}
-
-			if (totalEnergy > 0.5) {
-				rafId = requestAnimationFrame(simulate);
-			}
-		}
-
-		canvasEl.onclick = (e: MouseEvent) => {
-			const rect = canvasEl!.getBoundingClientRect();
-			const mx = e.clientX - rect.left;
-			const my = e.clientY - rect.top;
-			// Fingers need a much bigger hit target than a mouse pointer.
-			const hitRadius = matchMedia('(pointer: coarse)').matches ? 24 : 12;
-			for (const n of nodes) {
-				const dx = mx - n.x;
-				const dy = my - n.y;
-				if (dx * dx + dy * dy < hitRadius * hitRadius) {
-					goto(`/${n.id}`);
-					return;
-				}
-			}
+		const tick = () => {
+			const energy = step();
+			draw();
+			if (energy > 0.5) rafId = requestAnimationFrame(tick);
 		};
+		rafId = requestAnimationFrame(tick);
+	}
 
-		rafId = requestAnimationFrame(simulate);
+	function localPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
+		const rect = canvasEl!.getBoundingClientRect();
+		return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+	}
+
+	/** Zoom around a canvas-local anchor so the point under it stays put. */
+	function zoomAt(sx: number, sy: number, zoom: number) {
+		const clamped = Math.min(4, Math.max(0.25, zoom));
+		const wx = (sx - cam.x) / cam.zoom;
+		const wy = (sy - cam.y) / cam.zoom;
+		cam.zoom = clamped;
+		cam.x = sx - wx * clamped;
+		cam.y = sy - wy * clamped;
+		draw();
+	}
+
+	function resetView() {
+		cam = { x: 0, y: 0, zoom: 1 };
+		draw();
+	}
+
+	function hitNode(lx: number, ly: number): GraphNode | null {
+		const wx = (lx - cam.x) / cam.zoom;
+		const wy = (ly - cam.y) / cam.zoom;
+		// Fingers need a much bigger hit target than a mouse pointer.
+		const radius = (matchMedia('(pointer: coarse)').matches ? 24 : 12) / cam.zoom + 6;
+		for (const n of nodes) {
+			const dx = wx - n.x;
+			const dy = wy - n.y;
+			if (dx * dx + dy * dy < radius * radius) return n;
+		}
+		return null;
+	}
+
+	function onPointerDown(e: PointerEvent) {
+		if (!canvasEl) return;
+		canvasEl.setPointerCapture(e.pointerId);
+		pointers.set(e.pointerId, localPoint(e));
+		dragMoved = false;
+		if (pointers.size === 2) {
+			const [a, b] = [...pointers.values()];
+			pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+		}
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		const prev = pointers.get(e.pointerId);
+		if (!prev) return;
+		const next = localPoint(e);
+		pointers.set(e.pointerId, next);
+
+		if (pointers.size === 2) {
+			const [a, b] = [...pointers.values()];
+			const dist = Math.hypot(a.x - b.x, a.y - b.y);
+			if (pinchDist > 0 && dist > 0) {
+				zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, cam.zoom * (dist / pinchDist));
+			}
+			pinchDist = dist;
+			dragMoved = true;
+			return;
+		}
+
+		const dx = next.x - prev.x;
+		const dy = next.y - prev.y;
+		if (Math.abs(dx) + Math.abs(dy) > 0) dragMoved = true;
+		cam.x += dx;
+		cam.y += dy;
+		draw();
+	}
+
+	function onPointerUp(e: PointerEvent) {
+		const p = pointers.get(e.pointerId);
+		pointers.delete(e.pointerId);
+		if (pointers.size < 2) pinchDist = 0;
+		if (pointers.size > 0) return;
+		if (!dragMoved && p) {
+			const hit = hitNode(p.x, p.y);
+			if (hit) goto(`/${hit.id}`);
+		}
+	}
+
+	function onWheel(e: WheelEvent) {
+		e.preventDefault();
+		const p = localPoint(e);
+		zoomAt(p.x, p.y, cam.zoom * Math.exp(-e.deltaY * 0.001));
 	}
 
 	$effect(() => {
@@ -208,7 +303,19 @@
 		<div class="loading">Loading graph…</div>
 	{:else}
 		<div class="graph-canvas-wrap">
-			<canvas bind:this={canvasEl}></canvas>
+			<canvas
+				bind:this={canvasEl}
+				onpointerdown={onPointerDown}
+				onpointermove={onPointerMove}
+				onpointerup={onPointerUp}
+				onpointercancel={onPointerUp}
+				onwheel={onWheel}
+				ondblclick={resetView}
+				aria-label="Page link graph — drag to pan, scroll to zoom, double-click to reset"
+			></canvas>
+			{#if documents.length > 0}
+				<div class="graph-view-hint">Drag to pan · scroll to zoom · double-click to reset</div>
+			{/if}
 			{#if documents.length === 0}
 				<div class="graph-empty">
 					<p>No pages yet. Create pages and link them to see the graph.</p>
@@ -286,6 +393,20 @@
 		width: 100%;
 		height: 100%;
 		display: block;
+		cursor: grab;
+		/* Pointer events drive pan/pinch on touch instead of page scrolling. */
+		touch-action: none;
+	}
+	canvas:active { cursor: grabbing; }
+
+	.graph-view-hint {
+		position: absolute;
+		right: 10px;
+		bottom: 8px;
+		font-size: 11px;
+		color: var(--color-text-faint);
+		pointer-events: none;
+		user-select: none;
 	}
 
 	.graph-empty {
