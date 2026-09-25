@@ -607,10 +607,14 @@
 		}
 	}
 
-	// Debounced search for command palette
+	// Debounced search for command palette. The read of `searchQuery` must be
+	// synchronous: Svelte 5 tracks state read during the effect run only, so
+	// reading it inside the setTimeout callback would register no dependency
+	// and debouncedQuery would never update (palette stuck on "Searching…").
 	$effect(() => {
+		const q = searchQuery;
 		clearTimeout(searchTimer);
-		searchTimer = setTimeout(() => { debouncedQuery = searchQuery; }, 150);
+		searchTimer = setTimeout(() => { debouncedQuery = q; }, 150);
 		return () => clearTimeout(searchTimer);
 	});
 
