@@ -55,6 +55,38 @@
 		return bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
 	}
 
+	// GitHub release notes are Markdown. Render them as safe structured text
+	// (never {@html}) — headings/bullets styled, inline emphasis and link
+	// syntax stripped so the raw punctuation doesn't leak into the dialog.
+	type NoteBlock = { type: 'h' | 'li' | 'p'; text: string };
+	function stripInline(s: string): string {
+		return s
+			.replace(/\*\*(.+?)\*\*/g, '$1')
+			.replace(/__(.+?)__/g, '$1')
+			.replace(/`([^`]+)`/g, '$1')
+			.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+	}
+	function parseNotes(md: string): NoteBlock[] {
+		const out: NoteBlock[] = [];
+		for (const raw of md.split('\n')) {
+			const line = raw.trim();
+			if (!line) continue;
+			const heading = /^#{1,6}\s+(.*)$/.exec(line);
+			if (heading) {
+				out.push({ type: 'h', text: stripInline(heading[1]) });
+				continue;
+			}
+			const bullet = /^[-*]\s+(.*)$/.exec(line);
+			if (bullet) {
+				out.push({ type: 'li', text: stripInline(bullet[1]) });
+				continue;
+			}
+			out.push({ type: 'p', text: stripInline(line) });
+		}
+		return out;
+	}
+	const noteBlocks = $derived(parseNotes(info?.notes ?? ''));
+
 	async function updateNow() {
 		if (!info?.asset_url || !info.asset_name || busy) return;
 		busy = true;
@@ -118,7 +150,21 @@
 						{/if}
 					</div>
 					<div class="notes-label">Changelog</div>
-					<div class="notes">{info.notes || 'No release notes published for this version.'}</div>
+					<div class="notes">
+						{#if noteBlocks.length === 0}
+							<p>No release notes published for this version.</p>
+						{:else}
+							{#each noteBlocks as block}
+								{#if block.type === 'h'}
+									<p class="note-h">{block.text}</p>
+								{:else if block.type === 'li'}
+									<p class="note-li">{block.text}</p>
+								{:else}
+									<p>{block.text}</p>
+								{/if}
+							{/each}
+						{/if}
+					</div>
 					<label class="agree-row">
 						<input type="checkbox" bind:checked={agreed} disabled={busy} />
 						<span>I've reviewed the changelog and want to install this update.</span>
@@ -242,6 +288,11 @@
 		word-break: break-word;
 		color: var(--color-text-muted);
 	}
+	.notes p { margin: 0 0 6px; }
+	.notes p:last-child { margin-bottom: 0; }
+	.notes .note-h { font-weight: 600; color: var(--color-text); }
+	.notes .note-li { padding-left: 14px; position: relative; }
+	.notes .note-li::before { content: '•'; position: absolute; left: 0; color: var(--color-text-faint); }
 
 	.agree-row {
 		display: flex;
