@@ -94,6 +94,7 @@
 		onmouseleave={() => { isMouseOverMenu = false; visible = false; }}
 		role="toolbar"
 		aria-label="Text formatting"
+		tabindex="-1"
 	>
 		<button
 			class="bubble-btn"

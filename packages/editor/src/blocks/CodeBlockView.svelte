@@ -14,6 +14,8 @@
 	} = $props();
 
 	// Local copy so external updates (via setLanguage) can drive the select.
+	// The warning is expected: the prop is captured once at mount on purpose.
+	// svelte-ignore state_referenced_locally
 	let lang = $state(language);
 
 	// Svelte 5 has no $set — node views push updates through exports.

@@ -117,6 +117,7 @@
 		style="left: {position.x}px; top: {position.y}px;"
 		role="menu"
 		aria-label="Block menu"
+		tabindex="-1"
 		onclick={(e: MouseEvent) => e.stopPropagation()}
 	>
 		<button class="dh-item" role="menuitem" onclick={duplicate}>
