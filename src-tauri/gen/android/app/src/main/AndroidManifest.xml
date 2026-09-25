@@ -4,6 +4,10 @@
     <!-- In-app APK updates: lets the package installer overwrite the app (Android 8+) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Haptics: navigator.vibrate() in the web view is a no-op without this
+         install-time permission, so the "Vibration feedback" setting needs it. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- P2P sync (mDNS): Android's Wi-Fi driver drops multicast packets unless
          the app holds a MulticastLock — which needs these two permissions.
          Without them the phone can neither discover nor answer desktop peers. -->
