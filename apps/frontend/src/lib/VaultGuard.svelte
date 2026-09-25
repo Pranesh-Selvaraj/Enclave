@@ -36,7 +36,7 @@
 		return { salt, iv, ciphertext: ct.buffer.slice(ct.byteOffset, ct.byteOffset + ct.byteLength) };
 	}
 
-	let passwordValid = $derived(password.length >= 4 && password === confirmPassword);
+	let passwordValid = $derived(password.length >= 8 && password === confirmPassword);
 	// BIP39 supports 12-24 words; don't lock out users with longer phrases
 	let unlockReady = $derived(hasPassword ? unlockInput.length >= 4 : unlockInput.trim().split(/\s+/).length >= 12);
 
@@ -195,6 +195,7 @@
 				<label class="field-label" for="confirm">Confirm password</label>
 				<input type="password" id="confirm" class="seed-input" bind:value={confirmPassword} placeholder="Re-enter password…"
 					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && passwordValid) handleCreateVault(); }} />
+				<p class="vault-hint">At least 8 characters. Your 12-word recovery phrase is the actual vault key — the password only protects this device.</p>
 			</div>
 			<div class="vault-actions">
 				<Button onclick={handleCreateVault} disabled={!passwordValid}>
@@ -365,6 +366,7 @@
 	.vault-heading { font-size: 22px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
 	.vault-desc { font-size: 14px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 26px; }
 	.vault-desc-warn { font-size: 13px; color: var(--color-warning); line-height: 1.6; margin: 0 0 18px; }
+	.vault-hint { font-size: 12px; color: var(--color-text-faint); line-height: 1.5; margin: 8px 0 0; }
 	.vault-message { font-size: 14px; color: var(--color-text-muted); margin: 16px 0 0; }
 	.vault-error {
 		font-size: 13px;
