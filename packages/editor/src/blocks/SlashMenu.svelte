@@ -626,8 +626,7 @@
 		font-family: inherit;
 		transition: border-color 0.1s, background 0.1s;
 	}
-	.tpl-item:hover,
-	.tpl-item.selected {
+	.tpl-item:hover {
 		border-color: var(--color-accent);
 		background: var(--color-accent-subtle);
 	}

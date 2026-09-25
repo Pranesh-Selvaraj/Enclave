@@ -20,7 +20,9 @@
 	// edit and reset columns/rows to the stale prop (the DB would appear
 	// dead). External updates come through applyData(), called by the node
 	// view when the doc changes for other reasons (undo/redo, linked mirror).
+	// svelte-ignore state_referenced_locally
 	const initial = parseData(data);
+	// External updates go through applyData() (called by the node view).
 	let columns = $state<DBColumn[]>(initial.columns);
 	let rows = $state<DBRow[]>(initial.rows);
 	let view = $state<View>(initial.view);
@@ -469,7 +471,7 @@
 	}
 </script>
 
-<div class="db" data-database class:compact={density === 'compact'} oncontextmenu={onDbContextMenu}>
+<div class="db" data-database role="region" aria-label="Database block" class:compact={density === 'compact'} oncontextmenu={onDbContextMenu}>
 	{#if readOnly}
 		<div class="db-linked-banner">Linked database — mirrored from the source block. Edit it there.</div>
 	{/if}
