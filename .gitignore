@@ -72,3 +72,6 @@ skills/
 *.orig
 __pycache__/
 dist/
+
+# UI-audit output (screenshots + report) — regenerate with `npm run audit:ui`
+tools/ui-audit/shots/
