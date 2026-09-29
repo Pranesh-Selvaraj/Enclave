@@ -175,6 +175,17 @@ MIT. By contributing, you agree that your contributions will be licensed under t
    next `cargo check`).
 2. **Changelog** — add a `[<new>]` entry under `## [Unreleased]` in `CHANGELOG.md`
    (Keep a Changelog format) and update the compare links at the bottom.
+
+   **Release notes must be self-contained prose.** Say, in words, what was
+   added, changed, improved and fixed, and explain the concrete cause and fix
+   behind each item — including advisory, issue or CVE references where they
+   exist. Never ship forge-generated “What's Changed” PR/branch lists, and
+   never point readers at a branch, diff or commit instead of the
+   description. The `CHANGELOG.md` entry and the forge release body must
+   carry the same detailed text; after publishing, check the release page and
+   replace generated notes if the forge injected them. Write each paragraph
+   and bullet on a single line (no manual hard wrapping) — GitHub renders
+   single newlines as hard breaks, so wrapped text shows as ragged lines.
 3. **Verify** — `cargo test --workspace --manifest-path src-tauri/Cargo.toml`,
    `npm run check -w @enclave/frontend`, and (for Android) a release build:
    `cd src-tauri && npx tauri android build --target aarch64` with
