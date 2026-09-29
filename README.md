@@ -4,6 +4,29 @@
 >
 > No cloud. No servers. No internet required (the optional local-AI assistant talks only to an endpoint you configure).
 
+## Screenshots
+
+Desktop — notes dashboard, editor with backlinks, whiteboard and the link graph:
+
+<p align="center">
+  <img src="docs/screenshots/desktop-home.png" alt="Desktop home with sidebar, recent pages and favorites" width="49%" />
+  <img src="docs/screenshots/desktop-editor.png" alt="Desktop editor with backlinks and outline" width="49%" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/desktop-whiteboard.png" alt="Whiteboard canvas with sticky note, shape and connector" width="49%" />
+  <img src="docs/screenshots/desktop-graph.png" alt="Backlink graph view" width="49%" />
+</p>
+
+Android — a notes-first shell: card layouts with view/sort sheets, a FAB that fans out into creation actions, and the full editor:
+
+<p align="center">
+  <img src="docs/screenshots/mobile-home.png" alt="Android home in Cards layout" width="19%" />
+  <img src="docs/screenshots/mobile-views.png" alt="Android note-layout bottom sheet" width="19%" />
+  <img src="docs/screenshots/mobile-create.png" alt="Android FAB creation stack" width="19%" />
+  <img src="docs/screenshots/mobile-drawer.png" alt="Android drawer with Enclave heading" width="19%" />
+  <img src="docs/screenshots/mobile-editor.png" alt="Android checklist editor" width="19%" />
+</p>
+
 ## Architecture
 
 Enclave is built on three core principles — for the full picture see [Vault & Security](#vault--security), [Security Model](#security-model) and [Network Design](#network-design):
@@ -23,9 +46,9 @@ by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
 
 | Layer | Technology |
 |-------|-----------|
-| **Desktop Shell** | Tauri v2 (Rust) |
+| **Shells** | Tauri v2 (Rust) — desktop (WebKitGTK / WebView2 / WKWebView) and Android (system WebView), one SvelteKit frontend + one Rust core |
 | **Frontend** | SvelteKit (static adapter) + Svelte 5 |
-| **Editor** | TipTap (ProseMirror) + custom Svelte 5 wrapper |
+| **Editor** | Tiptap 3 (ProseMirror) + custom Svelte 5 wrapper, extensions and page templates |
 | **Storage** | SQLite + SQLCipher (AES-256-CBC with HMAC-SHA512) |
 | **Data Model** | Document + Block with a `sort_order` column |
 | **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
@@ -62,6 +85,29 @@ Same SvelteKit frontend + Rust core in the system WebView (Tauri mobile).
 Builds, signs and installs; known gaps are tracked on the
 [issues page](https://github.com/Pranesh-Selvaraj/Enclave/issues).
 
+### Phone UI
+
+The Android shell is notes-first and tuned for one-handed use:
+
+- **Search pill** — one rounded bar in the middle of the top bar holds search, a
+  **layout** button and a **sort** button; sync state is a circular avatar on the
+  right and the bar fades into the page instead of drawing a separator.
+- **Notes layouts** — **List**, **Gallery**, **Cards** and **Icons**, chosen from a
+  bottom sheet; **Cards** (2-column, title-first, quiet time footer) is the default.
+- **Sorting** — recently updated, date created, or title, from a bottom sheet next
+  to the layout button. Both choices persist in Settings.
+- **Create stack** — the FAB fans out into **Text**, **Checklist**, **Journal**,
+  **Meeting notes** and **Folder**, and becomes a ✕ while open. Checklist/Meeting
+  open pre-filled pages from the page templates.
+- **Drawer** — the big “Enclave” heading, Home, the page tree, collapsible folders,
+  tags, trash and Sync/Settings. There is no bottom navigation bar; Graph view and
+  split view remain desktop-only.
+- **Home declutters itself** — once the vault has notes, the welcome tagline and the
+  quick-action buttons give way to the notes grid; an empty vault keeps them.
+- **Status bar** — real system-bar insets are bridged from `MainActivity` into
+  `--safe-top` / `--safe-bottom` CSS variables, so the top bar sits below the clock
+  and its controls stay tappable.
+
 ### Build & sign
 
 Prereqs: JDK 21, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066,
@@ -78,6 +124,13 @@ CI ([.github/workflows/android.yml](.github/workflows/android.yml)) builds, sign
 `ANDROID_KEYSTORE_*` secrets and uploads the arm64 APK/AAB; `versionCode`
 auto-increments per build.
 
+For a live dev run on an emulator or device (Vite HMR for the frontend, native
+rebuilds for Rust changes):
+
+```bash
+cd src-tauri && npx tauri android dev
+```
+
 Known issues and gaps (real-device sync, arm64 RAG, file dialogs) are tracked
 as [GitHub issues](https://github.com/Pranesh-Selvaraj/Enclave/issues) — the
 README only documents what the app does today.
@@ -88,75 +141,79 @@ README only documents what the app does today.
 enclave/
 ├── .github/
 │   ├── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
-│   └── workflows/android.yml       # CI: Android release APK/AAB (signs with secrets)
+│   ├── workflows/android.yml      # CI: Android release APK/AAB (signs with secrets)
+│   └── workflows/ui-audit.yml     # CI: scheduled screenshot + layout audit
 ├── apps/
-│   └── frontend/                  # Shared frontend (SvelteKit) — desktop + Android shells
+│   └── frontend/                  # Shared SvelteKit frontend — desktop + Android shells
 │       ├── src/
-│       │   ├── app.html           # Root HTML shell
-│       │   ├── app.css            # Global styles + theme variables (light/dark)
+│       │   ├── app.html           # Root HTML shell (viewport-fit=cover for safe areas)
+│       │   ├── app.css            # Global styles, theme tokens, safe-area variables
 │       │   ├── lib/
 │       │   │   ├── backend.ts          # Tauri IPC bridge (invoke/listen)
 │       │   │   ├── ai.ts               # OpenAI-compatible client (chat/embeddings/SSE) + settings
 │       │   │   ├── importExport.ts     # Markdown/HTML import + export, vault backup
 │       │   │   ├── graphLinks.ts       # Link extraction for graph view + backlinks
 │       │   │   ├── wbLayout.ts         # Whiteboard layout helpers
+│       │   │   ├── updates.ts          # Opt-in update checks
+│       │   │   ├── haptics.ts          # Android haptic taps
+│       │   │   ├── ActionSheet.svelte  # Mobile bottom sheets (notes view, sort, page actions)
 │       │   │   ├── VaultGuard.svelte   # Vault creation / unlock flow
 │       │   │   ├── SettingsPanel.svelte# Appearance, AI assistant, backup, shortcuts
 │       │   │   ├── Whiteboard.svelte   # Infinite canvas editor
-│       │   │   └── Icon.svelte         # Inline SVG icon set
+│       │   │   ├── UpdateDialog.svelte # Changelog + update approval dialog
+│       │   │   └── DocPane.svelte      # Split-view pane wrapper
 │       │   └── routes/
-│       │       ├── +layout.svelte  # App shell: sidebar, command palette, network, sync readout
-│       │       ├── +layout.ts      # prerender / SSR config
-│       │       ├── +page.svelte    # Home / recent pages + daily journal
-│       │       ├── [id]/+page.svelte # Editor + AI ask/RAG panel
-│       │       ├── capture/        # Quick Capture window
-│       │       └── graph/          # Backlink graph view
-│       ├── tests/                  # ai, graphLinks, wbLayout
-│       ├── static/
-│       ├── package.json
-│       ├── svelte.config.js
-│       ├── vite.config.ts
-│       └── tsconfig.json
+│       │       ├── +layout.svelte      # App shell: sidebar/drawer, command palette, network, sync
+│       │       ├── +layout.ts          # prerender / SSR config
+│       │       ├── +page.svelte        # Home / recents (desktop) · notes grid (Android)
+│       │       ├── [id]/+page.svelte   # Editor + AI ask/RAG panel
+│       │       ├── split/[a]/          # Split-screen workspace
+│       │       ├── graph/              # Backlink graph (desktop)
+│       │       ├── capture/            # Quick Capture window / Android share target
+│       │       └── widget/             # Android widget host page
+│       ├── tests/                 # ai, csp, graphLinks, saveRetry, wbLayout unit tests
+│       └── static/
 ├── packages/
 │   ├── crypto/                     # BIP39 + Argon2id + AES-256-GCM
 │   │   └── src/index.ts            # generateMnemonic, deriveMasterKey, encrypt/decrypt
-│   ├── editor/                     # TipTap Svelte 5 wrapper + extensions
+│   ├── editor/                     # Tiptap 3 Svelte 5 wrapper, extensions, markdown, templates
 │   │   ├── src/
 │   │   │   ├── TipTapEditor.svelte # Core editor
 │   │   │   ├── markdown.ts         # Hand-rolled HTML → Markdown serializer
+│   │   │   ├── templates.ts        # Page templates (Checklist, Meeting, Project, Journal, Book)
 │   │   │   ├── extensions/         # slash-command, page-link, mention, callout, toggle-block,
 │   │   │   │                       #   database, image, page-embed, bookmark, drag-handle
-│   │   │   ├── blocks/             # SlashMenu, BubbleMenu, DragHandleMenu, TocPanel,
-│   │   │   │                       #   DatabaseView, PageEmbedView, CodeBlockView, …
-│   │   │   └── index.ts
-│   │   └── test.ts                 # Markdown round-trip verification
-│   ├── sync-engine/                # Yjs CRDT library (standalone; the desktop app syncs via
-│   │   │                           #   Rust snapshot merge, see Network Design)
-│   │   ├── src/index.ts            # SyncEngine class, per-doc Y.Doc management
-│   │   ├── test.ts                 # Two-peer convergence
-│   │   └── stress.test.ts          # 3+ peer convergence under lossy/slow links
+│   │   │   └── blocks/             # SlashMenu, BubbleMenu, DragHandleMenu, TocPanel, views, …
+│   │   ├── test.ts                 # Markdown round-trip verification
+│   │   └── test-insert.ts          # jsdom insert/toolbar integration tests
+│   ├── sync-engine/                # Standalone Yjs CRDT library (the app syncs via Rust merge)
 │   └── ui/                         # Shared Svelte components, theme store, types
+│       └── src/
+│           ├── theme.svelte.ts     # Theme/appearance + notes view/sort settings (persisted)
+│           └── components/         # Icon, Logo, Button, EmojiPicker, ShortcutsDialog
 ├── src-tauri/                      # Rust backend (Tauri v2)
 │   ├── crates/
 │   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
-│   │   │   └── src/lib.rs          # Document/Block/embedding CRUD, vault lifecycle, sync merge
-│   │   └── core-network/           # mDNS + WebSocket P2P transport
-│   │       ├── src/lib.rs          # NetworkState, start/stop/status, peer redial
-│   │       ├── src/crypto.rs       # Sync key derivation, auth proofs, AEAD
-│   │       ├── src/mdns.rs         # _enclave._tcp.local. discovery
-│   │       └── src/ws.rs           # WS accept/dial + auth handshake + sessions
+│   │   ├── core-network/           # mDNS + WebSocket P2P transport (auth + AEAD)
+│   │   └── core-api/               # Shell-agnostic API + UniFFI bindings for the Android app
 │   ├── src/
 │   │   ├── main.rs                 # Binary entry point
 │   │   ├── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
-│   │   └── embed.rs                # Built-in offline embeddings (fastembed/ONNX)
-│   ├── Cargo.toml                  # Rust workspace root
-│   ├── tauri.conf.json             # App config, CSP, NSIS installer, bundle targets
+│   │   ├── embed.rs                # Built-in offline embeddings (fastembed/ONNX)
+│   │   ├── updater.rs              # Opt-in GitHub-release updater + SHA-256 verification
+│   │   └── android_sync.rs         # JNI bridge to the Android foreground sync service
 │   ├── gen/android/                # Committed Android project (native customizations)
 │   └── icons/
+├── docs/
+│   └── screenshots/                # Desktop + Android screenshots used in this README
 ├── scripts/
-│   └── android-sign.sh            # zipalign + apksigner / jarsigner
-├── tsconfig.base.json              # Shared TypeScript base config
-└── package.json                    # npm workspace root
+│   ├── android-sign.sh            # zipalign + apksigner / jarsigner
+│   ├── generate-icons.py          # App icon set generator
+│   └── release-check.sh           # Version + Android versionCode pre-flight
+├── tools/
+│   └── ui-audit/                  # Screenshot + DOM audit suite (desktop + phone profiles)
+├── tsconfig.base.json             # Shared TypeScript base config
+└── package.json                   # npm workspace root
 ```
 
 ## Prerequisites
@@ -198,7 +255,7 @@ npx tauri build
 # Produces platform-specific binaries in src-tauri/target/release/bundle/
 ```
 
-Or let CI handle it — pushes to `v*` tags (and to `main`, and PRs to `main`) trigger GitHub Actions to build all platforms and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), and `.dmg` (macOS Apple Silicon).
+Or let CI handle it — `v*` tag pushes build the distributables and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), `.dmg` (macOS Apple Silicon) and the signed Android `.apk`/`.aab`; PRs to `main` run the same builds as a check.
 
 ## Local AI Assistant (opt-in)
 
@@ -235,30 +292,35 @@ Behavior:
 ## Running Tests
 
 ```bash
+# Editor — markdown round-trip + jsdom insert/toolbar integration
+npm test -w @enclave/editor
+npm run test:insert -w @enclave/editor
+
 # Crypto pipeline (BIP39, Argon2id, AES-GCM)
 npx tsx packages/crypto/test.ts
-
-# Markdown round-trip (HTML → MD)
-npx tsx packages/editor/test.ts
 
 # Sync engine — two-peer convergence + 3+ peer lossy/slow stress
 npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
-# Frontend unit tests (AI client, graph links, whiteboard layout)
+# Frontend unit tests (AI client, CSP, graph links, save retries, whiteboard layout)
 npx tsx apps/frontend/tests/ai.test.ts
+npx tsx apps/frontend/tests/csp.test.ts
 npx tsx apps/frontend/tests/graphLinks.test.ts
+npx tsx apps/frontend/tests/saveRetry.test.ts
 npx tsx apps/frontend/tests/wbLayout.test.ts
 
-# Rust type-check
-cargo check --manifest-path src-tauri/Cargo.toml
-
-# Rust unit tests (per crate — the root manifest only tests the root package)
-cargo test --manifest-path src-tauri/crates/core-db/Cargo.toml
-cargo test --manifest-path src-tauri/crates/core-network/Cargo.toml
+# Rust workspace tests
+cargo test --workspace --manifest-path src-tauri/Cargo.toml
 
 # Frontend type-check
 npm run check -w @enclave/frontend
+
+# UI audit — screenshots + DOM checks on desktop and phone profiles
+npm run audit:ui
+
+# Release pre-flight — version agreement + Android versionCode ordering
+npm run release:check -- vX.Y.Z
 ```
 
 ## Vault & Security
@@ -346,7 +408,7 @@ Every page toggles between **Paper** (documents) and **Whiteboard** (infinite ca
 | **Image** | `/image`, or paste/drop |
 | **PDF / file** | `/pdf`, or paste — stored in the vault, inline preview + open in system viewer |
 | **Bookmark** | `/bookmark`, or paste a URL |
-| **Template** | `/template` — Meeting Notes, Project Plan, Daily Journal, Book Notes |
+| **Template** | `/template` — Checklist, Meeting Notes, Project Plan, Daily Journal, Book Notes |
 | Page links / backlinks | type `[[` + page title |
 | Mentions | type `@` + page title |
 | Formatting | select text → bubble menu (bold/italic/strike/code) |

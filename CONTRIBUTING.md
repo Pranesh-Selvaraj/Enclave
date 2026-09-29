@@ -43,6 +43,9 @@ export ANDROID_HOME=~/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/29.0.13846066 JAVA_
 # Build the release APK + AAB (arm64)
 cd src-tauri && npx tauri android build --target aarch64 && cd ..
 
+# Live dev run on an emulator/device (Vite HMR + native rebuilds)
+cd src-tauri && npx tauri android dev
+
 # Sign both artifacts
 scripts/android-sign.sh
 ```
@@ -64,30 +67,33 @@ without a keystore it warns and exits 0 so fork PRs stay green. CI signing uses
 ### Running Tests
 
 ```bash
+# Editor — markdown round-trip + jsdom insert/toolbar integration
+npm test -w @enclave/editor
+npm run test:insert -w @enclave/editor
+
 # Crypto pipeline (BIP39 → Argon2id → AES-GCM)
 npx tsx packages/crypto/test.ts
-
-# Markdown round-trip (hand-rolled HTML → MD + marked MD → HTML)
-npx tsx packages/editor/test.ts
 
 # Sync engine — two-peer convergence + 3+ peer lossy/slow stress
 npx tsx packages/sync-engine/test.ts
 npx tsx packages/sync-engine/stress.test.ts
 
-# Frontend unit tests (AI client, graph links, whiteboard layout)
+# Frontend unit tests (AI client, CSP, graph links, save retries, whiteboard layout)
 npx tsx apps/frontend/tests/ai.test.ts
+npx tsx apps/frontend/tests/csp.test.ts
 npx tsx apps/frontend/tests/graphLinks.test.ts
+npx tsx apps/frontend/tests/saveRetry.test.ts
 npx tsx apps/frontend/tests/wbLayout.test.ts
 
-# Rust type-check
+# Rust type-check + workspace tests
 cargo check --manifest-path src-tauri/Cargo.toml
-
-# Rust unit tests (per crate — run each crate's manifest directly)
-cargo test --manifest-path src-tauri/crates/core-db/Cargo.toml
-cargo test --manifest-path src-tauri/crates/core-network/Cargo.toml
+cargo test --workspace --manifest-path src-tauri/Cargo.toml
 
 # Frontend type-check (svelte-check)
 npm run check -w @enclave/frontend
+
+# UI audit (screenshots + DOM checks, desktop + phone profiles)
+npm run audit:ui
 ```
 
 CI runs all of the above plus the platform builds; a PR that fails any check won't merge.
@@ -97,25 +103,30 @@ CI runs all of the above plus the platform builds; a PR that fails any check won
 ```
 enclave/
 ├── .github/workflows/build.yml   # CI: tests + Windows/Linux/macOS builds + releases
-├── apps/frontend/                 # Tauri desktop app (SvelteKit static adapter)
+├── apps/frontend/                 # Shared SvelteKit frontend — desktop + Android shells
 │   ├── src/
 │   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ai.ts (OpenAI-compatible
 │   │   │                         #   client + vault settings), importExport.ts, graphLinks.ts,
-│   │   │                         #   wbLayout.ts, VaultGuard, Settings, Whiteboard
-│   │   └── routes/               # +layout, home, [id] editor, capture, graph
-│   └── tests/                    # ai, graphLinks, wbLayout unit tests
+│   │   │                         #   wbLayout.ts, updates.ts, haptics.ts, ActionSheet,
+│   │   │                         #   VaultGuard, Settings, Whiteboard, UpdateDialog
+│   │   └── routes/               # +layout, home notes grid, [id] editor, split, graph,
+│   │                             #   capture, widget
+│   └── tests/                    # ai, csp, graphLinks, saveRetry, wbLayout unit tests
 ├── packages/
 │   ├── crypto/                   # BIP39, Argon2id, AES-256-GCM (TypeScript)
-│   ├── editor/                   # TipTap Svelte 5 wrapper + extensions + markdown serializer
+│   ├── editor/                   # Tiptap 3 Svelte 5 wrapper + extensions + markdown + templates
 │   ├── sync-engine/              # Standalone Yjs CRDT library. NOT used for app sync —
 │   │                             #   the desktop app syncs via Rust snapshot merge.
 │   └── ui/                       # Shared Svelte components, theme store, types
 ├── src-tauri/
 │   ├── crates/
 │   │   ├── core-db/              # SQLite + SQLCipher storage, FTS5, embeddings, sync merge (Rust)
-│   │   └── core-network/         # mDNS + WebSocket P2P (Rust)
-│   ├── src/                      # Tauri command bridge + sync protocol + tray
+│   │   ├── core-network/         # mDNS + WebSocket P2P (Rust)
+│   │   └── core-api/             # Shell-agnostic API + UniFFI bindings for Android
+│   ├── src/                      # Tauri command bridge + sync protocol + tray + updater
 │   └── tauri.conf.json           # App config, CSP, bundle targets
+├── docs/                         # README screenshots
+├── tools/ui-audit/               # Screenshot + DOM audit suite (desktop + phone profiles)
 ├── tsconfig.base.json            # Shared TypeScript base config
 └── package.json                  # npm workspace root
 ```
