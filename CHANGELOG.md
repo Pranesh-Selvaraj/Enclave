@@ -4,6 +4,99 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.11.0] — 2026-09-29
+
+The Android shell gets a Google Keep-style **Notes** treatment: a big search
+pill with layout and sort controls, List/Gallery/Cards/Icons layouts and a
+FAB that fans out into creation options. Under the hood Tiptap 3 closes a
+prototype-pollution → XSS advisory, both dependency auditors are clean, and
+the Android web view now reports real system-bar insets so the top bar stops
+hiding under the status bar.
+
+### Added
+
+- **Phone notes layouts** — List, Gallery, **Cards** and Icons, chosen from a
+  bottom sheet behind the layout button in the search pill. Cards (a 2-column,
+  title-first grid with a quiet time footer) is the phone default; the choice
+  persists in Settings.
+- **Sort sheet** — recently updated / date created / title, next to the layout
+  button.
+- **FAB creation stack** — the phone FAB fans out Keep-style pills: **Text**,
+  **Checklist**, **Journal**, **Meeting notes**, **Folder**, and inverts to a
+  white ✕ circle while open.
+- **Checklist template** — a new editor template (heading + three to-dos) that
+  pre-fills a page when Checklist is picked.
+- **Drawer heading** — a large "Enclave" title tops the phone drawer above the
+  Home entry.
+- **Safe-area CSS variables** — `--safe-top` / `--safe-bottom` are published by
+  `MainActivity` from the real Android window insets and consumed by every
+  safe-area calculation in the shell.
+
+### Changed
+
+- **Phone top bar** — one rounded search pill (“Search Enclave”) sits in the
+  middle; the layout and sort buttons live inside it and the sync indicator is
+  a circular avatar on the right. The header now fades into the page instead
+  of drawing a separator line.
+- **Phone home** — once the vault has notes, the tagline and the
+  Today's-Journal/New-Page quick actions are hidden and creation moves to the
+  FAB stack; the empty vault keeps its welcome card and shortcuts.
+- **Phone navigation** — the bottom navigation bar is gone (Home, Sync and
+  Settings all live in the drawer), and Graph is no longer reachable on
+  phones. Desktop is unchanged.
+- **Tiptap 3 migration** — editor internals were updated for the new package
+  layout and typings: table extensions consolidated into
+  `@tiptap/extension-table`, StarterKit's bundled Link disabled in favour of
+  the explicit `Link.configure(...)`, `editor.storage.image` typed through the
+  new `Storage` interface, and the task-item checkbox restyled for the v3 DOM.
+- Dependency refresh: Svelte 5.57, SvelteKit 2.70.3, Vite 8.3, Tauri JS/CLI
+  2.12 + plugins, marked 18.0.14, yjs 13.6.33, `@scure/bip39` 2.4 and other
+  in-range updates.
+
+### Fixed
+
+- **Templates created empty pages** — the template helpers emitted empty text
+  nodes (`{ type: 'text', text: '' }`), which Tiptap 3 rejects; the editor
+  silently fell back to an empty document. Empty paragraphs/bullets are now
+  emitted without text nodes.
+- **Top bar under the Android status bar** — the web view draws edge-to-edge
+  but reports `env(safe-area-inset-*)` as `0`, leaving the top bar overlapped
+  and its buttons untappable in the status-bar band. The real insets are now
+  bridged from Kotlin into the `--safe-*` variables.
+- **Invisible checklist checkboxes** — Tiptap 3 rewrote the task-item markup
+  (the visible span became a screen-reader-only label); the custom checkbox is
+  now drawn from the label using the `data-checked` state.
+- **Mobile keyboard hints** — the drawer's empty state no longer says “press
+  Ctrl+N” on touch devices.
+- **FAB stacking** — the drawer backdrop now covers the home FAB.
+- **UI audit on hoisted installs** — `tools/ui-audit/run.mjs` finds `vite` in
+  the workspace root or the frontend workspace.
+- **Missing direct dependencies** declared: `@tiptap/extension-code-block`,
+  `@tauri-apps/api` (editor) and `tsx` (the editor test script runs via npm
+  again).
+
+### Security
+
+- **Tiptap 2 → 3.31.3** — fixes GHSA-cp6q-959q-f8rh, prototype pollution in
+  `mergeAttributes()` that could turn imported attributes into executable DOM
+  attributes (XSS). There is no 2.x backport.
+- **nanoid < 3.3.18 → 3.3.19** (GHSA-2v37-7h3g-55p8, high).
+- **cookie 0.6 → 0.7.2** via an npm override (GHSA-pxg6-pf52-xh8x; SvelteKit
+  still pins `^0.6`).
+- **rustls 0.23.43 → 0.23.45** (RUSTSEC-2026-0285) and **chacha20 0.10.1 →
+  0.10.2** (the previous release was yanked), keeping the declared Rust 1.77
+  MSRV.
+- `npm audit` and `cargo audit` now report **0 vulnerabilities**.
+
+### Notes
+
+- A full `cargo update` was deliberately not taken: Tauri 2.12 raises the
+  MSRV from 1.77 to 1.90. The remaining `cargo audit` entries are
+  unmaintained/unsound warnings (GTK tray stack, tokenizer/fastembed) with no
+  upstream fix.
+- Android counter committed as `1011000`; CI ships `1011001`, ahead of
+  v1.10.1's `1001066`.
+
 ## [1.10.1] — 2026-09-18
 
 Hotfix for an Android launch crash in v1.10.0.
