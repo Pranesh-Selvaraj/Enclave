@@ -137,14 +137,14 @@
 		font-size: 15px;
 		line-height: 1.6;
 		font-family: inherit;
-		padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
+		padding: calc(14px + var(--safe-top)) 16px 14px;
 	}
 	.note::placeholder { color: var(--color-text-faint); }
 	.bar {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+		padding: 8px 16px calc(8px + var(--safe-bottom));
 		border-top: 1px solid var(--color-border);
 		color: var(--color-text-faint);
 		font-size: 12px;

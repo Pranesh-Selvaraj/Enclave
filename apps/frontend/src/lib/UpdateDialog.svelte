@@ -346,6 +346,6 @@
 			border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 			border-bottom: none;
 		}
-		.dialog-footer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+		.dialog-footer { padding-bottom: calc(12px + var(--safe-bottom)); }
 	}
 </style>

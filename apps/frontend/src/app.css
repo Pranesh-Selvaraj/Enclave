@@ -6,6 +6,11 @@
 	/* Native widgets (scrollbars, selects, autofill, selection) follow the
 	   rendered theme, not the static <meta name="color-scheme"> preference. */
 	color-scheme: dark;
+	/* Safe-area insets. Android WebView reports env() as 0 even while drawing
+	   edge-to-edge, so MainActivity overrides these with the real system-bar
+	   insets (in CSS px) as soon as the window insets are known. */
+	--safe-top: env(safe-area-inset-top, 0px);
+	--safe-bottom: env(safe-area-inset-bottom, 0px);
 	--color-bg: #16130f;          /* window base — deep warm charcoal */
 	--color-surface: #201c17;     /* sidebar, panels, cards */
 	--color-surface-hover: #2a251f;

@@ -3,7 +3,7 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { invoke } from '$lib/backend.js';
-	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu, EditorContextMenu, TableMenu } from '@enclave/editor';
+	import { TipTapEditor, SlashMenu, BubbleMenu, PageLinkMenu, MentionMenu, TocPanel, DragHandleMenu, EditorContextMenu, TableMenu, templates } from '@enclave/editor';
 	import type { Document, Block } from '@enclave/ui';
 	import { htmlToMarkdown, markdownToJson } from '@enclave/editor';
 	import { EmojiPicker } from '@enclave/ui';
@@ -22,6 +22,7 @@
 	let loading = $state(true);
 	let backlinks = $state<Array<{ doc_id: string; doc_title: string; block_content: string }>>([]);
 	let editorContent = $state<object | undefined>(undefined);
+	let templatePending = $state(false);
 	let pageList = $state<{ id: string; title: string }[]>([]);
 	let mode = $state<'paper' | 'whiteboard'>('paper');	/** True once the page has a whiteboard block — only then is the whiteboard a real part of the page. */
 	let hasWhiteboard = $state(false);
@@ -227,6 +228,7 @@
 			const widgetBlock = blocks.find(b => b.type === 'widget');
 			widgetShared = !!((widgetBlock?.content as { enabled?: boolean } | undefined)?.enabled);
 			try { fullWidth = localStorage.getItem(`enclave-fullwidth-${docId}`) === 'true'; } catch { fullWidth = false; }
+			let hasContent = false;
 			if (blocks.length > 0) {
 				const contentBlock = blocks.find(b => {
 					if (typeof b.content === 'object' && b.content !== null) {
@@ -237,6 +239,17 @@
 				});
 				if (contentBlock && (contentBlock.content as any).type === 'doc') {
 					editorContent = contentBlock.content as object;
+					hasContent = true;
+				}
+			}
+			// A page created from the home FAB menu carries ?t=<template>; seed it
+			// once (the normal auto-save persists it) but never overwrite content.
+			const tplId = $page.url.searchParams.get('t');
+			if (!hasContent && tplId) {
+				const tpl = templates.find((t) => t.id === tplId);
+				if (tpl) {
+					editorContent = tpl.content as object;
+					templatePending = true;
 				}
 			}
 		} catch (e) {
@@ -350,6 +363,14 @@
 		clearTimeout(contentSaveTimer);
 		contentSaveTimer = setTimeout(saveContent, 1000);
 	}
+
+	// Persist a template-seeded document once the editor has mounted.
+	$effect(() => {
+		if (!editor || !templatePending) return;
+		templatePending = false;
+		const timer = setTimeout(() => handleEditorChange(), 400);
+		return () => clearTimeout(timer);
+	});
 
 	// Escape closes the topmost page overlay (menu, popovers, AI panel, sheet).
 	// The editor's own Escape handlers still run — no preventDefault here.
@@ -1100,7 +1121,7 @@
 	/* ── Toast (same pill as the global snackbar) ── */
 	.toast {
 		position: fixed;
-		bottom: calc(24px + env(safe-area-inset-bottom));
+		bottom: calc(24px + var(--safe-bottom));
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 400;
@@ -1460,9 +1481,9 @@
 			max-width: 100%;
 			border-radius: 0;
 			border: none;
-			padding-top: env(safe-area-inset-top);
+			padding-top: var(--safe-top);
 		}
-		.ai-compose { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+		.ai-compose { padding-bottom: calc(12px + var(--safe-bottom)); }
 
 		/* Info/export popovers (opened from the ⋯ sheet) become a matte
 		   bottom sheet on phones. */
@@ -1473,7 +1494,7 @@
 			right: 12px;
 			width: auto;
 			top: auto;
-			bottom: calc(16px + env(safe-area-inset-bottom));
+			bottom: calc(16px + var(--safe-bottom));
 			background: var(--color-surface);
 			border: 1px solid var(--color-border);
 			border-radius: 16px;

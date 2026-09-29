@@ -30,8 +30,18 @@ const out = outIdx > -1 ? passthrough[outIdx + 1] : join(HERE, 'shots', stamp);
 mkdirSync(out, { recursive: true });
 
 const port = Number(process.env.UI_AUDIT_PORT ?? 4183);
-const preview = spawn(
+// vite may be hoisted to the workspace root or installed under the frontend
+// workspace depending on npm's resolution — accept either layout.
+const viteBin = [
 	join(FRONTEND, 'node_modules', '.bin', 'vite'),
+	join(REPO, 'node_modules', '.bin', 'vite'),
+].find((p) => existsSync(p));
+if (!viteBin) {
+	console.error('vite binary not found — run: npm install');
+	process.exit(2);
+}
+const preview = spawn(
+	viteBin,
 	['preview', '--port', String(port), '--strictPort'],
 	{ cwd: FRONTEND, stdio: ['ignore', 'ignore', 'inherit'] },
 );

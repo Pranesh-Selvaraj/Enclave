@@ -22,6 +22,8 @@ export const DENSITIES = ['narrow', 'normal', 'wide'] as const;
 export const FONT_SIZES = ['s', 'm', 'l', 'xl'] as const;
 export const PAGE_WIDTHS = ['compact', 'wide', 'full'] as const;
 export const HOME_SORTS = ['recent', 'created', 'title'] as const;
+/** Home page document layout: dense rows, big cards, thumbnails or icon tiles. */
+export const HOME_VIEWS = ['list', 'gallery', 'thumbs', 'icons'] as const;
 export const LOCK_AFTERS = [0, 1, 5, 15, 60] as const;
 /** UI corner style presets (mapped to --radius-* overrides in app.css). */
 export const CORNERS = ['standard', 'rounded', 'rounder'] as const;
@@ -50,6 +52,7 @@ let trueBlack = $state(false);
 let reduceMotion = $state(false);
 let haptics = $state(true);
 let homeSort = $state<string>(HOME_SORTS[0]);
+let homeView = $state<string>('thumbs');
 let lockAfter = $state(0); // minutes; 0 = never auto-lock
 
 function apply() {
@@ -74,7 +77,7 @@ function apply() {
 		localStorage.setItem(KEY, mode);
 		localStorage.setItem(
 			SKEY,
-			JSON.stringify({ accent, font, density, fontSize, pageWidth, corners, uiScale, background, trueBlack, reduceMotion, haptics, homeSort, lockAfter }),
+			JSON.stringify({ accent, font, density, fontSize, pageWidth, corners, uiScale, background, trueBlack, reduceMotion, haptics, homeSort, homeView, lockAfter }),
 		);
 	} catch { /* private browsing */ }
 }
@@ -113,6 +116,8 @@ export const theme = {
 	set haptics(v: boolean) { haptics = v; apply(); },
 	get homeSort() { return homeSort; },
 	set homeSort(v: string) { homeSort = v; apply(); },
+	get homeView() { return homeView; },
+	set homeView(v: string) { homeView = v; apply(); },
 	get lockAfter() { return lockAfter; },
 	set lockAfter(v: number) { lockAfter = v; apply(); },
 	init() {
@@ -129,6 +134,7 @@ export const theme = {
 			if (UI_SCALES.includes(s.uiScale)) uiScale = s.uiScale;
 			if (BACKGROUNDS.includes(s.background)) background = s.background;
 			if (HOME_SORTS.includes(s.homeSort)) homeSort = s.homeSort;
+			if (HOME_VIEWS.includes(s.homeView)) homeView = s.homeView;
 			if (typeof s.trueBlack === 'boolean') trueBlack = s.trueBlack;
 			if (typeof s.reduceMotion === 'boolean') reduceMotion = s.reduceMotion;
 			if (typeof s.haptics === 'boolean') haptics = s.haptics;

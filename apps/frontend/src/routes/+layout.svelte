@@ -4,7 +4,8 @@
 	import { goto } from '$app/navigation';
 	import { invoke, listen } from '$lib/backend.js';
 	import type { Document, Folder } from '@enclave/ui';
-	import { theme, ShortcutsDialog, Icon, Logo } from '@enclave/ui';
+	import { theme, ShortcutsDialog, Icon } from '@enclave/ui';
+	import ActionSheet from '$lib/ActionSheet.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
@@ -98,6 +99,22 @@
 		const _p = $page.url.pathname;
 		if (isMobile) sidebarOpen = false;
 	});
+
+	// Phone top bar keeps Google Keep-style controls: view + sort live inside
+	// the search pill, by far the most reachable spot on a phone.
+	let viewSheetOpen = $state(false);
+	let sortSheetOpen = $state(false);
+	const viewItems = [
+		{ icon: 'list', label: 'List', action: () => (theme.homeView = 'list') },
+		{ icon: 'viewGallery', label: 'Gallery', action: () => (theme.homeView = 'gallery') },
+		{ icon: 'viewThumbs', label: 'Cards', action: () => (theme.homeView = 'thumbs') },
+		{ icon: 'viewIcons', label: 'Icons', action: () => (theme.homeView = 'icons') },
+	];
+	const sortItems = [
+		{ icon: 'clock', label: 'Recently updated', action: () => (theme.homeSort = 'recent') },
+		{ icon: 'calendar', label: 'Date created', action: () => (theme.homeSort = 'created') },
+		{ icon: 'text', label: 'Title', action: () => (theme.homeSort = 'title') },
+	];
 
 	// ── Android back button: closing the topmost overlay first ──
 	// Opening an overlay pushes a same-URL history entry; the system back
@@ -403,6 +420,14 @@
 	function startCreateFolder() {
 		editingFolder = { id: null, name: '' };
 	}
+
+	// The home FAB menu asks the shell to start a new folder (the shell owns
+	// the sidebar's inline folder editor).
+	$effect(() => {
+		const onNewFolder = () => { openUI('drawer'); startCreateFolder(); };
+		window.addEventListener('enclave:new-folder', onNewFolder);
+		return () => window.removeEventListener('enclave:new-folder', onNewFolder);
+	});
 
 	function startRenameFolder(folder: Folder) {
 		editingFolder = { id: folder.id, name: folder.name };
@@ -809,15 +834,20 @@
 	<!-- Left Sidebar (drawer on phones) -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen} class:resizing={resizingSidebar} bind:this={sidebarEl} style={sidebarOpen && sidebarWidth ? `width:${sidebarWidth}px;min-width:${sidebarWidth}px` : ''}>
 		{#if sidebarOpen}
+			{#if isMobile}
+				<div class="drawer-title">Enclave</div>
+			{/if}
 			<nav class="side-nav">
 				<a href="/" class="nav-item" class:active={currentPath === '/'}>
 					<Icon name="home" size={16} />
 					<span>Home</span>
 				</a>
-				<a href="/graph" class="nav-item" class:active={currentPath === '/graph'}>
-					<Icon name="graph" size={16} />
-					<span>Graph view</span>
-				</a>
+				{#if !isMobile}
+					<a href="/graph" class="nav-item" class:active={currentPath === '/graph'}>
+						<Icon name="graph" size={16} />
+						<span>Graph view</span>
+					</a>
+				{/if}
 			</nav>
 
 			<div class="pages-section">
@@ -963,7 +993,11 @@
 
 					{#if documents.length === 0}
 						<div class="tree-empty">
-							No pages yet — press <kbd>Ctrl+N</kbd> or
+							{#if isMobile}
+								No pages yet —
+							{:else}
+								No pages yet — press <kbd>Ctrl+N</kbd> or
+							{/if}
 							<button class="link-btn" onclick={createDocument}>create one</button>
 						</div>
 					{/if}
@@ -1112,9 +1146,11 @@
 				<a href="/" class="mini-btn" class:active={currentPath === '/'} title="Home">
 					<Icon name="home" size={17} />
 				</a>
-				<a href="/graph" class="mini-btn" class:active={currentPath === '/graph'} title="Graph view">
-					<Icon name="graph" size={17} />
-				</a>
+				{#if !isMobile}
+					<a href="/graph" class="mini-btn" class:active={currentPath === '/graph'} title="Graph view">
+						<Icon name="graph" size={17} />
+					</a>
+				{/if}
 				<button class="mini-btn" onclick={createDocument} title="New page (Ctrl+N)">
 					<Icon name="plus" size={17} />
 				</button>
@@ -1248,18 +1284,22 @@
 			<button class="topbar-btn" onclick={() => { openUI('drawer'); haptic(); }} aria-label="Open menu" title="Menu">
 				<Icon name="menu" size={20} />
 			</button>
-			{#if !currentDocId}
-				<a href="/" class="topbar-brand" title="Enclave home">
-					<span class="topbar-logo"><Logo size={20} /></span>
-					<span class="topbar-word">Enclave</span>
-				</a>
-			{/if}
-			<div class="topbar-spacer"></div>
-			<button class="topbar-btn" onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }} aria-label="P2P sync" title="P2P sync">
+			<div class="topbar-pill">
+				<button class="pill-search" onclick={() => { openUI('palette'); haptic(); }} aria-label="Search" title="Search">
+					<Icon name="search" size={17} />
+					<span class="pill-search-text">Search Enclave</span>
+				</button>
+				{#if !currentDocId}
+					<button class="pill-action" onclick={() => { viewSheetOpen = true; haptic(); }} aria-label="Note layout" title="Note layout">
+						<Icon name="viewColumns" size={18} />
+					</button>
+					<button class="pill-action" onclick={() => { sortSheetOpen = true; haptic(); }} aria-label="Sort notes" title="Sort notes">
+						<Icon name="sort" size={18} />
+					</button>
+				{/if}
+			</div>
+			<button class="topbar-btn topbar-avatar" onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }} aria-label="P2P sync" title="P2P sync">
 				<span class="topbar-sync-dot" class:online={networkRunning} class:peers={connectedCount > 0}></span>
-			</button>
-			<button class="topbar-btn" onclick={() => openUI('palette')} aria-label="Search" title="Search">
-				<Icon name="search" size={20} />
 			</button>
 		</header>
 		<div class="main-pane">
@@ -1267,30 +1307,10 @@
 		</div>
 	</div>
 
-	<!-- Phone bottom navigation: Home / Graph / Sync / Settings -->
-	{#if isMobile && !currentDocId}
-		<nav class="bottom-nav" aria-label="Main">
-			<a href="/" class="nav-tab" class:active={currentPath === '/' && !sidebarOpen} onclick={() => haptic()} aria-current={currentPath === '/' ? 'page' : undefined}>
-				<span class="nav-tab-pill"><Icon name="home" size={20} /></span>
-				<span>Home</span>
-			</a>
-			<a href="/graph" class="nav-tab" class:active={currentPath === '/graph'} onclick={() => haptic()} aria-current={currentPath === '/graph' ? 'page' : undefined}>
-				<span class="nav-tab-pill"><Icon name="graph" size={20} /></span>
-				<span>Graph</span>
-			</a>
-			<button class="nav-tab" class:active={sidebarOpen && syncCardOpen} onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }}>
-				<span class="nav-tab-pill">
-					<Icon name="network" size={20} />
-					{#if networkRunning}<span class="nav-tab-dot" class:online={connectedCount > 0}></span>{/if}
-				</span>
-				<span>Sync</span>
-			</button>
-			<button class="nav-tab" class:active={settingsOpen} onclick={() => { openUI('settings'); haptic(); }}>
-				<span class="nav-tab-pill"><Icon name="settings" size={20} /></span>
-				<span>Settings</span>
-			</button>
-		</nav>
-	{/if}
+	<!-- The phone bottom navigation was removed: Home / Sync / Settings all
+	     live in the drawer and the FAB covers "new page". -->
+	<ActionSheet bind:open={viewSheetOpen} title="Note layout" items={viewItems} />
+	<ActionSheet bind:open={sortSheetOpen} title="Sort notes" items={sortItems} />
 
 	<!-- Snackbar: transient feedback + undo -->
 	{#if snackbar}
@@ -1439,7 +1459,8 @@
 	.sidebar-backdrop {
 		position: fixed;
 		inset: 0;
-		z-index: 125;
+		/* Above the page FAB (125) so the drawer's dim layer covers it. */
+		z-index: 126;
 		background: var(--color-overlay);
 	}
 	.mobile-topbar {
@@ -1447,28 +1468,68 @@
 		align-items: center;
 		gap: 2px;
 		padding: 4px 8px;
-		padding-top: calc(4px + env(safe-area-inset-top));
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-surface);
+		padding-top: calc(4px + var(--safe-top));
+		/* No separator: the header blends into the page as content scrolls. */
+		background: linear-gradient(to bottom, var(--color-bg) 62%, transparent);
 		flex-shrink: 0;
 		/* Deterministic height — the pane below offsets by exactly this. */
-		height: calc(52px + env(safe-area-inset-top));
+		height: calc(52px + var(--safe-top));
 	}
-	.topbar-brand {
+	.topbar-pill {
+		flex: 1;
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		color: var(--color-text);
-		text-decoration: none;
-		padding: 2px 4px;
+		min-width: 0;
+		height: 42px;
+		margin: 0 6px;
+		padding: 0 2px 0 2px;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-surface-hover);
 	}
-	.topbar-logo { display: flex; color: var(--color-accent); }
-	.topbar-word {
-		font-size: 16px;
-		font-weight: 700;
-		letter-spacing: -0.01em;
+	.pill-search {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+		height: 100%;
+		padding: 0 12px;
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		font-family: inherit;
+		font-size: 15px;
+		cursor: pointer;
+		border-radius: 999px;
 	}
-	.topbar-spacer { flex: 1; }
+	.pill-search:active { background: var(--color-surface-active); }
+	.pill-search-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.pill-action {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border: none;
+		border-radius: 999px;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.pill-action:active { background: var(--color-surface-active); }
+	.topbar-avatar {
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		background: var(--color-surface-hover);
+	}
+	.topbar-avatar .topbar-sync-dot { width: 12px; height: 12px; }
 	.topbar-btn {
 		display: flex;
 		align-items: center;
@@ -1494,6 +1555,8 @@
 	}
 	.topbar-sync-dot.online { background: var(--color-success); }
 	.topbar-sync-dot.peers { animation: sync-pulse 2.4s ease-out infinite; }
+
+	.drawer-title { display: none; }
 
 	/* ── Sidebar ──
 	   One scroll context for the whole sidebar: pages, tags and trash scroll
@@ -2293,7 +2356,6 @@
 	}
 
 	/* ── Snackbar ── */
-	.bottom-nav { display: none; }
 	.snackbar {
 		position: fixed;
 		left: 50%;
@@ -2361,35 +2423,19 @@
 
 	/* ── Phone layout ── */
 	@media (max-width: 768px) {
-		/* Matte mobile chrome: solid surfaces, no translucency/blur. */
+		/* Header floats over the page: a top-to-bottom fade, no divider line. */
 		.mobile-topbar {
 			position: fixed;
 			top: 0;
 			left: 0;
 			right: 0;
 			z-index: 120;
-			background: var(--color-surface);
-			border-bottom: 1px solid var(--color-border);
+			background: linear-gradient(to bottom, var(--color-bg) 58%, transparent);
 		}
 		.main-pane {
-			padding-top: calc(52px + env(safe-area-inset-top));
-			padding-bottom: calc(78px + env(safe-area-inset-bottom));
+			padding-top: calc(52px + var(--safe-top));
+			padding-bottom: calc(24px + var(--safe-bottom));
 			background: var(--color-bg);
-		}
-
-		/* Bottom nav — matte surface bar fixed above the gesture area. */
-		.bottom-nav {
-			display: flex;
-			position: fixed;
-			left: 12px;
-			right: 12px;
-			bottom: calc(10px + env(safe-area-inset-bottom));
-			z-index: 120;
-			border-radius: 16px;
-			border: 1px solid var(--color-border);
-			background: var(--color-surface);
-			box-shadow: var(--shadow-md);
-			padding: 4px 6px;
 		}
 
 		/* Drawer — solid matte sheet, full height. */
@@ -2411,7 +2457,16 @@
 			border-right: 1px solid var(--color-border);
 		}
 		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
-		.side-nav { gap: 4px; padding: calc(12px + env(safe-area-inset-top)) 10px 10px; }
+		/* Keep-style drawer heading. */
+		.drawer-title {
+			display: block;
+			padding: calc(14px + var(--safe-top)) 20px 6px;
+			font-size: 26px;
+			font-weight: 700;
+			letter-spacing: -0.02em;
+			color: var(--color-text);
+		}
+		.side-nav { gap: 4px; padding: 4px 10px 10px; }
 		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
 		.section-head { padding: 14px 16px 6px; }
 		.section-title { font-size: 12px; }
@@ -2439,7 +2494,7 @@
 		}
 
 		/* Labeled footer actions instead of a desktop icon cluster. */
-		.sidebar-footer { padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); gap: 10px; }
+		.sidebar-footer { padding: 10px 12px calc(14px + var(--safe-bottom)); gap: 10px; }
 		.footer-row { flex-wrap: wrap; }
 		.footer-actions { gap: 6px; flex: 1; }
 		.footer-actions .icon-btn {
@@ -2460,7 +2515,7 @@
 		.sidebar.open { transform: translateX(0); }
 
 		.mobile-topbar { display: flex; }
-		.topbar-brand { min-height: 44px; }
+		.topbar-pill { height: 44px; }
 
 		/* Touch: no hover — row actions must be tappable without a long-press.
 		   Favoriting stays one tap away in the ⋯ menu; dropping the star here
@@ -2470,58 +2525,16 @@
 		.tree-item .row-btn[title="Add to favorites"],
 		.tree-item .row-btn[title="Unfavorite"] { display: none; }
 
-		.nav-tab {
-			flex: 1;
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			gap: 3px;
-			background: none;
-			border: none;
-			color: var(--color-text-muted);
-			font-size: 12px;
-			font-family: inherit;
-			font-weight: 500;
-			padding: 6px 0;
-			min-height: 52px;
-			border-radius: var(--radius-lg);
-			text-decoration: none;
-			cursor: pointer;
-			transition: color 0.15s, background 0.15s;
-		}
-		.nav-tab.active { color: var(--color-accent); font-weight: 600; }
-		.nav-tab:active { background: var(--color-surface-hover); }
-		.nav-tab-pill {
-			display: flex;
-			padding: 5px 22px;
-			border-radius: 999px;
-			transition: background 0.15s;
-			position: relative;
-		}
-		.nav-tab.active .nav-tab-pill { background: var(--color-accent-subtle); }
-		/* Live sync state on the nav pill: green = peers connected. */
-		.nav-tab-dot {
-			position: absolute;
-			top: 4px;
-			right: 14px;
-			width: 7px;
-			height: 7px;
-			border-radius: 50%;
-			background: var(--color-border-strong);
-		}
-		.nav-tab-dot.online { background: var(--color-success); }
 
 
-
-		/* Snackbar floats above the nav. */
+		/* Snackbar floats above the FAB. */
 		.snackbar {
-			bottom: calc(76px + env(safe-area-inset-bottom));
+			bottom: calc(88px + var(--safe-bottom));
 			max-width: calc(100vw - 32px);
 		}
 
 		/* Command palette: near-full-screen, thumb-reachable. */
-		.overlay { padding-top: calc(6vh * var(--ui-fit) + env(safe-area-inset-top)); align-items: flex-start; }
+		.overlay { padding-top: calc(6vh * var(--ui-fit) + var(--safe-top)); align-items: flex-start; }
 		.command-palette {
 			width: 94vw;
 			max-width: 94vw;

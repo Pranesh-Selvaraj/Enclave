@@ -8,7 +8,8 @@ export interface Template {
 	content: object;
 }
 
-const p = (text: string): object => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+const p = (text: string): object =>
+	text ? { type: 'paragraph', content: [{ type: 'text', text }] } : { type: 'paragraph' };
 const h1 = (text: string): object => ({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text }] });
 const h2 = (text: string): object => ({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text }] });
 const bullet = (text: string): object => ({
@@ -17,10 +18,19 @@ const bullet = (text: string): object => ({
 });
 const task = (text: string): object => ({
 	type: 'taskList',
-	content: [{ type: 'taskItem', attrs: { checked: false }, content: [p(text)] }],
+	content: [{ type: 'taskItem', attrs: { checked: false }, content: text ? [p(text)] : [{ type: 'paragraph' }] }],
 });
 
 export const templates: Template[] = [
+	{
+		id: 'checklist',
+		name: 'Checklist',
+		icon: '✅',
+		content: {
+			type: 'doc',
+			content: [h1('Checklist'), task(''), task(''), task('')],
+		},
+	},
 	{
 		id: 'meeting',
 		name: 'Meeting Notes',

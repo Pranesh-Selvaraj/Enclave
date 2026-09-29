@@ -7,6 +7,9 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "cookie": "^0.7.2"
+  },
   "scripts": {
     "dev": "npm run tauri dev",
     "build": "npm run tauri build",

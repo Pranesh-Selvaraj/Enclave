@@ -75,11 +75,11 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 20px;
-		padding: 8px 10px calc(14px + env(safe-area-inset-bottom));
+		padding: 8px 10px calc(14px + var(--safe-bottom));
 		box-shadow: var(--shadow-lg);
 		/* Many actions must scroll instead of pushing the handle off-screen. */
-		max-height: calc(100vh * var(--ui-fit) - 24px - env(safe-area-inset-bottom));
-		max-height: calc(100dvh * var(--ui-fit) - 24px - env(safe-area-inset-bottom));
+		max-height: calc(100vh * var(--ui-fit) - 24px - var(--safe-bottom));
+		max-height: calc(100dvh * var(--ui-fit) - 24px - var(--safe-bottom));
 		display: flex;
 		flex-direction: column;
 		animation: sheet-up 0.22s ease;

@@ -8,3 +8,4 @@ export { default as DragHandleMenu } from './blocks/DragHandleMenu.svelte';
 export { default as EditorContextMenu } from './blocks/EditorContextMenu.svelte';
 export { default as TableMenu } from './blocks/TableMenu.svelte';
 export { htmlToMarkdown, markdownToJson, jsonToMarkdown } from './markdown.js';
+export { templates, type Template } from './templates.js';

@@ -2,10 +2,24 @@
 	import { invoke } from '$lib/backend.js';
 	import type { Document } from '@enclave/ui';
 	import { theme, Icon, Logo } from '@enclave/ui';
+	import { templates } from '@enclave/editor';
 	import { goto } from '$app/navigation';
 	import { haptic } from '$lib/haptics.js';
 
 	let documents = $state<Document[]>([]);
+
+	// Mobile notes layouts: list, gallery, thumbnails or icon tiles.
+	let isMobile = $state(false);
+	$effect(() => {
+		const mq = window.matchMedia('(max-width: 768px)');
+		isMobile = mq.matches;
+		const onChange = (e: MediaQueryListEvent) => (isMobile = e.matches);
+		mq.addEventListener('change', onChange);
+		return () => mq.removeEventListener('change', onChange);
+	});
+
+	const viewMode = $derived(isMobile ? theme.homeView : 'list');
+	let fabOpen = $state(false);
 
 	async function loadDocuments() {
 		try {
@@ -35,9 +49,23 @@
 		}
 	}
 
+	/** Create a page pre-filled from one of the editor templates. */
+	async function createFromTemplate(tplId: string) {
+		const tpl = templates.find((t) => t.id === tplId);
+		if (!tpl) return;
+		try {
+			haptic();
+			const doc = await invoke<Document>('create_document', { title: tpl.name });
+			goto(`/${doc.id}?t=${tpl.id}`);
+		} catch (e) {
+			console.error('Failed to create from template:', e);
+		}
+	}
+
 	$effect(() => { loadDocuments(); });
 
 	const favorites = $derived(documents.filter(d => d.is_favorite));
+	const hasRail = $derived(documents.length === 0 || !isMobile || favorites.length > 0);
 	const recent = $derived(
 		[...documents]
 			.sort((a, b) => {
@@ -65,10 +93,65 @@
 </script>
 
 <div class="home-page">
+	{#snippet docList(docs: Document[])}
+		{#if viewMode === 'list'}
+			<div class="doc-panel">
+				{#each docs as doc (doc.id)}
+					<a href="/{doc.id}" class="doc-row">
+						<span class="row-icon" class:fav={doc.is_favorite}>
+							<Icon name={doc.is_favorite ? 'star' : 'page'} size={14} />
+						</span>
+						<span class="row-title">{doc.title || 'Untitled'}</span>
+						<span class="row-meta">{timeAgo(doc.updated_at)}</span>
+						<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
+					</a>
+				{/each}
+			</div>
+		{:else if viewMode === 'gallery'}
+			<div class="doc-cards doc-gallery">
+				{#each docs as doc (doc.id)}
+					<a href="/{doc.id}" class="doc-card">
+						<span class="card-preview" class:fav={doc.is_favorite}>
+							<Icon name={doc.is_favorite ? 'star' : 'page'} size={26} />
+						</span>
+						<span class="card-meta">
+							<span class="card-title">{doc.title || 'Untitled'}</span>
+							<span class="card-time">{timeAgo(doc.updated_at)}</span>
+						</span>
+					</a>
+				{/each}
+			</div>
+		{:else if viewMode === 'thumbs'}
+			<div class="doc-cards doc-thumbs">
+				{#each docs as doc (doc.id)}
+					<a href="/{doc.id}" class="doc-card keep-card">
+						<span class="keep-title">{doc.title || 'Untitled'}</span>
+						<span class="keep-foot">
+							{#if doc.is_favorite}<span class="keep-fav"><Icon name="star" size={13} /></span>{/if}
+							<span class="keep-time">{timeAgo(doc.updated_at)}</span>
+						</span>
+					</a>
+				{/each}
+			</div>
+		{:else}
+			<div class="doc-icons">
+				{#each docs as doc (doc.id)}
+					<a href="/{doc.id}" class="doc-icon-tile" title={doc.title || 'Untitled'}>
+						<span class="icon-tile-art" class:fav={doc.is_favorite}>
+							<Icon name={doc.is_favorite ? 'star' : 'page'} size={20} />
+						</span>
+						<span class="icon-tile-title">{doc.title || 'Untitled'}</span>
+					</a>
+				{/each}
+			</div>
+		{/if}
+	{/snippet}
 	<div class="home-head">
 		<div class="home-heading">
 			<h1 class="home-title">{greeting}</h1>
-			<p class="home-subtitle">Your encrypted workspace — everything stays on this device.</p>
+			{#if documents.length === 0 || !isMobile}
+				<p class="home-subtitle">Your encrypted workspace — everything stays on this device.</p>
+			{/if}
 		</div>
 	</div>
 
@@ -95,21 +178,12 @@
 					<h2 class="sec-title">Recent pages</h2>
 					<span class="sec-count">{recent.length}</span>
 				</div>
-				<div class="doc-panel">
-					{#each recent as doc (doc.id)}
-						<a href="/{doc.id}" class="doc-row">
-							<span class="row-icon" class:fav={doc.is_favorite}>
-								<Icon name={doc.is_favorite ? 'star' : 'page'} size={14} />
-							</span>
-							<span class="row-title">{doc.title || 'Untitled'}</span>
-							<span class="row-meta">{timeAgo(doc.updated_at)}</span>
-							<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
-						</a>
-					{/each}
-				</div>
+				{@render docList(recent)}
 			</section>
 
+			{#if hasRail}
 			<aside class="home-rail">
+				{#if documents.length === 0 || !isMobile}
 				<div class="quick-actions">
 					<button class="quick-btn" onclick={createJournal}>
 						<span class="quick-icon"><Icon name="check" size={15} /></span>
@@ -120,31 +194,51 @@
 						<span>New Page</span>
 					</button>
 				</div>
+				{/if}
 
 				{#if favorites.length > 0}
 					<div class="sec-head">
 						<h2 class="sec-title">Favorites</h2>
 						<span class="sec-count">{favorites.length}</span>
 					</div>
-					<div class="doc-panel">
-						{#each favorites as doc (doc.id)}
-							<a href="/{doc.id}" class="doc-row">
-								<span class="row-icon fav"><Icon name="star" size={14} /></span>
-								<span class="row-title">{doc.title || 'Untitled'}</span>
-								<span class="row-meta">{timeAgo(doc.updated_at)}</span>
-								<span class="row-chev"><Icon name="chevronRight" size={14} /></span>
-							</a>
-						{/each}
-					</div>
+					{@render docList(favorites)}
 				{/if}
 			</aside>
+			{/if}
 		</div>
 	{/if}
 
-	<!-- Android-style FAB: new page one thumb-tap away, no drawer trip.
-	     Hidden on desktop — the sidebar button + Ctrl+N cover it. -->
-	<button class="fab" onclick={createAndOpen} aria-label="New page" title="New page">
-		<Icon name="plus" size={22} />
+	<!-- Android-style FAB: opens a drop-up with the creation entries. Hidden
+	     on desktop — the sidebar button + Ctrl+N cover it. -->
+	{#if fabOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="fab-backdrop" onclick={() => (fabOpen = false)}></div>
+		<div class="fab-stack" role="menu" aria-label="Create">
+			<button class="fab-pill" role="menuitem" onclick={() => { fabOpen = false; createAndOpen(); }}>
+				<span class="fab-pill-icon"><Icon name="text" size={19} /></span>
+				<span>Text</span>
+			</button>
+			<button class="fab-pill" role="menuitem" onclick={() => { fabOpen = false; createFromTemplate('checklist'); }}>
+				<span class="fab-pill-icon"><Icon name="listChecks" size={19} /></span>
+				<span>Checklist</span>
+			</button>
+			<button class="fab-pill" role="menuitem" onclick={() => { fabOpen = false; createJournal(); }}>
+				<span class="fab-pill-icon"><Icon name="calendar" size={19} /></span>
+				<span>Journal</span>
+			</button>
+			<button class="fab-pill" role="menuitem" onclick={() => { fabOpen = false; createFromTemplate('meeting'); }}>
+				<span class="fab-pill-icon"><Icon name="page" size={19} /></span>
+				<span>Meeting notes</span>
+			</button>
+			<button class="fab-pill" role="menuitem" onclick={() => { fabOpen = false; window.dispatchEvent(new CustomEvent('enclave:new-folder')); }}>
+				<span class="fab-pill-icon"><Icon name="folder" size={19} /></span>
+				<span>Folder</span>
+			</button>
+		</div>
+	{/if}
+	<button class="fab" class:open={fabOpen} onclick={() => { haptic(); fabOpen = !fabOpen; }} aria-label="New" aria-haspopup="menu" aria-expanded={fabOpen} title="New">
+		<Icon name={fabOpen ? 'x' : 'plus'} size={24} />
 	</button>
 </div>
 
@@ -344,10 +438,102 @@
 		.home-empty p { font-size: 13.5px; }
 	}
 
-	/* Floating action button — phones only, above the bottom nav. */
-	.fab {
-		display: none;
+	/* ── Mobile notes layouts (list is the desktop default) ── */
+	.doc-cards { display: grid; gap: 10px; }
+	.doc-gallery { grid-template-columns: minmax(0, 1fr); }
+	.doc-thumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.doc-card {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-surface);
+		color: var(--color-text);
+		text-decoration: none;
+		overflow: hidden;
 	}
+	.doc-card:active { background: var(--color-surface-hover); }
+	.card-preview {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--color-surface-hover);
+		color: var(--color-text-muted);
+	}
+	.doc-gallery .card-preview { height: 116px; }
+	.card-preview.fav { color: var(--color-warning); }
+	.card-meta { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; min-width: 0; }
+	.card-title { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card-time { font-size: 11.5px; color: var(--color-text-faint); }
+
+	/* Keep-style cards: title-first, quiet footer, no preview chrome. */
+	.keep-card {
+		min-height: 118px;
+		padding: 14px;
+		border-radius: 16px;
+		gap: 10px;
+		justify-content: space-between;
+	}
+	.keep-title {
+		font-size: 15px;
+		font-weight: 600;
+		line-height: 1.35;
+		color: var(--color-text);
+		display: -webkit-box;
+		-webkit-line-clamp: 5;
+		line-clamp: 5;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		overflow-wrap: anywhere;
+	}
+	.keep-foot {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+		color: var(--color-text-faint);
+		font-size: 11.5px;
+	}
+	.keep-fav { display: flex; color: var(--color-warning); }
+	.doc-icons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+	.doc-icon-tile {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		padding: 10px 4px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-surface);
+		color: var(--color-text);
+		text-decoration: none;
+	}
+	.doc-icon-tile:active { background: var(--color-surface-hover); }
+	.icon-tile-art {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 10px;
+		background: var(--color-surface-hover);
+		color: var(--color-text-muted);
+	}
+	.icon-tile-art.fav { color: var(--color-warning); }
+	.icon-tile-title {
+		font-size: 11px;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--color-text-muted);
+	}
+
+	/* Floating action button + Keep-style entry stack — phones only. */
+	.fab { display: none; }
+	.fab-backdrop, .fab-stack { display: none; }
 	@media (max-width: 768px) {
 		.fab {
 			display: flex;
@@ -355,8 +541,8 @@
 			justify-content: center;
 			position: fixed;
 			right: 16px;
-			bottom: calc(78px + env(safe-area-inset-bottom));
-			z-index: 125;
+			bottom: calc(20px + var(--safe-bottom));
+			z-index: 126;
 			width: 56px;
 			height: 56px;
 			border: none;
@@ -365,8 +551,55 @@
 			color: #fff;
 			box-shadow: var(--shadow-md);
 			cursor: pointer;
+			transition: border-radius 0.15s, transform 0.08s ease-out, box-shadow 0.15s, background 0.15s, color 0.15s;
 		}
 		.fab:active { transform: scale(0.94); }
-		.fab { transition: transform 0.08s ease-out, box-shadow 0.15s; }
+		/* Open: inverted circle with an X, like Keep. */
+		.fab.open {
+			border-radius: 999px;
+			background: var(--color-text);
+			color: var(--color-bg);
+			box-shadow: var(--shadow-lg);
+		}
+
+		.fab-backdrop {
+			display: block;
+			position: fixed;
+			inset: 0;
+			z-index: 124;
+		}
+		.fab-stack {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			gap: 10px;
+			position: fixed;
+			right: 16px;
+			bottom: calc(92px + var(--safe-bottom));
+			z-index: 127;
+		}
+		.fab-pill {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			height: 52px;
+			padding: 0 20px;
+			border: 1px solid var(--color-border);
+			border-radius: 999px;
+			background: var(--color-surface);
+			color: var(--color-text);
+			font-family: inherit;
+			font-size: 15px;
+			font-weight: 600;
+			box-shadow: var(--shadow-md);
+			cursor: pointer;
+			animation: fab-menu-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+		}
+		.fab-pill:active { background: var(--color-surface-hover); }
+		.fab-pill-icon { display: flex; color: var(--color-accent); }
+	}
+	@keyframes fab-menu-in {
+		from { opacity: 0; transform: translateY(10px) scale(0.98); }
+		to { opacity: 1; transform: none; }
 	}
 </style>

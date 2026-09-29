@@ -216,8 +216,8 @@ import { makeReactive } from './reactivity.js';
 		min-width: 0;
 	}
 
-	/* Custom checkbox: the native input is invisible but keeps focus/click;
-	   the label's span is the visible box. */
+	/* Custom checkbox: Tiptap v3 keeps the native input invisible and renders
+	   a visually-hidden a11y span; the label itself is the visible box. */
 	:global(.tiptap-editor ul[data-type="taskList"] li label) {
 		position: relative;
 		width: 18px;
@@ -225,6 +225,11 @@ import { makeReactive } from './reactivity.js';
 		margin-top: 3px;
 		flex-shrink: 0;
 		cursor: pointer;
+		box-sizing: border-box;
+		border: 1.5px solid var(--color-border-strong);
+		border-radius: 5px;
+		background: var(--color-surface);
+		transition: background 0.12s, border-color 0.12s;
 	}
 
 	:global(.tiptap-editor ul[data-type="taskList"] li input[type="checkbox"]) {
@@ -236,20 +241,15 @@ import { makeReactive } from './reactivity.js';
 	}
 
 	:global(.tiptap-editor ul[data-type="taskList"] li label span) {
-		position: absolute;
-		inset: 0;
-		border: 1.5px solid var(--color-border-strong);
-		border-radius: 5px;
-		background: var(--color-surface);
-		transition: background 0.12s, border-color 0.12s;
-		pointer-events: none;
+		/* v3's inline screen-reader styles win over class rules — hide it. */
+		display: none !important;
 	}
 
-	:global(.tiptap-editor ul[data-type="taskList"] li label span::after) {
+	:global(.tiptap-editor ul[data-type="taskList"] li label::after) {
 		content: '';
 		position: absolute;
 		left: 5px;
-		top: 2px;
+		top: 1px;
 		width: 5px;
 		height: 9px;
 		border: solid #fff;
@@ -258,16 +258,16 @@ import { makeReactive } from './reactivity.js';
 		transition: transform 0.12s;
 	}
 
-	:global(.tiptap-editor ul[data-type="taskList"] li input:checked + span) {
+	:global(.tiptap-editor ul[data-type="taskList"] li[data-checked="true"] label) {
 		background: var(--color-accent);
 		border-color: var(--color-accent);
 	}
 
-	:global(.tiptap-editor ul[data-type="taskList"] li input:checked + span::after) {
+	:global(.tiptap-editor ul[data-type="taskList"] li[data-checked="true"] label::after) {
 		transform: rotate(45deg) scale(1);
 	}
 
-	:global(.tiptap-editor ul[data-type="taskList"] li:hover input + span) {
+	:global(.tiptap-editor ul[data-type="taskList"] li:hover label) {
 		border-color: var(--color-accent);
 	}
 

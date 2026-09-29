@@ -446,7 +446,7 @@
 			max-height: 70vh;
 			max-height: 70dvh;
 			border-radius: 18px;
-			padding-bottom: env(safe-area-inset-bottom);
+			padding-bottom: var(--safe-bottom);
 		}
 		.picker-item { padding: 12px 10px; min-height: 48px; font-size: 15px; }
 	}

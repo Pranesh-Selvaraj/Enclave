@@ -7,6 +7,8 @@ import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +42,28 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     this.webView = webView as? RustWebView
+    // Android WebView reports env(safe-area-inset-*) as 0 even while the
+    // activity draws edge-to-edge. Publish the real system-bar insets (in CSS
+    // px) so the shell keeps the top bar clear of the status bar and its
+    // controls stay tappable.
+    ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
+      val bars = insets.getInsets(
+        WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+      )
+      val density = view.resources.displayMetrics.density
+      val top = (bars.top / density).toInt()
+      val bottom = (bars.bottom / density).toInt()
+      webView.evaluateJavascript(
+        "document.documentElement.style.setProperty('--safe-top','${top}px');" +
+          "document.documentElement.style.setProperty('--safe-bottom','${bottom}px');",
+        null,
+      )
+      insets
+    }
+    ViewCompat.requestApplyInsets(webView)
+    // The first dispatch can land before the document exists; re-apply once
+    // the initial page has loaded so the CSS vars are never lost.
+    webView.postDelayed({ ViewCompat.requestApplyInsets(webView) }, 1500)
     applyPendingRoute()
   }
 

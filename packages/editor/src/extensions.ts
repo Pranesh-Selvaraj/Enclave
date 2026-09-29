@@ -1,10 +1,7 @@
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
 import Link from '@tiptap/extension-link';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableHeader from '@tiptap/extension-table-header';
-import TableCell from '@tiptap/extension-table-cell';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { mount, unmount } from 'svelte';
 import CodeBlockView from './blocks/CodeBlockView.svelte';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -29,6 +26,9 @@ export function editorExtensions() {
 			heading: { levels: [1, 2, 3] },
 			// The toolbar node view below extends codeBlock — drop starter-kit's.
 			codeBlock: false,
+			// StarterKit v3 bundles Link; configure it explicitly below instead
+			// (a duplicate would throw "Duplicate extension names found").
+			link: false,
 		}),
 		Placeholder,
 		TaskList,

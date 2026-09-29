@@ -635,7 +635,7 @@ sentinel check</pre>
 			border-radius: 18px 18px 0 0;
 			border-bottom: none;
 		}
-		.settings-header { padding-top: calc(8px + env(safe-area-inset-top)); }
+		.settings-header { padding-top: calc(8px + var(--safe-top)); }
 		.settings-section { padding: 12px 18px; }
 		.setting-row {
 			min-height: 44px;
@@ -649,6 +649,6 @@ sentinel check</pre>
 		.switch input:checked + .switch-slider::before { transform: translateX(20px); }
 		.ai-input { width: 100%; box-sizing: border-box; }
 		.danger-btn { min-height: 44px; padding: 10px 16px; }
-		.settings-footer { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+		.settings-footer { padding-bottom: calc(14px + var(--safe-bottom)); }
 	}
 </style>

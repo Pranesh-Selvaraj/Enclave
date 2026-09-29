@@ -15,6 +15,12 @@ declare module '@tiptap/core' {
 			setImage: (attrs: { src: string; alt?: string; caption?: string }) => ReturnType;
 		};
 	}
+
+	// Tiptap v3 typed `Storage` as an empty interface; extension storage must
+	// be declared here so `editor.storage.image` type-checks.
+	interface Storage {
+		image: { docId: string };
+	}
 }
 
 async function importImage(editor: Editor, file: File) {
@@ -38,7 +44,7 @@ export const Image = Node.create({
 	atom: true,
 	selectable: true,
 
-	addStorage() {
+	addStorage(): { docId: string } {
 		return { docId: '' };
 	},
 
