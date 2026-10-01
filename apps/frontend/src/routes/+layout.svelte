@@ -163,6 +163,15 @@
 		}
 	});
 
+	/** Sidebar lock button: lock the vault and drop the session seed. */
+	async function lockNow() {
+		try {
+			await invoke('lock_vault');
+			sessionSeed.clear();
+			vaultUnlocked = false;
+		} catch { /* locking failed — keep the vault open */ }
+	}
+
 	// ── Auto-lock after inactivity (privacy on a phone in your pocket) ──
 	// Plain let, not $state: the interval only reads the latest value; making it
 	// reactive would tear down and recreate the interval on every keystroke.
@@ -1214,6 +1223,10 @@
 							<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={15} />
 							<span class="btn-label">Theme</span>
 						</button>
+						<button class="icon-btn" onclick={lockNow} title="Lock vault" aria-label="Lock vault">
+							<Icon name="lock" size={15} />
+							<span class="btn-label">Lock</span>
+						</button>
 						<button class="icon-btn" onclick={() => openUI('settings')} title="Settings">
 							<Icon name="settings" size={15} />
 							<span class="btn-label">Settings</span>
@@ -1264,6 +1277,9 @@
 				</button>
 				<button class="mini-btn" onclick={() => theme.toggle()} title="Toggle theme">
 					<Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={17} />
+				</button>
+				<button class="mini-btn" onclick={lockNow} title="Lock vault" aria-label="Lock vault">
+					<Icon name="lock" size={17} />
 				</button>
 				<button class="mini-btn" onclick={() => openUI('settings')} title="Settings">
 					<Icon name="settings" size={17} />
