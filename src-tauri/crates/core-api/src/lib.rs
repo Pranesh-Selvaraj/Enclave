@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use rusqlite::Connection;
 
 pub mod crypto;
+pub mod pairing;
 
 // Re-exported so shells never need to depend on core-db directly.
 pub use core_db::{
@@ -119,6 +120,8 @@ pub struct EnclaveCore {
     /// Fan-out for sync events: shells subscribe and surface them (toasts,
     /// notifications) while the loop itself lives here.
     sync_events: tokio::sync::broadcast::Sender<SyncEvent>,
+    /// Cancels the active one-time pairing listener, if any.
+    pairing_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 impl EnclaveCore {
@@ -130,12 +133,45 @@ impl EnclaveCore {
             sync_key: Mutex::new(None),
             network: Arc::new(NetworkState::new()),
             sync_events,
+            pairing_cancel: Mutex::new(None),
         }
     }
 
     /// Subscribe to sync events (sync-done / peer-connect-failed).
     pub fn subscribe_sync_events(&self) -> tokio::sync::broadcast::Receiver<SyncEvent> {
         self.sync_events.subscribe()
+    }
+
+    // ── Account pairing (one-time code, desktop → phone) ─────────────────────
+
+    /// Open a one-time pairing listener that hands `seed` to a phone which
+    /// proves the code. The seed comes from the shell (the frontend already
+    /// holds it from unlock) so the core never has to keep it at rest.
+    pub async fn pairing_start(&self, seed: String) -> CoreResult<pairing::PairingStart> {
+        if !self.is_unlocked() {
+            return Err(CoreError::VaultLocked);
+        }
+        self.pairing_cancel();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let start = pairing::serve(seed, rx).await?;
+        if let Ok(mut slot) = self.pairing_cancel.lock() {
+            *slot = Some(tx);
+        }
+        Ok(start)
+    }
+
+    /// Close the active pairing listener (user dismissed it, or it was used).
+    pub fn pairing_cancel(&self) {
+        if let Ok(mut slot) = self.pairing_cancel.lock() {
+            if let Some(tx) = slot.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
+    /// Phone side: prove the code and decrypt the seed phrase.
+    pub async fn pairing_redeem(&self, code: String, address: String) -> CoreResult<String> {
+        pairing::redeem(&code, &address).await
     }
 
     /// The process-wide core, created on first use. The first caller's
@@ -627,8 +663,14 @@ impl EnclaveCore {
 
     pub fn sync_snapshot_for(&self, ids: &[String]) -> Option<String> {
         let payload = self.with_db(|db| {
-            let (docs, blocks) = core_db::query_sync_data_for(db, ids).map_err(db_err)?;
-            Ok(serde_json::json!({ "kind": "snapshot", "docs": docs, "blocks": blocks }).to_string())
+            let (docs, blocks, folders) = core_db::query_sync_data_for(db, ids).map_err(db_err)?;
+            Ok(serde_json::json!({
+                "kind": "snapshot",
+                "docs": docs,
+                "blocks": blocks,
+                "folders": folders,
+            })
+            .to_string())
         });
         payload.ok()
     }
@@ -644,6 +686,9 @@ impl EnclaveCore {
                 let peer_id = v["peer_id"].as_str().unwrap_or(&msg.from_peer).to_string();
                 if let Some(digest) = self.sync_digest() {
                     self.network.send_to(&peer_id, digest).await;
+                    eprintln!("sync: hello from {peer_id} — digest sent");
+                } else {
+                    eprintln!("sync: hello from {peer_id} — digest unavailable (vault locked?)");
                 }
             }
             Some("digest") => {
@@ -660,9 +705,15 @@ impl EnclaveCore {
                     let local = core_db::query_doc_index(db).map_err(db_err)?;
                     Ok(core_db::diff_doc_index(&local, &remote_index))
                 });
-                if let Ok(want) = want {
-                    let need = serde_json::json!({ "kind": "need", "ids": want }).to_string();
-                    self.network.send_to(&peer_id, need).await;
+                match want {
+                    Ok(want) => {
+                        if !want.is_empty() {
+                            eprintln!("sync: digest from {peer_id} — pulling {} doc(s)", want.len());
+                        }
+                        let need = serde_json::json!({ "kind": "need", "ids": want }).to_string();
+                        self.network.send_to(&peer_id, need).await;
+                    }
+                    Err(e) => eprintln!("sync: digest from {peer_id} — local index failed: {e}"),
                 }
             }
             Some("need") => {
@@ -673,6 +724,9 @@ impl EnclaveCore {
                 };
                 if let Some(snapshot) = self.sync_snapshot_for(&ids) {
                     self.network.send_to(&peer_id, snapshot).await;
+                    eprintln!("sync: need from {peer_id} — sent {} doc(s)", ids.len());
+                } else {
+                    eprintln!("sync: need from {peer_id} — snapshot unavailable (vault locked?)");
                 }
             }
             Some("snapshot") => {
@@ -693,8 +747,23 @@ impl EnclaveCore {
                         return;
                     }
                 };
+                // Folders first so the docs that reference them land in place.
+                // Missing `folders` (older peer) is fine — empty list.
+                let folders = serde_json::from_value::<Vec<Folder>>(v["folders"].clone())
+                    .unwrap_or_default();
+                match self.with_db(|db| core_db::merge_folders(db, &folders).map_err(db_err)) {
+                    Ok(added) if added > 0 => {
+                        eprintln!("sync: folders from {peer_id} — {} new folder(s)", added)
+                    }
+                    Ok(_) => {}
+                    Err(e) => eprintln!("sync: folder merge from {peer_id} failed: {e}"),
+                }
                 match self.merge_snapshot(&docs, &blocks) {
                     Ok(stats) => {
+                        eprintln!(
+                            "sync: merged snapshot from {peer_id} — {} docs / {} blocks changed (received {} docs, {} blocks)",
+                            stats.docs_changed, stats.blocks_changed, docs.len(), blocks.len()
+                        );
                         self.network.mark_synced().await;
                         let ack = serde_json::json!({
                             "kind": "ack",
@@ -709,7 +778,18 @@ impl EnclaveCore {
                             blocks_changed: stats.blocks_changed as u64,
                         });
                     }
-                    Err(_) => { /* vault locked — ignore */ }
+                    Err(CoreError::VaultLocked) => {
+                        eprintln!("sync: snapshot from {peer_id} ignored — vault locked");
+                    }
+                    Err(e) => {
+                        // Never silent: a merge failure used to vanish into the
+                        // old `Err(_) => ignore` arm. Log it and toast it.
+                        eprintln!("sync: snapshot merge from {peer_id} failed: {e}");
+                        emit(SyncEvent::PeerFailed {
+                            host: peer_id,
+                            error: format!("merge failed: {e}"),
+                        });
+                    }
                 }
             }
             Some("session_failed") => {

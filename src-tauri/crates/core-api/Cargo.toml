@@ -24,7 +24,7 @@ aes-gcm = "0.10"
 bip39 = "2"
 rand = "0.9"
 # The core owns the sync message loop; shells just spawn it.
-tokio = { version = "1", features = ["rt", "sync"] }
+tokio = { version = "1", features = ["rt", "sync", "net", "io-util", "time"] }
 
 [dev-dependencies]
 tempfile = "3"

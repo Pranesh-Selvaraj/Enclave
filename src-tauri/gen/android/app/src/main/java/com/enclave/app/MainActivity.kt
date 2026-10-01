@@ -28,6 +28,13 @@ import uniffi.core_api.FfiCore
  * render the Keystore-wrapped cache, never the vault).
  */
 class MainActivity : TauriActivity() {
+  // Tauri's generated activity disables WebView history navigation
+  // (`handleBackNavigation = false`), which left the Android back gesture
+  // doing nothing on doc pages and inside overlays. Re-enable it so back
+  // pops overlays first and then walks the SPA history — the same history the
+  // web shell pushes for drawers/sheets/palette.
+  override val handleBackNavigation: Boolean = true
+
   private var webView: RustWebView? = null
   private var pendingRoute: String? = null
 

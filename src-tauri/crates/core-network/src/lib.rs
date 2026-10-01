@@ -8,6 +8,11 @@ pub mod crypto;
 mod mdns;
 mod ws;
 
+/// Best-effort LAN address of this device (used for pairing + status).
+pub fn local_ip() -> Result<String, String> {
+    mdns::local_ip()
+}
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, RwLock};

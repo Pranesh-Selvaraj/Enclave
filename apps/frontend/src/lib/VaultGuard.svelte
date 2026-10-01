@@ -2,10 +2,11 @@
 	import { invoke } from '$lib/backend.js';
 	import { generateMnemonic, validateMnemonic, deriveMasterKey, selfCheck, encryptWithPassword, decryptWithPassword, type EncryptedNote } from '@enclave/crypto';
 	import { Button, Logo, Icon } from '@enclave/ui';
+	import { sessionSeed } from '$lib/sessionSeed.svelte';
 
 	let { onunlock }: { onunlock: () => void } = $props();
 
-	type Step = 'loading' | 'checking' | 'welcome' | 'create-password' | 'create-seed' | 'unlock' | 'setup-password' | 'error';
+	type Step = 'loading' | 'checking' | 'welcome' | 'create-password' | 'create-seed' | 'unlock' | 'setup-password' | 'pair' | 'error';
 	let step = $state<Step>('loading');
 	let errorMsg = $state('');
 
@@ -17,6 +18,67 @@
 	let unlocking = $state(false);
 	let cryptoReady = $state(false);
 	let hasPassword = $state(false);
+
+	// Android users unlock far more often than they type long passwords, so PIN
+	// (numeric keypad) is the default there; desktop defaults to password. The
+	// choice is remembered so the unlock screen lands on the same keypad.
+	const isAndroid = typeof navigator !== 'undefined' && navigator.userAgent.includes('Android');
+	type AuthMode = 'pin' | 'password';
+	function savedAuthMode(): AuthMode {
+		try {
+			const v = localStorage.getItem('enclave-auth-mode');
+			if (v === 'pin' || v === 'password') return v;
+		} catch { /* private mode */ }
+		return isAndroid ? 'pin' : 'password';
+	}
+	let authMode = $state<AuthMode>(savedAuthMode());
+	function setAuthMode(m: AuthMode) {
+		if (authMode === m) return;
+		authMode = m;
+		password = '';
+		confirmPassword = '';
+		unlockInput = '';
+		errorMsg = '';
+		try { localStorage.setItem('enclave-auth-mode', m); } catch { /* ignore */ }
+	}
+	const PIN_RE = /^\d{4,12}$/;
+
+	// Account pairing: register this phone with a desktop's account without
+	// retyping the 12 words. The desktop shows a one-time code + address.
+	let pairCode = $state('');
+	let pairAddress = $state('');
+	let pairing = $state(false);
+	let pairReady = $derived(
+		pairCode.replace(/[^a-z0-9]/gi, '').length === 12 && pairAddress.trim().includes(':'),
+	);
+
+	async function handlePair() {
+		if (!pairReady || pairing) return;
+		pairing = true;
+		errorMsg = '';
+		try {
+			const seed = await invoke<string>('pairing_redeem', {
+				code: pairCode,
+				address: pairAddress.trim(),
+			});
+			if (!validateMnemonic(seed)) {
+				throw new Error('The desktop sent an invalid recovery phrase');
+			}
+			// Fresh phone: create the vault from the paired account, then let the
+			// setup-password step encrypt vault.key under the chosen PIN/password.
+			const key = await deriveMasterKey(seed);
+			await invoke('init_vault', { key: Array.from(key) });
+			sessionSeed.set(seed);
+			seedMnemonic = seed;
+			password = '';
+			confirmPassword = '';
+			step = 'setup-password';
+		} catch (e: any) {
+			errorMsg = `Pairing failed: ${e?.message || e}`;
+		} finally {
+			pairing = false;
+		}
+	}
 
 	function serialize(enc: { salt: Uint8Array; iv: Uint8Array; ciphertext: ArrayBuffer }): Uint8Array {
 		const salt = Array.from(enc.salt);
@@ -36,9 +98,20 @@
 		return { salt, iv, ciphertext: ct.buffer.slice(ct.byteOffset, ct.byteOffset + ct.byteLength) };
 	}
 
-	let passwordValid = $derived(password.length >= 8 && password === confirmPassword);
+	// No length floor: any non-empty secret is allowed (the owner asked for the
+	// old 8-character minimum to go). PINs stay numeric and are capped at 12.
+	// The 12-word recovery phrase remains the real vault key either way.
+	let secretValid = $derived(
+		authMode === 'pin'
+			? PIN_RE.test(password) && password === confirmPassword
+			: password.length >= 1 && password === confirmPassword,
+	);
 	// BIP39 supports 12-24 words; don't lock out users with longer phrases
-	let unlockReady = $derived(hasPassword ? unlockInput.length >= 4 : unlockInput.trim().split(/\s+/).length >= 12);
+	let unlockReady = $derived(
+		hasPassword
+			? (authMode === 'pin' ? PIN_RE.test(unlockInput) : unlockInput.length >= 1)
+			: unlockInput.trim().split(/\s+/).length >= 12,
+	);
 
 	$effect(() => {
 		(async () => {
@@ -76,6 +149,7 @@
 				const encrypted = deserialize(new Uint8Array(raw));
 				const savedMnemonic = await decryptWithPassword(encrypted, unlockInput);
 				if (!validateMnemonic(savedMnemonic)) throw new Error('Invalid vault key — recovery phrase may be needed');
+				sessionSeed.set(savedMnemonic);
 				const key = await deriveMasterKey(savedMnemonic);
 				await invoke('unlock_vault', { key: Array.from(key) });
 			} else {
@@ -90,6 +164,7 @@
 				await invoke('unlock_vault', { key: Array.from(key) });
 				// Offer to set up a password after seed phrase unlock
 				seedMnemonic = words;
+				sessionSeed.set(words);
 				password = '';
 				confirmPassword = '';
 				errorMsg = '';
@@ -109,7 +184,7 @@
 	}
 
 	async function handleSetupPassword() {
-		if (!passwordValid) return;
+		if (!secretValid) return;
 		try {
 			unlocking = true;
 			const encrypted = await encryptWithPassword(seedMnemonic, password);
@@ -133,10 +208,11 @@
 	}
 
 	async function handleCreateVault() {
-		if (!passwordValid) return;
+		if (!secretValid) return;
 		try {
 			unlocking = true;
 			mnemonic = generateMnemonic();
+			sessionSeed.set(mnemonic);
 			const key = await deriveMasterKey(mnemonic);
 			await invoke('init_vault', { key: Array.from(key) });
 
@@ -170,6 +246,14 @@
 </script>
 
 <div class="vault-wall">
+	{#snippet authModeSwitch()}
+		<div class="auth-switch" role="tablist" aria-label="Unlock method">
+			<button class="auth-switch-btn" class:active={authMode === 'pin'} role="tab" aria-selected={authMode === 'pin'}
+				onclick={() => setAuthMode('pin')}>PIN</button>
+			<button class="auth-switch-btn" class:active={authMode === 'password'} role="tab" aria-selected={authMode === 'password'}
+				onclick={() => setAuthMode('password')}>Password</button>
+		</div>
+	{/snippet}
 	{#if step === 'loading' || step === 'checking'}
 		<div class="vault-card vault-card-center">
 			<Logo size={56} />
@@ -187,23 +271,43 @@
 				<div class="vf-item"><Icon name="network" size={15} /><span>Peer-to-peer sync over Wi-Fi</span></div>
 				<div class="vf-item"><Icon name="zap" size={15} /><span>Offline-first — no cloud, ever</span></div>
 			</div>
+			{@render authModeSwitch()}
 			<div class="vault-form">
-				<label class="field-label" for="password">Create vault password</label>
+				<label class="field-label" for="password">{authMode === 'pin' ? 'Create vault PIN' : 'Create vault password'}</label>
 				<!-- svelte-ignore a11y_autofocus -->
-				<input type="password" id="password" class="seed-input" bind:value={password} placeholder="Choose a strong password…" autofocus
-					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && passwordValid) handleCreateVault(); }} />
-				<label class="field-label" for="confirm">Confirm password</label>
-				<input type="password" id="confirm" class="seed-input" bind:value={confirmPassword} placeholder="Re-enter password…"
-					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && passwordValid) handleCreateVault(); }} />
-				<p class="vault-hint">At least 8 characters. Your 12-word recovery phrase is the actual vault key — the password only protects this device.</p>
+				<input type="password" id="password" class="seed-input" bind:value={password}
+					inputmode={authMode === 'pin' ? 'numeric' : 'text'}
+					pattern={authMode === 'pin' ? '[0-9]*' : undefined}
+					maxlength={authMode === 'pin' ? 12 : undefined}
+					autocomplete="off" enterkeyhint="done"
+					placeholder={authMode === 'pin' ? '4–12 digits' : 'Choose a password…'} autofocus
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && secretValid) handleCreateVault(); }} />
+				<label class="field-label" for="confirm">{authMode === 'pin' ? 'Confirm PIN' : 'Confirm password'}</label>
+				<input type="password" id="confirm" class="seed-input" bind:value={confirmPassword}
+					inputmode={authMode === 'pin' ? 'numeric' : 'text'}
+					pattern={authMode === 'pin' ? '[0-9]*' : undefined}
+					maxlength={authMode === 'pin' ? 12 : undefined}
+					autocomplete="off" enterkeyhint="done"
+					placeholder={authMode === 'pin' ? 'Re-enter PIN' : 'Re-enter password…'}
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && secretValid) handleCreateVault(); }} />
+				<p class="vault-hint">
+					{authMode === 'pin'
+						? '4–12 digits. Your 12-word recovery phrase is the actual vault key — the PIN only locks this device. A short PIN is quicker to type, but easier to guess if someone copies your vault file.'
+						: 'Any length. Your 12-word recovery phrase is the actual vault key — the password only protects this device; longer is safer.'}
+				</p>
 			</div>
 			<div class="vault-actions">
-				<Button onclick={handleCreateVault} disabled={!passwordValid}>
+				<Button onclick={handleCreateVault} disabled={!secretValid}>
 					{unlocking ? 'Creating vault…' : 'Create vault'}
 				</Button>
 				<button class="vault-link-btn" onclick={() => { step = 'unlock'; hasPassword = false; }}>
 					I already have a seed phrase
 				</button>
+				{#if isAndroid}
+					<button class="vault-link-btn" onclick={() => { pairCode = ''; pairAddress = ''; errorMsg = ''; step = 'pair'; }}>
+						Pair with a desktop instead
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -235,14 +339,20 @@
 			<h1 class="vault-heading">{hasPassword ? 'Unlock your vault' : 'Enter recovery phrase'}</h1>
 			<p class="vault-desc">
 				{#if hasPassword}
-					Enter your password to unlock.
+					{authMode === 'pin' ? 'Enter your PIN to unlock.' : 'Enter your password to unlock.'}
 				{:else}
 					Enter your 12-word recovery phrase.
 				{/if}
 			</p>
 			{#if hasPassword}
+				{@render authModeSwitch()}
 				<!-- svelte-ignore a11y_autofocus -->
-				<input type="password" class="seed-input" bind:value={unlockInput} placeholder="Enter password…" autofocus
+				<input type="password" class="seed-input" bind:value={unlockInput}
+					inputmode={authMode === 'pin' ? 'numeric' : 'text'}
+					pattern={authMode === 'pin' ? '[0-9]*' : undefined}
+					maxlength={authMode === 'pin' ? 12 : undefined}
+					autocomplete="off" enterkeyhint="done"
+					placeholder={authMode === 'pin' ? 'Enter PIN…' : 'Enter password…'} autofocus
 					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') handleUnlock(); }} />
 			{:else}
 				<textarea class="seed-input" bind:value={unlockInput} placeholder="Enter all 12 words, separated by spaces…" rows={3}
@@ -271,25 +381,69 @@
 	{:else if step === 'setup-password'}
 		<div class="vault-card">
 			<Logo size={56} />
-			<h1 class="vault-heading">Set up a password?</h1>
+			<h1 class="vault-heading">Set up a PIN or password?</h1>
 			<p class="vault-desc">
-				You unlocked with your recovery phrase. Set up a password for faster unlocking next time.
+				You unlocked with your recovery phrase. Set up a faster unlock for next time.
 			</p>
+			{@render authModeSwitch()}
 			<div class="vault-form">
-				<label class="field-label" for="setup-pw">Password</label>
-				<input type="password" id="setup-pw" class="seed-input" bind:value={password} placeholder="Choose a password…" />
-				<label class="field-label" for="setup-confirm">Confirm password</label>
-				<input type="password" id="setup-confirm" class="seed-input" bind:value={confirmPassword} placeholder="Re-enter password…" />
+				<label class="field-label" for="setup-pw">{authMode === 'pin' ? 'PIN' : 'Password'}</label>
+				<input type="password" id="setup-pw" class="seed-input" bind:value={password}
+					inputmode={authMode === 'pin' ? 'numeric' : 'text'}
+					pattern={authMode === 'pin' ? '[0-9]*' : undefined}
+					maxlength={authMode === 'pin' ? 12 : undefined}
+					autocomplete="off" enterkeyhint="done"
+					placeholder={authMode === 'pin' ? '4–12 digits' : 'Choose a password…'} />
+				<label class="field-label" for="setup-confirm">{authMode === 'pin' ? 'Confirm PIN' : 'Confirm password'}</label>
+				<input type="password" id="setup-confirm" class="seed-input" bind:value={confirmPassword}
+					inputmode={authMode === 'pin' ? 'numeric' : 'text'}
+					pattern={authMode === 'pin' ? '[0-9]*' : undefined}
+					maxlength={authMode === 'pin' ? 12 : undefined}
+					autocomplete="off" enterkeyhint="done"
+					placeholder={authMode === 'pin' ? 'Re-enter PIN' : 'Re-enter password…'} />
 			</div>
 			{#if errorMsg}
 				<p class="vault-error" role="alert">{errorMsg}</p>
 			{/if}
 			<div class="vault-actions">
-				<Button onclick={handleSetupPassword} disabled={!passwordValid}>
-					{unlocking ? 'Saving…' : 'Set password'}
+				<Button onclick={handleSetupPassword} disabled={!secretValid}>
+					{unlocking ? 'Saving…' : authMode === 'pin' ? 'Set PIN' : 'Set password'}
 				</Button>
 				<button class="vault-link-btn" onclick={skipPasswordSetup}>
 					Skip for now
+				</button>
+			</div>
+		</div>
+
+	{:else if step === 'pair'}
+		<div class="vault-card">
+			<Logo size={56} />
+			<h1 class="vault-heading">Pair with your desktop</h1>
+			<p class="vault-desc">
+				On the desktop, open <strong>Sync → Pair a phone</strong> and type what it shows here.
+			</p>
+			<div class="vault-form">
+				<label class="field-label" for="pair-address">Desktop address</label>
+				<input id="pair-address" class="seed-input" bind:value={pairAddress} placeholder="192.168.1.5:43210"
+					autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && pairReady) handlePair(); }} />
+				<label class="field-label" for="pair-code">Pairing code</label>
+				<input id="pair-code" class="seed-input pair-code" bind:value={pairCode} placeholder="XXXX-XXXX-XXXX"
+					autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false"
+					onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && pairReady) handlePair(); }} />
+				<p class="vault-hint">
+					The code is single-use and expires after two minutes. Both devices must be on the same network.
+				</p>
+			</div>
+			{#if errorMsg}
+				<p class="vault-error" role="alert">{errorMsg}</p>
+			{/if}
+			<div class="vault-actions">
+				<Button onclick={handlePair} disabled={!pairReady}>
+					{pairing ? 'Pairing…' : 'Pair'}
+				</Button>
+				<button class="vault-link-btn" onclick={() => { hasPassword = false; unlockInput = ''; errorMsg = ''; step = 'unlock'; }}>
+					Use the seed phrase instead
 				</button>
 			</div>
 		</div>
@@ -400,9 +554,40 @@
 		flex-shrink: 0;
 	}
 
+	.auth-switch {
+		display: flex;
+		gap: 4px;
+		padding: 3px;
+		margin: 0 0 18px;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-surface-hover);
+	}
+	.auth-switch-btn {
+		flex: 1;
+		min-height: 38px;
+		border: none;
+		border-radius: 999px;
+		background: none;
+		color: var(--color-text-muted);
+		font-family: inherit;
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.auth-switch-btn.active { background: var(--color-surface); color: var(--color-text); }
+	.auth-switch-btn:active { transform: scale(0.98); }
+
 	.vault-form { text-align: left; margin-bottom: 22px; }
 	.field-label { display: block; font-size: 13px; font-weight: 600; color: var(--color-text-muted); margin: 14px 0 5px; }
 	.field-label:first-child { margin-top: 0; }
+
+	/* Pairing code: monospace, spaced, uppercase. */
+	.pair-code {
+		font-family: var(--font-mono);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
 
 	.vault-actions {
 		display: flex;

@@ -354,6 +354,35 @@ async fn connect_peer(state: tauri::State<'_, AppState>, host: String, port: u16
     state.core.connect_peer(&host, port).await.map_err(msg)
 }
 
+// ── One-time account pairing (desktop → phone) ────────────────────────────
+
+/// Desktop: open a one-time pairing listener for the given seed phrase. The
+/// shell passes the seed it decrypted at unlock; the core never persists it.
+#[tauri::command]
+async fn pairing_start(
+    state: tauri::State<'_, AppState>,
+    seed: String,
+) -> Result<core_api::pairing::PairingStart, String> {
+    state.core.pairing_start(seed).await.map_err(msg)
+}
+
+/// Close the active pairing listener (dismissed, used or expired).
+#[tauri::command]
+async fn pairing_cancel(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.core.pairing_cancel();
+    Ok(())
+}
+
+/// Phone: prove the pairing code and return the vault seed phrase.
+#[tauri::command]
+async fn pairing_redeem(
+    state: tauri::State<'_, AppState>,
+    code: String,
+    address: String,
+) -> Result<String, String> {
+    state.core.pairing_redeem(code, address).await.map_err(msg)
+}
+
 #[tauri::command]
 async fn network_status(state: tauri::State<'_, AppState>) -> Result<core_api::NetworkStatus, String> {
     Ok(state.core.network_status().await)
@@ -621,6 +650,10 @@ pub fn run() {
             stop_network,
             network_status,
             connect_peer,
+            // account pairing (desktop → phone)
+            pairing_start,
+            pairing_cancel,
+            pairing_redeem,
             // desktop wallpaper widget
             #[cfg(desktop)]
             toggle_widget,

@@ -31,6 +31,15 @@ pub fn derive_sync_key(vault_key: &[u8]) -> [u8; 32] {
     out
 }
 
+/// Generic HKDF-SHA256 derivation (32-byte output). Used by account pairing,
+/// where the input keying material is the one-time pairing code.
+pub fn derive_key(ikm: &[u8], salt: &[u8], info: &[u8]) -> [u8; 32] {
+    let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
+    let mut out = [0u8; 32];
+    hk.expand(info, &mut out).expect("32-byte HKDF expand");
+    out
+}
+
 /// Per-connection session key. Challenges are sorted so both sides derive
 /// the same key regardless of connection direction.
 pub fn session_key(sync_key: &[u8; 32], c_a: &[u8; 32], c_b: &[u8; 32]) -> [u8; 32] {
