@@ -4,6 +4,34 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] — 2026-10-01
+
+Unlocking gets flexible: a vault can now be opened with a PIN or a password, a phone can be registered against an existing desktop account with a one-time code instead of retyping the 12-word seed phrase, and the vault can be locked straight from the sidebar. Sync learned about folders and stopped hiding failures, the Android shell got its back gesture back, and the UI-size setting no longer clips the window.
+
+### Added
+
+- **PIN or password unlock.** Vault creation, unlock, and the post-seed "set up a faster unlock" step now offer a PIN/password choice, and the old 8-character minimum is gone (passwords accept any non-empty secret; PINs are 4–12 digits). Android defaults to a PIN and opens the numeric keypad; the choice is remembered per device.
+- **Account pairing (desktop → phone).** The desktop can hand its account to a phone with a one-time 12-character code (60 bits of entropy, two-minute lifetime, single use, five wrong attempts allowed). The seed phrase never crosses the network in the clear: the payload is encrypted with a key derived from the code (HKDF-SHA256 → XChaCha20-Poly1305). Android's welcome screen gains "Pair with a desktop"; the desktop's sync card gains "Pair a phone" with the code, LAN address and a countdown.
+- **Lock button in the sidebar.** The expanded footer and the collapsed icon rail (and therefore the phone drawer) can lock the vault in one tap, using the same path as Settings → Lock now and the idle auto-lock.
+- **Folder sync.** Snapshots now carry the folder list; a page created in a folder on one device lands in that folder on the peer instead of falling back to the root.
+
+### Changed
+
+- **The Android drawer is navigation-only.** The page tree, favorites, folders, tags and trash no longer appear inside the drawer — the home screen already lists them — leaving Home plus Sync/Theme/Lock/Settings.
+- **Settings are platform-split.** Keyboard shortcuts, page width and the Sentinel terminal card are desktop-only; vibration feedback is phone-only; the auto-lock hint and vault-path fallback no longer assume a phone.
+- **The Android back gesture works again.** The generated Tauri activity disables WebView history navigation, so back did nothing in the app; it is re-enabled, overlays pop their own history entries, and stale entries left by backdrop/Escape closes are cleaned up.
+
+### Fixed
+
+- **Sync failures were silent.** A snapshot merge error was swallowed with no log and no UI signal; merge failures now log the cause and surface as a toast, and the handshake steps (hello/digest/need/snapshot) are traceable.
+- **UI size no longer clips the window.** The scale setting is CSS `zoom`, which scales rendered boxes but not viewport units, so a `100vh` shell rendered taller than the window at Large/Xlarge and pushed the sidebar footer off-screen. The app frame, quick-capture and widget routes now divide by the scale (`--ui-fit`), landing exactly on the viewport.
+- **The sidebar resize handle showed a stray floating tooltip** ("Drag to resize · double-click to reset"); the native `title` was removed in favour of the existing accessible label.
+
+### Notes
+
+- **No new dependencies.** Account pairing reuses the HKDF and XChaCha20-Poly1305 crates already in the tree; the only Rust manifest change is the added `net`/`io-util`/`time` Tokio features.
+- Documentation: the README was refreshed with screenshots and corrected structure/test commands, and the release-notes requirement is now recorded in CONTRIBUTING.
+
 ## [1.11.0] — 2026-09-29
 
 A notes-first redesign of the Android app, an editor engine upgrade with a security fix underneath it, and a clean bill of health from both dependency auditors.
@@ -689,7 +717,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.1...v1.11.0
 [1.5.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
