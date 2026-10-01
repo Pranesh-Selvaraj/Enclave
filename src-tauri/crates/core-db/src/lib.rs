@@ -1163,7 +1163,7 @@ pub fn diff_doc_index(local: &[DocIndexEntry], remote: &[DocIndexEntry]) -> Vec<
 pub fn query_sync_data_for(
     db: &Connection,
     ids: &[String],
-) -> rusqlite::Result<(Vec<Document>, Vec<Block>)> {
+) -> rusqlite::Result<(Vec<Document>, Vec<Block>, Vec<Folder>)> {
     let docs = {
         let mut stmt = db.prepare(&format!(
             "{DOC_COLS} WHERE id IN ({}) ORDER BY id",
@@ -1184,7 +1184,38 @@ pub fn query_sync_data_for(
         let rows = stmt.query_map(refs.as_slice(), row_to_block)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()?
     };
-    Ok((docs, blocks))
+    // Folders are small and docs reference them by id, so every snapshot
+    // carries the current folder list; receivers only add missing rows.
+    let folders = query_sync_folders(db)?;
+    Ok((docs, blocks, folders))
+}
+
+/// All folders. The list is small enough to travel with every snapshot.
+pub fn query_sync_folders(db: &Connection) -> rusqlite::Result<Vec<Folder>> {
+    let mut stmt = db.prepare("SELECT id, name, created_at FROM folders ORDER BY id")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Folder {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            created_at: row.get(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Add folders the peer has that we don't. Existing rows are left alone:
+/// folders carry no rev/updated_at today, so "first writer keeps the name"
+/// is the only conflict-safe rule (renames stay local until folders get
+/// their own revision).
+pub fn merge_folders(db: &Connection, folders: &[Folder]) -> rusqlite::Result<usize> {
+    let mut added = 0;
+    for f in folders {
+        added += db.execute(
+            "INSERT OR IGNORE INTO folders (id, name, created_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![f.id, f.name, f.created_at],
+        )?;
+    }
+    Ok(added)
 }
 
 /// Merge a peer snapshot. Winner per document = higher (rev, updated_at),
@@ -1790,10 +1821,35 @@ mod tests {
         assert!(d2.deleted_at.is_some());
 
         // Partial fetch: deleted doc arrives with tombstone, no blocks.
-        let (docs, blocks) = query_sync_data_for(&conn, &["d1".into(), "d2".into(), "missing".into()]).unwrap();
+        let (docs, blocks, folders) = query_sync_data_for(&conn, &["d1".into(), "d2".into(), "missing".into()]).unwrap();
         assert_eq!(docs.len(), 2);
         assert_eq!(blocks.len(), 1, "blocks only for the live doc");
         assert!(docs.iter().all(|d| d.deleted_at.is_some() || d.id == "d1"));
+        assert!(folders.is_empty());
+    }
+
+    #[test]
+    fn folders_travel_with_snapshots_and_merge_without_overwriting() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_tables(&conn).unwrap();
+        insert_folder(&conn, &Folder { id: "f1".into(), name: "Work".into(), created_at: "c".into() }).unwrap();
+
+        // Every snapshot carries the folder list.
+        let (_, _, folders) = query_sync_data_for(&conn, &[]).unwrap();
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].name, "Work");
+
+        // Merging adds missing folders and leaves existing names alone.
+        let incoming = vec![
+            Folder { id: "f1".into(), name: "Renamed remotely".into(), created_at: "c2".into() },
+            Folder { id: "f2".into(), name: "Personal".into(), created_at: "c3".into() },
+        ];
+        let added = merge_folders(&conn, &incoming).unwrap();
+        assert_eq!(added, 1);
+        let after = query_folders(&conn).unwrap();
+        assert_eq!(after.len(), 2);
+        assert_eq!(after.iter().find(|f| f.id == "f1").unwrap().name, "Work");
+        assert_eq!(after.iter().find(|f| f.id == "f2").unwrap().name, "Personal");
     }
 
     #[test]

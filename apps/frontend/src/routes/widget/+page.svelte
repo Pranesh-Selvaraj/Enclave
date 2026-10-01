@@ -163,8 +163,8 @@
 <style>
 	.widget {
 		width: 100vw;
-		height: 100vh;
-		height: 100dvh;
+		height: calc(100vh * var(--ui-fit));
+		height: calc(100dvh * var(--ui-fit));
 		box-sizing: border-box;
 		padding: 10px;
 		background: transparent;

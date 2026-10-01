@@ -119,10 +119,10 @@
 	.capture {
 		display: flex;
 		flex-direction: column;
-		height: 100vh;
+		height: calc(100vh * var(--ui-fit));
 		/* Dynamic viewport height: the software keyboard/toolbars on Android
 		   must not push the composer under the screen. */
-		height: 100dvh;
+		height: calc(100dvh * var(--ui-fit));
 		/* Transparent: the window background carries the theme (incl. soft/
 		   glassy gradients) so quick capture matches the main app. */
 		background: transparent;

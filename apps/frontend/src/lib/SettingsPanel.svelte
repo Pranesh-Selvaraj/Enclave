@@ -5,6 +5,7 @@
 	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES, BACKGROUNDS } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
 	import { loadUpdatePrefs, saveUpdatePrefs } from './updates.js';
+	import { sessionSeed } from './sessionSeed.svelte';
 	import UpdateDialog from './UpdateDialog.svelte';
 
 	let {
@@ -42,6 +43,7 @@
 	async function lockVault() {
 		try {
 			await invoke('lock_vault');
+			sessionSeed.clear();
 			open = false;
 			onlock?.();
 		} catch { /* ignore */ }
@@ -50,6 +52,10 @@
 	// Android-only: widgets render a Keystore-wrapped cache; this decides
 	// whether they blank out while the vault is locked.
 	const isAndroid = browser && navigator.userAgent.includes('Android');
+	// Settings that only make sense on one shell are gated instead of shown as
+	// dead controls: keyboard/page-width/terminal hints on desktop, haptics only
+	// on phones (the reverse leak was the same class of bug).
+	const isDesktop = !isAndroid;
 	let hideWidgetsLocked = $state(false);
 
 	$effect(() => {
@@ -230,14 +236,16 @@
 						{/each}
 					</div>
 				</div>
-				<div class="setting-row">
-					<span>Page width</span>
-					<div class="seg-row">
-						{#each PAGE_WIDTHS as w (w)}
-							<button class="seg" class:active={theme.pageWidth === w} onclick={() => (theme.pageWidth = w)}>{w}</button>
-						{/each}
+				{#if isDesktop}
+					<div class="setting-row">
+						<span>Page width</span>
+						<div class="seg-row">
+							{#each PAGE_WIDTHS as w (w)}
+								<button class="seg" class:active={theme.pageWidth === w} onclick={() => (theme.pageWidth = w)}>{w}</button>
+							{/each}
+						</div>
 					</div>
-				</div>
+				{/if}
 				<div class="setting-row">
 					<span>Interface density</span>
 					<div class="seg-row">
@@ -258,13 +266,15 @@
 						{/each}
 					</div>
 				</div>
-				<div class="setting-row">
-					<span>Vibration feedback</span>
-					<label class="switch" title="Subtle haptic taps on buttons (phones)">
-						<input type="checkbox" bind:checked={theme.haptics} />
-						<span class="switch-slider"></span>
-					</label>
-				</div>
+				{#if isAndroid}
+					<div class="setting-row">
+						<span>Vibration feedback</span>
+						<label class="switch" title="Subtle haptic taps on buttons (phones)">
+							<input type="checkbox" bind:checked={theme.haptics} />
+							<span class="switch-slider"></span>
+						</label>
+					</div>
+				{/if}
 				<div class="setting-row">
 					<span>Reduce motion</span>
 					<label class="switch" title="Turn off transitions and animations">
@@ -294,8 +304,9 @@
 					<button class="danger-btn" onclick={lockVault}>Lock now</button>
 				</div>
 				<div class="backup-hint">
-					Auto-lock protects your notes when you put the phone down — the vault
-					relocks after the chosen time without any taps.
+					{isAndroid
+						? 'Auto-lock protects your notes when you put the phone down — the vault relocks after the chosen time without any taps.'
+						: 'Auto-lock protects your notes when you step away — the vault relocks after the chosen time without activity.'}
 				</div>
 			</div>
 
@@ -324,19 +335,21 @@
 					</div>
 				{/if}
 
-				<div class="sentinel-card">
-					<div class="sentinel-title">🛰 Keep Enclave fully offline — monitor updates with <b>Sentinel</b></div>
-					<div class="backup-hint">
-						Sentinel is a free, open-source CLI (Python 3.11+, zero dependencies) that
-						watches GitHub releases from your terminal, so Enclave itself never needs
-						internet access:
-						<pre class="sentinel-cmd">sentinel add github Pranesh-Selvaraj/Enclave --monitor release
+				{#if isDesktop}
+					<div class="sentinel-card">
+						<div class="sentinel-title">🛰 Keep Enclave fully offline — monitor updates with <b>Sentinel</b></div>
+						<div class="backup-hint">
+							Sentinel is a free, open-source CLI (Python 3.11+, zero dependencies) that
+							watches GitHub releases from your terminal, so Enclave itself never needs
+							internet access:
+							<pre class="sentinel-cmd">sentinel add github Pranesh-Selvaraj/Enclave --monitor release
 sentinel check</pre>
-						It remembers what it watched, tells you exactly what changed, and only you
-						decide when (or whether) to update. See
-						github.com/Pranesh-Selvaraj/Sentinel.
+							It remembers what it watched, tells you exactly what changed, and only you
+							decide when (or whether) to update. See
+							github.com/Pranesh-Selvaraj/Sentinel.
+						</div>
 					</div>
-				</div>
+				{/if}
 				<UpdateDialog bind:open={updateDialogOpen} />
 			</div>
 
@@ -427,20 +440,22 @@ sentinel check</pre>
 				</div>
 			</div>
 
-			<div class="settings-section">
-				<h3>Keyboard Shortcuts</h3>
-				<div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd> <span>Command palette</span></div>
-				<div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>N</kbd> <span>New page</span></div>
-				<div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>B</kbd> <span>Toggle sidebar</span></div>
-				<div class="shortcut-row"><kbd>/</kbd> <span>Slash commands in editor</span></div>
-				<div class="shortcut-row"><kbd>[[</kbd> <span>Link to page</span></div>
-			</div>
+			{#if isDesktop}
+				<div class="settings-section">
+					<h3>Keyboard Shortcuts</h3>
+					<div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd> <span>Command palette</span></div>
+					<div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>N</kbd> <span>New page</span></div>
+					<div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>B</kbd> <span>Toggle sidebar</span></div>
+					<div class="shortcut-row"><kbd>/</kbd> <span>Slash commands in editor</span></div>
+					<div class="shortcut-row"><kbd>[[</kbd> <span>Link to page</span></div>
+				</div>
+			{/if}
 
 			<div class="settings-section">
 				<h3>About</h3>
 				<div class="about-info">
 					<div class="about-row"><span>Version</span><span class="about-value">{appVersion || '…'}</span></div>
-					<div class="about-row"><span>Vault</span><span class="about-value">{vaultPath || '~/.local/share/com.enclave.app/'}</span></div>
+					<div class="about-row"><span>Vault</span><span class="about-value">{vaultPath || (isAndroid ? 'App-private vault storage' : '~/.local/share/com.enclave.app/')}</span></div>
 				</div>
 			</div>
 

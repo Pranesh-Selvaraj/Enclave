@@ -6,6 +6,7 @@
 	import type { Document, Folder } from '@enclave/ui';
 	import { theme, ShortcutsDialog, Icon } from '@enclave/ui';
 	import ActionSheet from '$lib/ActionSheet.svelte';
+	import { sessionSeed } from '$lib/sessionSeed.svelte';
 	import VaultGuard from '$lib/VaultGuard.svelte';
 	import SettingsPanel from '$lib/SettingsPanel.svelte';
 	import { haptic } from '$lib/haptics.js';
@@ -150,7 +151,16 @@
 	$effect(() => {
 		const open = (n: string) => (n === 'drawer' ? sidebarOpen : n === 'palette' ? commandPaletteOpen : settingsOpen);
 		const filtered = uiStack.filter(open);
-		if (filtered.length !== uiStack.length) uiStack = filtered;
+		if (filtered.length !== uiStack.length) {
+			const stale = uiStack.filter((n) => !open(n));
+			uiStack = filtered;
+			// Closing an overlay by backdrop/Escape/navigation left its pushed
+			// history entry behind; the next Android back press then popped a
+			// no-op entry and appeared "broken". Pop the stale entries too.
+			for (let i = 0; i < stale.length; i++) {
+				try { history.back(); } catch { /* custom scheme may reject */ }
+			}
+		}
 	});
 
 	// ── Auto-lock after inactivity (privacy on a phone in your pocket) ──
@@ -172,7 +182,7 @@
 		if (!vaultUnlocked || theme.lockAfter <= 0) return;
 		const t = setInterval(() => {
 			if (Date.now() - lastActivity > theme.lockAfter * 60_000) {
-				invoke('lock_vault').then(() => (vaultUnlocked = false)).catch(() => {});
+				invoke('lock_vault').then(() => { sessionSeed.clear(); vaultUnlocked = false; }).catch(() => {});
 			}
 		}, 15_000);
 		return () => clearInterval(t);
@@ -257,6 +267,52 @@
 		try { localStorage.setItem('enclave-sync-card', syncCardOpen ? '1' : '0'); } catch { /* ignore */ }
 	}
 	try { syncCardOpen = localStorage.getItem('enclave-sync-card') === '1'; } catch { /* ignore */ }
+
+	// ── Account pairing (desktop → phone) ────────────────────────────────────
+	// The desktop shows a one-time code + LAN address; the phone redeems it and
+	// creates the same vault. No persisted state: the seed comes from the
+	// session store and the listener lives only as long as the code is valid.
+	let pairingInfo = $state<{ code: string; address: string } | null>(null);
+	let pairingLeft = $state(0);
+	let pairingBusy = $state(false);
+	let pairingTimer: ReturnType<typeof setInterval> | undefined;
+
+	async function startPairing() {
+		if (!sessionSeed.value) {
+			showSnack('Unlock once more to pair a phone');
+			return;
+		}
+		pairingBusy = true;
+		try {
+			const info = await invoke<{ code: string; address: string; expires_in: number }>('pairing_start', {
+				seed: sessionSeed.value,
+			});
+			pairingInfo = { code: info.code, address: info.address };
+			pairingLeft = info.expires_in;
+			clearInterval(pairingTimer);
+			pairingTimer = setInterval(() => {
+				pairingLeft -= 1;
+				if (pairingLeft <= 0) cancelPairing();
+			}, 1000);
+		} catch (e) {
+			showSnack(`Pairing: ${e}`);
+		} finally {
+			pairingBusy = false;
+		}
+	}
+
+	async function cancelPairing() {
+		clearInterval(pairingTimer);
+		pairingTimer = undefined;
+		pairingInfo = null;
+		pairingLeft = 0;
+		try { await invoke('pairing_cancel'); } catch { /* ignore */ }
+	}
+
+	async function copyPairingAddress() {
+		if (!pairingInfo) return;
+		try { await navigator.clipboard.writeText(pairingInfo.address); } catch { /* ignore */ }
+	}
 	async function copySyncAddress() {
 		const addr = networkStatus ? `${networkStatus.local_host || 'unknown'}:${networkStatus.port}` : '';
 		if (!addr) return;
@@ -800,7 +856,7 @@
 			clearTimeout(hideTimer);
 			if (!document.hidden) return;
 			hideTimer = setTimeout(() => {
-				if (document.hidden) invoke('lock_vault').then(() => (vaultUnlocked = false)).catch(() => {});
+				if (document.hidden) invoke('lock_vault').then(() => { sessionSeed.clear(); vaultUnlocked = false; }).catch(() => {});
 			}, 1500);
 		};
 		document.addEventListener('visibilitychange', onHide);
@@ -850,7 +906,7 @@
 				{/if}
 			</nav>
 
-			<div class="pages-section">
+			<div class="pages-section" class:hidden-mobile={isMobile}>
 				<div class="section-head">
 					<span class="section-title">Pages</span>
 					<span class="head-actions">
@@ -1005,7 +1061,7 @@
 			</div>
 
 			{#if allTags.length > 0}
-				<div class="pages-section tags-section">
+				<div class="pages-section tags-section" class:hidden-mobile={isMobile}>
 					<div class="section-head">
 						<span class="section-title">Tags</span>
 						{#if selectedTag}
@@ -1030,7 +1086,7 @@
 			{/if}
 
 			{#if archivedDocs.length > 0}
-				<div class="pages-section trash-section">
+				<div class="pages-section trash-section" class:hidden-mobile={isMobile}>
 					<div class="section-head">
 						<span class="section-title">Trash</span>
 					</div>
@@ -1117,6 +1173,31 @@
 									<span>Start sync on this network</span>
 								</button>
 							{/if}
+
+							<!-- Account pairing: hand this account to a phone. Works with sync
+							     off — it opens its own one-time listener. -->
+							{#if pairingInfo}
+								<div class="pair-box">
+									<div class="pair-title">Pair a phone</div>
+									<code class="pair-code-display">{pairingInfo.code.match(/.{4}/g)?.join('-') ?? pairingInfo.code}</code>
+									<div class="pair-addr">
+										<span>{pairingInfo.address}</span>
+										<button class="row-btn" onclick={copyPairingAddress} title="Copy address" aria-label="Copy pairing address">
+											<Icon name="duplicate" size={13} />
+										</button>
+									</div>
+									<div class="pair-foot">
+										<span class="pair-exp">{pairingLeft}s left</span>
+										<button class="pair-cancel" onclick={cancelPairing}>Cancel</button>
+									</div>
+									<p class="pair-hint">On the phone: Welcome → Pair with a desktop.</p>
+								</div>
+							{:else}
+								<button class="sync-start" onclick={startPairing} disabled={pairingBusy} title="Transfer this account to a phone">
+									<Icon name="keyhole" size={14} />
+									<span>{pairingBusy ? 'Starting…' : 'Pair a phone'}</span>
+								</button>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -1200,7 +1281,6 @@
 			role="separator"
 			aria-orientation="vertical"
 			aria-label="Resize sidebar"
-			title="Drag to resize · double-click to reset"
 			onpointerdown={startSidebarResize}
 			ondblclick={resetSidebarWidth}
 		></div>
@@ -1434,9 +1514,12 @@
 {/if}
 
 <style>
-	/* Custom title bar (desktop) + shell below it. */
+	/* Custom title bar (desktop) + shell below it.
+	   `zoom` (the UI-size setting) scales rendered boxes but not viewport units,
+	   so a raw 100vh frame renders zoom×100vh tall and clips its footer. Scale
+	   the frame by 1/zoom (`--ui-fit`) so it lands exactly on the viewport. */
 	.app-frame {
-		height: 100vh;
+		height: calc(100vh * var(--ui-fit));
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -1697,6 +1780,10 @@
 	.nav-item.active { background: var(--color-accent-subtle); color: var(--color-text); }
 
 	/* ── Pages ── */
+	/* The phone drawer is navigation, not a second notes list — the home screen
+	   already lists them. */
+	.hidden-mobile { display: none !important; }
+
 	.pages-section {
 		display: flex;
 		flex-direction: column;
@@ -2126,6 +2213,56 @@
 		transition: background 0.15s, color 0.15s;
 	}
 	.sync-start:hover { background: var(--color-accent); color: #fff; }
+
+	/* Account pairing (one-time code + LAN address). */
+	.pair-box {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 10px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-bg);
+	}
+	.pair-title {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--color-text-faint);
+	}
+	.pair-code-display {
+		font-family: var(--font-mono);
+		font-size: 15px;
+		letter-spacing: 0.12em;
+		color: var(--color-text);
+		user-select: all;
+	}
+	.pair-addr {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+	.pair-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.pair-exp { font-size: 11px; color: var(--color-text-faint); }
+	.pair-cancel {
+		border: none;
+		background: none;
+		color: var(--color-text-muted);
+		font: inherit;
+		font-size: 11px;
+		text-decoration: underline;
+		cursor: pointer;
+		padding: 0;
+	}
+	.pair-hint { margin: 0; font-size: 11px; color: var(--color-text-faint); line-height: 1.4; }
 	.icon-btn {
 		display: flex;
 		align-items: center;
