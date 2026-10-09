@@ -705,6 +705,41 @@ pub fn query_blocks(db: &Connection, document_id: &str) -> rusqlite::Result<Vec<
     rows.collect()
 }
 
+/// One document plus the raw block payloads the widget projection needs
+/// (issue #122): the `widget` opt-in, the `tags` labels and the `doc`
+/// content. One query for the whole vault, so the Android widget cache no
+/// longer calls `query_blocks` once per note. Contents stay as raw JSON
+/// strings (missing blocks are None) — core-api owns the projection.
+#[derive(Debug, Clone)]
+pub struct WidgetSource {
+    pub document: Document,
+    pub widget_json: Option<String>,
+    pub tags_json: Option<String>,
+    pub doc_json: Option<String>,
+}
+
+pub fn query_widget_sources(db: &Connection) -> rusqlite::Result<Vec<WidgetSource>> {
+    let mut stmt = db.prepare(
+        "SELECT d.id, d.title, d.created_at, d.updated_at, d.is_favorite, d.is_archived,
+                d.rev, d.deleted_at, d.folder_id,
+                (SELECT b.content FROM blocks b WHERE b.document_id = d.id AND b.type = 'widget' ORDER BY b.sort_order LIMIT 1),
+                (SELECT b.content FROM blocks b WHERE b.document_id = d.id AND b.type = 'tags' ORDER BY b.sort_order LIMIT 1),
+                (SELECT b.content FROM blocks b WHERE b.document_id = d.id AND b.type = 'doc' ORDER BY b.sort_order LIMIT 1)
+           FROM documents d
+          WHERE d.is_archived = 0 AND d.deleted_at IS NULL
+          ORDER BY d.updated_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(WidgetSource {
+            document: row_to_document(row)?,
+            widget_json: row.get(9)?,
+            tags_json: row.get(10)?,
+            doc_json: row.get(11)?,
+        })
+    })?;
+    rows.collect()
+}
+
 pub fn insert_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
     db.execute(
         "INSERT INTO blocks (id, document_id, type, content, sort_order, created_at, updated_at)

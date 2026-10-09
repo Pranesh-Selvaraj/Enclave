@@ -117,6 +117,50 @@ impl From<CoreBlock> for Block {
     }
 }
 
+/// One checklist row a home-screen widget shows (#122).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ChecklistRow {
+    pub text: String,
+    pub checked: bool,
+}
+
+impl From<super::ChecklistRow> for ChecklistRow {
+    fn from(r: super::ChecklistRow) -> Self {
+        Self {
+            text: r.text,
+            checked: r.checked,
+        }
+    }
+}
+
+/// A note shared to widgets, projected by Rust so Kotlin never walks
+/// ProseMirror JSON. `text` is the full body the pinned widget renders; the
+/// list widget flattens it for its two-line preview.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct WidgetNote {
+    pub id: String,
+    pub title: String,
+    pub labels: Vec<String>,
+    pub updated_at: String,
+    pub is_favorite: bool,
+    pub text: String,
+    pub checklist: Vec<ChecklistRow>,
+}
+
+impl From<super::WidgetNote> for WidgetNote {
+    fn from(n: super::WidgetNote) -> Self {
+        Self {
+            id: n.id,
+            title: n.title,
+            labels: n.labels,
+            updated_at: n.updated_at,
+            is_favorite: n.is_favorite,
+            text: n.text,
+            checklist: n.checklist.into_iter().map(ChecklistRow::from).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct TagInfo {
     pub doc_id: String,
@@ -417,6 +461,23 @@ impl FfiCore {
 
     pub fn delete_block(&self, id: String) -> Result<(), EnclaveError> {
         Ok(self.core.delete_block(&id)?)
+    }
+
+    // ── Home-screen widgets (#122) ──────────────────────────────────────────
+
+    /// Notes shared to widgets, already projected (checklist, labels, body).
+    pub fn widget_notes(&self) -> Result<Vec<WidgetNote>, EnclaveError> {
+        Ok(self
+            .core
+            .widget_notes()?
+            .into_iter()
+            .map(WidgetNote::from)
+            .collect())
+    }
+
+    /// Toggle one checklist row by index through the vault write path.
+    pub fn toggle_checklist_item(&self, doc_id: String, index: u32) -> Result<(), EnclaveError> {
+        Ok(self.core.toggle_checklist_item(&doc_id, index as usize)?)
     }
 
     // ── Search / tags / pages / backlinks ───────────────────────────────────

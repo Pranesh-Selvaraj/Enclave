@@ -278,12 +278,9 @@ class ToggleCheckAction : ActionCallback {
                 context.startActivity(openNoteIntent(context, docId))
                 return
             }
-            val blocks = core.getBlocks(docId)
-            val docJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson ?: return
-            val items = docChecklist(docJson).toMutableList()
-            if (index !in items.indices) return
-            items[index] = items[index].copy(checked = !items[index].checked)
-            core.upsertBlock("$docId-content", docId, "doc", taskListDocJson(items), 0.0)
+            // The toggle lives in Rust now (issue #122): it writes through the
+            // same block-upsert path as the editor and rejects a missing item.
+            core.toggleChecklistItem(docId, index.toUInt())
             WidgetStore.refreshAndUpdate(context, core)
             PinnedNoteWidget().update(context, glanceId)
         } catch (t: Throwable) {

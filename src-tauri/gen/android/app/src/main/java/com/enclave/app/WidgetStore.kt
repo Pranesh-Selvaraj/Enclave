@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.glance.appwidget.updateAll
+import uniffi.core_api.ChecklistRow
 import uniffi.core_api.FfiCore
 import java.io.File
 import java.security.KeyStore
@@ -38,7 +39,7 @@ internal object WidgetStore {
         val title: String,
         val tags: List<String>,
         val updatedAt: String,
-        val checklist: List<TaskItem>,
+        val checklist: List<ChecklistRow>,
         val text: String,
     )
 
@@ -119,18 +120,17 @@ internal object WidgetStore {
     }
 
     private fun refreshInner(context: Context, core: FfiCore) {
-        val notes = core.listDocuments().mapNotNull { doc ->
-            val blocks = core.getBlocks(doc.id)
-            val widget = blocks.firstOrNull { it.blockType == "widget" }
-            if (!widgetBlockEnabled(widget?.contentJson)) return@mapNotNull null
-            val docJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson
+        // Rust projects the doc JSON (issue #122): one query returns exactly
+        // what widgets render, instead of a getBlocks call per note plus a
+        // ProseMirror walk here.
+        val notes = core.widgetNotes().map { n ->
             WidgetNote(
-                id = doc.id,
-                title = doc.title,
-                tags = tagsOf(blocks.firstOrNull { it.blockType == "tags" }?.contentJson),
-                updatedAt = doc.updatedAt,
-                checklist = docChecklist(docJson),
-                text = docBodyText(docJson),
+                id = n.id,
+                title = n.title,
+                tags = n.labels,
+                updatedAt = n.updatedAt,
+                checklist = n.checklist,
+                text = n.text,
             )
         }
         writeCache(context, serialize(notes))
@@ -205,7 +205,7 @@ internal object WidgetStore {
             val checklist = n.optJSONArray("checklist")?.let { c ->
                 (0 until c.length()).mapNotNull { j ->
                     val item = c.optJSONObject(j) ?: return@mapNotNull null
-                    TaskItem(item.optString("text"), item.optBoolean("checked", false))
+                    ChecklistRow(item.optString("text"), item.optBoolean("checked", false))
                 }
             } ?: emptyList()
             WidgetNote(
