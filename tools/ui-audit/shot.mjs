@@ -184,6 +184,9 @@ function stubSource() {
         // Root layout skips the guard when the shared core is already open.
         // The tour wants the guard on the main routes, but capture/widget
         // routes are inline-guarded and should render their unlocked form.
+        // The locked_capture query param exercises the locked password-vault
+        // path (#22): the capture window must show the inline unlock guard.
+        if (new URLSearchParams(location.search).has('locked_capture')) return false;
         return location.pathname.startsWith('/capture') || location.pathname.startsWith('/widget');
       // VaultGuard uses the seed-phrase path in the tour; the capture/widget
       // routes auto-unlock with a stored key and never decrypt it.
@@ -1202,6 +1205,16 @@ const SCENARIOS = {
 		await s.waitFor(() => document.querySelector('.note'), 15000, 'capture composer');
 		await s.shot('capture');
 	},
+
+	// #22: a locked password vault must show the inline unlock guard on the
+	// capture window instead of an auto-unlocked composer (the old code passed
+	// the password-encrypted vault.key to unlock_vault as a raw DB key).
+	async 'capture-locked'(s) {
+		await s.boot(`${s.base}/capture?locked_capture=1`);
+		await s.waitFor(() => document.querySelector('.vault-card'), 20000, 'capture unlock guard');
+		s.check('capture-locked-shows-guard', true, 'guard rendered for a locked vault');
+		await s.shot('capture-locked');
+	},
 	async widget(s) {
 		await s.boot(`${s.base}/widget`);
 		await s.waitFor(() => document.querySelector('.w-list, .w-hint'), 15000, 'widget');
@@ -1212,8 +1225,8 @@ const SCENARIOS = {
 
 function defaultTour(profile) {
 	return profile.mobile
-		? ['welcome', 'unlock', 'home', 'drawer', 'doc', 'sheet', 'palette', 'whiteboard', 'settingsMobile', 'capture', 'widget']
-		: ['welcome', 'unlock', 'home', 'sidebar', 'doc', 'whiteboard', 'graph', 'settings', 'palette', 'split', 'capture', 'widget'];
+		? ['welcome', 'unlock', 'home', 'drawer', 'doc', 'sheet', 'palette', 'whiteboard', 'settingsMobile', 'capture', 'capture-locked', 'widget']
+		: ['welcome', 'unlock', 'home', 'sidebar', 'doc', 'whiteboard', 'graph', 'settings', 'palette', 'split', 'capture', 'capture-locked', 'widget'];
 }
 
 function scenariosFor(profile, name) {
