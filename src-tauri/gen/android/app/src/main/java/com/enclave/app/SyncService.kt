@@ -67,9 +67,13 @@ class SyncService : Service() {
     }
 
     // Live peer status: the notification is the only sync surface while the
-    // app is backgrounded, so it reports peers / vault state.
+    // app is backgrounded, so it reports peers / vault state. Only touch the
+    // notification when the text changes, and back off to 60 s while idle —
+    // the old 10 s tick woke the service even when nothing changed (#127).
     scope.launch {
+      var lastText: String? = null
       while (isActive) {
+        var busy = false
         val text = try {
           val core = FfiCore(applicationInfo.dataDir)
           if (!core.isUnlocked()) {
@@ -77,6 +81,7 @@ class SyncService : Service() {
           } else {
             val status = core.networkStatus()
             val connected = status.peers.count { it.connected }
+            busy = connected > 0 || status.peers.isNotEmpty()
             when {
               connected > 0 -> "$connected device(s) connected — syncing"
               status.peers.isNotEmpty() -> "${status.peers.size} device(s) found — connecting"
@@ -86,10 +91,13 @@ class SyncService : Service() {
         } catch (_: Exception) {
           "Discovering and syncing with your devices on this network"
         }
-        withContext(Dispatchers.Main) {
-          runCatching { notify.notify(NOTIFICATION_ID, buildNotification(text)) }
+        if (text != lastText) {
+          lastText = text
+          withContext(Dispatchers.Main) {
+            runCatching { notify.notify(NOTIFICATION_ID, buildNotification(text)) }
+          }
         }
-        delay(10_000)
+        delay(if (busy) 10_000 else 60_000)
       }
     }
 

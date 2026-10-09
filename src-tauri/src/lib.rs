@@ -62,6 +62,8 @@ async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.core.lock_vault().await.map_err(msg)?;
     // Android: no vault key = no foreground sync service.
     let _ = android_sync::set_service(false);
+    // Blank the home-screen widgets promptly (issue #132).
+    android_sync::widgets_changed();
     Ok(())
 }
 
@@ -91,17 +93,23 @@ fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_
 
 #[tauri::command(async)]
 fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    state.core.delete_document(&id).map_err(msg)
+    state.core.delete_document(&id).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(())
 }
 
 #[tauri::command(async)]
 fn archive_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
-    state.core.archive_document(&id).map_err(msg)
+    let doc = state.core.archive_document(&id).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(doc)
 }
 
 #[tauri::command(async)]
 fn restore_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
-    state.core.restore_document(&id).map_err(msg)
+    let doc = state.core.restore_document(&id).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(doc)
 }
 
 #[tauri::command(async)]
@@ -115,7 +123,9 @@ fn update_document_title(
     id: String,
     title: String,
 ) -> Result<core_api::Document, String> {
-    state.core.update_document_title(&id, &title).map_err(msg)
+    let doc = state.core.update_document_title(&id, &title).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(doc)
 }
 
 #[tauri::command(async)]
@@ -184,10 +194,13 @@ fn upsert_block(
     content: serde_json::Value,
     sort_order: f64,
 ) -> Result<core_api::Block, String> {
-    state
+    let block = state
         .core
         .upsert_block(&id, &document_id, &block_type, content, sort_order)
-        .map_err(msg)
+        .map_err(msg)?;
+    // Android widgets: save/tags/meta all come through here (issue #127).
+    android_sync::widgets_changed();
+    Ok(block)
 }
 
 #[tauri::command(async)]
@@ -572,6 +585,8 @@ pub fn run() {
                                     "blocks_changed": blocks_changed,
                                 }),
                             );
+                            // Merged notes change what widgets show (issue #127).
+                            android_sync::widgets_changed();
                         }
                         Ok(core_api::SyncEvent::PeerFailed { host, error }) => {
                             let _ = app_handle.emit(

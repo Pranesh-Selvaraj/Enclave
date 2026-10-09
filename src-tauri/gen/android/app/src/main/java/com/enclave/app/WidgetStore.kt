@@ -168,6 +168,30 @@ internal object WidgetStore {
         }
     }
 
+    /**
+     * Mirror the vault's lock state and the hide-when-locked dial into the
+     * widget prefs, then refresh the cache (unlocked) or render the
+     * placeholder (locked). The dial lives in the vault, so it is only
+     * readable while unlocked — a locked tick keeps the last known value and
+     * must still blank the widgets (issue #132).
+     */
+    suspend fun syncFromCore(context: Context, core: FfiCore) {
+        val unlocked = core.isUnlocked()
+        val changed = vaultUnlocked(context) != unlocked
+        setVaultUnlocked(context, unlocked)
+        if (unlocked) {
+            val hide = try {
+                core.getSetting("widget_hide_locked") == "true"
+            } catch (_: Throwable) {
+                hideWhenLocked(context)
+            }
+            if (hideWhenLocked(context) != hide) setHideWhenLocked(context, hide)
+            refreshAndUpdate(context, core)
+        } else if (changed) {
+            updateAll(context)
+        }
+    }
+
     // ── Serialization ───────────────────────────────────────────────────────
 
     internal fun serialize(notes: List<WidgetNote>): String {

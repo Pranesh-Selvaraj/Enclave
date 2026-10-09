@@ -172,7 +172,12 @@
 					<span>Background</span>
 					<div class="seg-row">
 						{#each BACKGROUNDS as b (b)}
-							<button class="seg" class:active={theme.background === b} onclick={() => (theme.background = b)}>
+							<button
+								class="seg"
+								class:active={theme.background === b}
+								class:hidden-phone={b === 'glassy'}
+								onclick={() => (theme.background = b)}
+							>
 								{b === 'matte' ? 'Matte' : b === 'soft' ? 'Soft glow' : 'Glass'}
 							</button>
 						{/each}
@@ -658,6 +663,9 @@ sentinel check</pre>
 			gap: 4px 10px;
 		}
 		.seg { padding: 8px 14px; font-size: 13px; border-radius: 8px; }
+		/* Glass is desktop-only chrome: backdrop-filter is expensive on phone
+		 * GPUs and interacts badly with WebView zoom repaints (#127). */
+		.hidden-phone { display: none; }
 		.swatch { width: 44px; height: 44px; }
 		.switch { width: 46px; height: 26px; }
 		.switch-slider::before { width: 18px; height: 18px; left: 4px; top: 4px; }

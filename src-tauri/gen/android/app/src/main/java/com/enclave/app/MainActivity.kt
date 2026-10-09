@@ -77,7 +77,10 @@ class MainActivity : TauriActivity() {
     pendingRoute = routeFor(intent)
     super.onCreate(savedInstanceState)
     applyPendingRoute()
-    startWidgetCacheLoop()
+    // Widgets refresh on core writes through the JNI bridge; this only wires
+    // the bridge and starts the slow fallback behind it (issue #127).
+    WidgetCacheBridge.install(applicationContext)
+    startWidgetCacheFallback()
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -161,35 +164,19 @@ class MainActivity : TauriActivity() {
   }
 
   /**
-   * Keep the widget cache in step while the app is in memory: refresh after
-   * unlock/saves and render the lock placeholder when the vault locks.
+   * Slow safety net behind the core→widget bridge: the bridge refreshes on
+   * vault writes/locks (issue #127), this two-minute tick only covers changes
+   * that emitted no event, replacing the old 20 s poll.
    */
-  private fun startWidgetCacheLoop() {
+  private fun startWidgetCacheFallback() {
     widgetScope.launch {
       while (isActive) {
+        delay(120_000)
         try {
-          val core = FfiCore(applicationInfo.dataDir)
-          val unlocked = core.isUnlocked()
-          var changed = WidgetStore.vaultUnlocked(applicationContext) != unlocked
-          WidgetStore.setVaultUnlocked(applicationContext, unlocked)
-          // "Hide widgets while locked" lives in the vault (Settings) so both
-          // shells and devices agree; mirror it locally for widget renders.
-          val hide = core.getSetting("widget_hide_locked") == "true"
-          if (WidgetStore.hideWhenLocked(applicationContext) != hide) {
-            WidgetStore.setHideWhenLocked(applicationContext, hide)
-            changed = true
-          }
-          if (unlocked) {
-            WidgetStore.refreshAndUpdate(applicationContext, core)
-          } else if (changed) {
-            WidgetStore.updateAll(applicationContext)
-          }
+          WidgetStore.syncFromCore(applicationContext, FfiCore(applicationInfo.dataDir))
         } catch (t: Throwable) {
-          // Vault locked, core mid-flight or the native bridge unavailable — a
-          // background tick must never take the app down.
-          android.util.Log.w("EnclaveWidgets", "cache tick skipped: " + t.message)
+          android.util.Log.w("EnclaveWidgets", "widget fallback skipped: " + t.message)
         }
-        delay(20_000)
       }
     }
   }

@@ -417,19 +417,19 @@ class Session {
 
 // ── Settings tour helpers ────────────────────────────────────────────────────
 async function openSettings(s) {
+	// Phones/folds have no bottom nav (removed with the Keep-style shell), so
+	// open the drawer and use its Settings button. The drawer is the single
+	// mobile settings entry point now.
 	if (s.profile.mobile) {
-		await s.eval(
-			`(() => { const tab = [...document.querySelectorAll('.bottom-nav .nav-tab')].find((b) => b.textContent.includes('Settings')); if (tab) tab.click(); return !!tab; })()`,
-		);
+		const already = await s.eval(`document.querySelector('.settings-panel') !== null`);
+		if (!already) {
+			await s.eval(`document.querySelector('.mobile-topbar [title="Menu"]')?.click()`);
+			await sleep(500);
+		}
 	}
-	// Tablets use the desktop sidebar/menu even though they are mobile profiles.
 	let opened = await s.eval(`document.querySelector('.settings-panel') !== null`);
-	if (!opened && s.profile.mobile) {
-		// Doc pages render no bottom nav — open the drawer and use its button.
-		await s.eval(`document.querySelector('.mobile-topbar [title="Menu"]')?.click()`);
-		await sleep(350);
-	}
 	if (!opened) {
+		// Expanded drawer → labeled footer button; collapsed rail → mini button.
 		await s.eval(
 			`(() => { const b = [...document.querySelectorAll('.sidebar .icon-btn, .mini-nav .mini-btn')].find((x) => (x.title || '').includes('Settings')); if (b) b.click(); return !!b; })()`,
 		);
@@ -716,7 +716,11 @@ const SCENARIOS = {
 		await openSettings(s);
 		await s.shot('settings-initial');
 		for (const group of SETTINGS_MATRIX) {
+			// Page width is a desktop-only control (hidden on phones by design).
+			if (group.key === 'pagewidth' && s.profile.mobile) continue;
 			for (const option of group.options) {
+				// Glass is desktop-only: phones force matte (issue #127).
+				if (group.key === 'bg' && option === 'Glass' && s.profile.width <= 768) continue;
 				const res = await clickSeg(s, group.label, option);
 				s.check(`seg-${group.key}-${option}`, res === 'ok', `click returned ${res}`);
 				if (res !== 'ok') continue;
@@ -777,12 +781,15 @@ const SCENARIOS = {
 		const savedSort = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').homeSort`);
 		s.check('homesort-persist', savedSort === 'title', `homeSort=${savedSort}`);
 		await clickSeg(s, 'Home page order', 'Recent');
-		const hapticsBefore = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
-		await toggleSwitch(s, 'Vibration feedback');
-		await sleep(150);
-		const hapticsAfter = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
-		s.check('switch-haptics', hapticsAfter !== hapticsBefore, `before=${hapticsBefore} after=${hapticsAfter}`);
-		await toggleSwitch(s, 'Vibration feedback');
+		// Vibration feedback is phone-only (hidden on desktop by design).
+		if (s.profile.mobile) {
+			const hapticsBefore = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
+			await toggleSwitch(s, 'Vibration feedback');
+			await sleep(150);
+			const hapticsAfter = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
+			s.check('switch-haptics', hapticsAfter !== hapticsBefore, `before=${hapticsBefore} after=${hapticsAfter}`);
+			await toggleSwitch(s, 'Vibration feedback');
+		}
 		await toggleSwitch(s, 'Reduce motion');
 		await sleep(150);
 		attr = await s.eval(`document.documentElement.hasAttribute('data-reduce-motion')`);

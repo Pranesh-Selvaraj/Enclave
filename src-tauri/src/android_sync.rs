@@ -64,3 +64,30 @@ pub fn set_service(enable: bool) -> Result<(), String> {
 pub fn set_service(_enable: bool) -> Result<(), String> {
     Ok(())
 }
+
+/// Tell the Kotlin shell that vault data changed, so it can refresh the
+/// home-screen widget cache — replacing the old 20 s poll (issue #127).
+/// Best effort: a missing/broken bridge must never fail a save.
+#[cfg(target_os = "android")]
+pub fn widgets_changed() {
+    use jni::JavaVM;
+
+    let Some(ctx) = tauri::tao::platform::android::prelude::main_android_context() else {
+        return;
+    };
+    let Ok(vm) = (unsafe { JavaVM::from_raw(ctx.java_vm.cast()) }) else {
+        return;
+    };
+    let Ok(mut env) = vm.attach_current_thread() else {
+        return;
+    };
+    let _ = env.call_static_method(
+        "com/enclave/app/WidgetCacheBridge",
+        "onCoreChanged",
+        "()V",
+        &[],
+    );
+}
+
+#[cfg(not(target_os = "android"))]
+pub fn widgets_changed() {}
