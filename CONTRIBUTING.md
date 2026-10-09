@@ -225,3 +225,22 @@ MIT. By contributing, you agree that your contributions will be licensed under t
 Android release signing runs in CI (`.github/workflows/android.yml`) with the
 `ANDROID_KEYSTORE_*` secrets — the keystore itself stays out of the repo and must
 be backed up off-machine (losing it makes installed copies unupdatable).
+
+Update signing follows the same rule (issue #83). CI signs every release asset
+with the `UPDATE_SIGNING_KEY` secret — the `release` job in
+`.github/workflows/build.yml` and the Android workflow — producing `<asset>.sig`
+plus `SHA256SUMS`/`SHA256SUMS.sig`. The app verifies the signature against the
+public key pinned in `src-tauri/src/update_signature.rs` and refuses unsigned
+downloads, so a tag build whose "Sign release assets" step fails is not
+installable until fixed.
+
+The secret is a PKCS#8 Ed25519 PEM. Generate it, keep it offline and back it up
+(losing it means shipping a release signed by a new key can only be installed
+manually), then set it:
+
+```bash
+node --input-type=module -e "import { generateKeyPairSync } from 'node:crypto'; import { writeFileSync } from 'node:fs'; const { publicKey, privateKey } = generateKeyPairSync('ed25519'); writeFileSync('enclave-update-signing.pem', privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 }); console.log(publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex'));"
+gh secret set UPDATE_SIGNING_KEY < enclave-update-signing.pem
+```
+
+Update the pinned public key constant with the printed hex when rotating.

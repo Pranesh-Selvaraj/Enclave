@@ -172,6 +172,23 @@ jobs:
       - name: Package source code
         run: |
           git archive --format=tar.gz -o artifacts/source.tar.gz HEAD
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # Every asset gets a detached Ed25519 signature so the in-app updater
+      # can verify what it downloads instead of trusting TLS + the GitHub
+      # account (issue #83). Fail the release rather than publish unsigned
+      # assets the app will refuse.
+      - name: Sign release assets
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::error::UPDATE_SIGNING_KEY is not set — refusing to publish unsigned assets"
+            exit 1
+          fi
+          mapfile -t files < <(find artifacts -type f ! -name '*.sig' ! -name 'SHA256SUMS*' | sort)
+          node scripts/sign-release.mjs --sums "${files[@]}"
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:

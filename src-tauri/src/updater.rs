@@ -15,6 +15,8 @@ use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 
+use crate::update_signature::{verify_update_signature, UPDATE_PUBKEY_HEX};
+
 const REPO: &str = "Pranesh-Selvaraj/Enclave";
 const UA: &str = concat!("enclave-updater/", env!("CARGO_PKG_VERSION"));
 
@@ -35,6 +37,8 @@ struct UpdateAsset {
     url: String,
     size: u64,
     digest: Option<String>,
+    /// `browser_download_url` of the `<name>.sig` asset, if the release has one.
+    sig_url: Option<String>,
 }
 
 /// The asset selected by the last check plus the path of the one download
@@ -175,6 +179,11 @@ pub async fn check_for_update(state: tauri::State<'_, UpdateState>) -> Result<Up
             url: a.browser_download_url.clone(),
             size: a.size,
             digest: a.digest.clone(),
+            sig_url: release
+                .assets
+                .iter()
+                .find(|s| s.name == format!("{}.sig", a.name))
+                .map(|s| s.browser_download_url.clone()),
         });
         guard.verified_path = None;
     }
@@ -191,8 +200,9 @@ pub async fn check_for_update(state: tauri::State<'_, UpdateState>) -> Result<Up
 
 /// Streams the asset chosen by the last `check_for_update` into the app cache
 /// dir; emits `update-progress` events ({received, total, percent}), verifies
-/// the SHA-256 digest GitHub reported for the asset, and returns the local
-/// path. A digest mismatch deletes the file and aborts.
+/// the SHA-256 digest GitHub reported for the asset and its Ed25519 release
+/// signature, and returns the local path. Any failure deletes the file and
+/// aborts (issue #83).
 #[tauri::command]
 pub async fn download_update(
     app: tauri::AppHandle,
@@ -211,6 +221,7 @@ pub async fn download_update(
     let app_clone = app.clone();
     let url = asset.url.clone();
     let expected_size = asset.size;
+    let sig_url = asset.sig_url.clone();
 
     let verified = tauri::async_runtime::spawn_blocking(move || {
         let resp = ureq::get(&url)
@@ -265,6 +276,25 @@ pub async fn download_update(
             return Err(format!(
                 "Update size mismatch ({received} bytes received, {expected_size} expected) — the download was discarded"
             ));
+        }
+
+        // Signature last: it authenticates the bytes whose digest was just
+        // computed, so a tampered download is rejected even if GitHub's own
+        // digest field was tampered with too. Fail closed when unsigned.
+        let Some(sig_url) = sig_url else {
+            let _ = std::fs::remove_file(&dest_clone);
+            return Err("This release has no update signature — refusing to install an unverified download".to_string());
+        };
+        let sig_hex = ureq::get(&sig_url)
+            .header("User-Agent", UA)
+            .call()
+            .map_err(|e| e.to_string())?
+            .body_mut()
+            .read_to_string()
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = verify_update_signature(&actual, &sig_hex, UPDATE_PUBKEY_HEX) {
+            let _ = std::fs::remove_file(&dest_clone);
+            return Err(e);
         }
         Ok::<String, String>(dest_clone.to_string_lossy().into_owned())
     })

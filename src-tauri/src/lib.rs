@@ -18,6 +18,8 @@ mod embed;
 
 mod updater;
 
+mod update_signature;
+
 mod android_sync;
 
 // ── App State ───────────────────────────────────────────────────────────────

@@ -65,6 +65,17 @@ The AI assistant is **opt-in** and **off by default**. When enabled in **Setting
 
 Enclave protects data **at rest** and keeps it **off the cloud** — there is no Enclave server, no telemetry, and no account. The remaining exposure is the LAN during sync, and whatever endpoint you choose to send content to if you enable the AI feature. Both are operator choices; keep sync on networks you control and keep AI pointed at endpoints you trust.
 
+## Update Integrity
+
+Auto-updates are strictly opt-in and never run unattended: **Settings → Updates** only checks, shows the changelog, and asks before downloading. Once you approve:
+
+- The asset is streamed from GitHub Releases and checked against the size and SHA-256 digest GitHub reports for it.
+- Every release asset also carries a detached Ed25519 signature (`<asset>.sig`), verified against a public key pinned in the app binary (`src-tauri/src/update_signature.rs`). A missing or invalid signature deletes the download and refuses installation.
+- `install_update` only executes the exact file this session downloaded and verified, so a path handed over IPC cannot be substituted.
+- The private signing key lives in the `UPDATE_SIGNING_KEY` CI secret, never in the repository; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS` + `SHA256SUMS.sig` for manual installs.
+
+This removes the "compromised GitHub account/release or TLS-terminating proxy" path to arbitrary code execution. It is why an unsigned release fails closed instead of installing.
+
 ## Supported Versions
 
 Only the latest release receives security patches. There are no LTS releases.
