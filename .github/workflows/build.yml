@@ -188,7 +188,7 @@ jobs:
             exit 1
           fi
           mapfile -t files < <(find artifacts -type f ! -name '*.sig' ! -name 'SHA256SUMS*' | sort)
-          node scripts/sign-release.mjs --sums "${files[@]}"
+          node scripts/sign-release.mjs --sums artifacts/SHA256SUMS "${files[@]}"
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:

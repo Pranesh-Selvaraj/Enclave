@@ -7,19 +7,27 @@
 // the exact thing `download_update` verifies against the pinned public key in
 // `src-tauri/src/updater.rs`.
 //
-//   node scripts/sign-release.mjs [--sums] <files...>
+//   node scripts/sign-release.mjs [--sums <path>] <files...>
 //
-// `--sums` additionally writes SHA256SUMS (manual-install reference) and
-// SHA256SUMS.sig (signature over the SHA256SUMS bytes). The updater does not
-// read SHA256SUMS; it verifies the per-asset signature plus GitHub's own
-// digest before installing.
+// `--sums <path>` additionally writes SHA256SUMS at that path (manual-install
+// reference) and <path>.sig (signature over the SHA256SUMS bytes). CI points
+// it inside the release artifacts directory so the release attaches both. The
+// updater does not read SHA256SUMS; it verifies the per-asset signature plus
+// GitHub's own digest before installing.
 import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 
 const args = process.argv.slice(2);
-const writeSums = args.includes('--sums');
-const files = args.filter((a) => a !== '--sums');
+const files = [];
+let sumsPath = null;
+for (let i = 0; i < args.length; i++) {
+	if (args[i] === '--sums') {
+		sumsPath = args[++i];
+	} else {
+		files.push(args[i]);
+	}
+}
 
 const pem = process.env.UPDATE_SIGNING_KEY;
 if (!pem || !pem.trim()) {
@@ -27,7 +35,7 @@ if (!pem || !pem.trim()) {
 	process.exit(1);
 }
 if (files.length === 0) {
-	console.error('usage: node scripts/sign-release.mjs [--sums] <files...>');
+	console.error('usage: node scripts/sign-release.mjs [--sums <path>] <files...>');
 	process.exit(1);
 }
 
@@ -45,10 +53,10 @@ for (const file of files) {
 	console.log(`signed ${file}`);
 }
 
-if (writeSums) {
+if (sumsPath) {
 	const body = `${sums.join('\n')}\n`;
-	writeFileSync('SHA256SUMS', body);
+	writeFileSync(sumsPath, body);
 	// Manual verification is over the file bytes, so this one signs the file.
-	writeFileSync('SHA256SUMS.sig', `${sign(null, Buffer.from(body, 'utf8'), key).toString('hex')}\n`);
-	console.log('wrote SHA256SUMS and SHA256SUMS.sig');
+	writeFileSync(`${sumsPath}.sig`, `${sign(null, Buffer.from(body, 'utf8'), key).toString('hex')}\n`);
+	console.log(`wrote ${sumsPath} and ${sumsPath}.sig`);
 }
