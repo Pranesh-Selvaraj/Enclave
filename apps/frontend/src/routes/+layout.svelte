@@ -235,7 +235,7 @@
 		const cmds: { icon: string; label: string; run: () => void }[] = [
 			{ icon: 'plus', label: 'New page', run: () => { close(); createDocument(); } },
 			{ icon: 'download', label: 'Import Markdown…', run: () => { close(); importMarkdownFiles((n) => { loadDocuments(); loadTags(); if (n > 0) alert(`Imported ${n} page${n > 1 ? 's' : ''}`); }); } },
-			{ icon: 'upload', label: 'Export vault as Markdown…', run: () => { close(); exportVaultAsMarkdown().then((n) => { if (n > 0) alert(`Exported ${n} pages`); }); } },
+			{ icon: 'upload', label: 'Export vault as Markdown…', run: () => { close(); exportVaultAsMarkdown().then((n) => { if (n > 0) alert(`Exported ${n} pages`); }).catch((e) => alert(e?.message || e)); } },
 			{ icon: 'network', label: networkRunning ? 'Stop P2P sync' : 'Start P2P sync', run: () => { close(); toggleNetwork(); } },
 			{ icon: 'duplicate', label: 'Copy sync address', run: () => { close(); copySyncAddress(); } },
 			{ icon: 'folder', label: 'New folder', run: () => { close(); startCreateFolder(); } },

@@ -273,13 +273,36 @@ fn export_file(state: tauri::State<AppState>, filename: String, data: Vec<u8>) -
 
 #[tauri::command(async)]
 fn import_markdown(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
+    let bytes = read_user_file(&path)?;
+    String::from_utf8(bytes).map_err(|_| "Imported file is not valid UTF-8 text".to_string())
 }
 
-/// Write bytes to a user-chosen path (markdown vault export, PNG saves).
+/// Bytes behind a user-picked path: `content://` (Android SAF picker, #38)
+/// goes through the Kotlin ContentResolver, everything else through std::fs.
+fn read_user_file(path: &str) -> Result<Vec<u8>, String> {
+    if path.starts_with("content://") {
+        android_sync::read_content_uri(path)
+    } else {
+        std::fs::read(path).map_err(|e| format!("Failed to read file: {e}"))
+    }
+}
+
+/// Write bytes to a user-chosen path. Android's create-document picker
+/// returns a `content://` URI, which needs the ContentResolver bridge.
 #[tauri::command(async)]
 fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
-    std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
+    if path.starts_with("content://") {
+        android_sync::write_content_uri(&path, &data)
+    } else {
+        std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
+    }
+}
+
+/// Read raw bytes (vault backup export on Android copies the file to a
+/// user-chosen SAF location).
+#[tauri::command(async)]
+fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))
 }
 
 /// Consistent encrypted snapshot of the vault via VACUUM INTO (SQLCipher-safe;
@@ -645,6 +668,7 @@ pub fn run() {
             // markdown import/export
             export_file,
             write_file,
+            read_file_bytes,
             import_markdown,
             // vault key
             store_vault_key,

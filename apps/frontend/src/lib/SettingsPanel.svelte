@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { invoke } from '$lib/backend.js';
+	import { save } from '@tauri-apps/plugin-dialog';
 	import { Button, Icon } from '@enclave/ui';
 	import { theme, ACCENTS, FONTS, DENSITIES, FONT_SIZES, PAGE_WIDTHS, HOME_SORTS, LOCK_AFTERS, CORNERS, UI_SCALES, BACKGROUNDS } from '@enclave/ui';
 	import { loadAISettings, saveAISettings, listModels, type AISettings } from './ai.js';
@@ -84,6 +85,29 @@
 		backupMsg = '';
 		try {
 			const path = await invoke<string>('backup_vault');
+			if (isAndroid) {
+				// The backup lands in the app's private storage, which the user
+				// cannot reach on a phone; hand it to SAF so it can be kept
+				// somewhere durable (issue #38).
+				let target: string | null = null;
+				try {
+					target = await save({
+						defaultPath: path.split('/').pop() || 'enclave-backup.db',
+						filters: [{ name: 'Enclave backup', extensions: ['db'] }],
+					});
+				} catch (e: any) {
+					// The Android dialog rejects on cancel instead of returning null.
+					if (!String(e?.message || e).toLowerCase().includes('cancel')) throw e;
+				}
+				if (!target) {
+					backupMsg = 'Backup kept in app storage — no external location chosen.';
+					return;
+				}
+				const data = await invoke<number[]>('read_file_bytes', { path });
+				await invoke('write_file', { path: target, data });
+				backupMsg = 'Backup saved to the selected location.';
+				return;
+			}
 			backupMsg = `Backup saved to ${path}`;
 		} catch (e: any) {
 			backupMsg = `Backup failed: ${e?.message || e}`;
@@ -440,8 +464,13 @@ sentinel check</pre>
 					<div class="backup-msg" role="status">{backupMsg}</div>
 				{/if}
 				<div class="backup-hint">
-					Backups are saved to the exports folder. To restore, close Enclave and replace
-					<code>enclave.db</code> with the backup file.
+					{#if isAndroid}
+						Backups are encrypted vault snapshots. On Android the app offers a location to keep
+						them outside its private storage; restoring is desktop-only for now (issue #38).
+					{:else}
+						Backups are saved to the exports folder. To restore, close Enclave and replace
+						<code>enclave.db</code> with the backup file.
+					{/if}
 				</div>
 			</div>
 

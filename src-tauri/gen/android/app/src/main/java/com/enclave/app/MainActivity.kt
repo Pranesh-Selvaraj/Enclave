@@ -80,6 +80,8 @@ class MainActivity : TauriActivity() {
     // Widgets refresh on core writes through the JNI bridge; this only wires
     // the bridge and starts the slow fallback behind it (issue #127).
     WidgetCacheBridge.install(applicationContext)
+    // SAF document read/write bridge for import/export (issue #38).
+    AndroidDocuments.install(applicationContext)
     startWidgetCacheFallback()
   }
 
