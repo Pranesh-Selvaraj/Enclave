@@ -3,7 +3,6 @@ package com.enclave.app
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -38,12 +37,6 @@ class MainActivity : TauriActivity() {
   private var webView: RustWebView? = null
   private var pendingRoute: String? = null
 
-  // Held for the app's lifetime: without it Android's Wi-Fi driver filters
-  // multicast, so the Rust mDNS daemon (core-network) sees no peers and sync
-  // never connects. ponytail: kept while the app is alive regardless of
-  // foreground state — battery cost of a multicast lock is negligible and
-  // backgrounded sync reconnects need it too.
-  private var multicastLock: WifiManager.MulticastLock? = null
   private val widgetScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   override fun onWebViewCreate(webView: WebView) {
@@ -79,12 +72,6 @@ class MainActivity : TauriActivity() {
     System.setProperty("jna.library.path", applicationInfo.nativeLibraryDir)
     System.setProperty("uniffi.component.core_api.libraryOverride", "enclave_lib")
     enableEdgeToEdge()
-    // P2P sync: acquire before any network activity — mDNS is broken without it.
-    val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    multicastLock = wifi.createMulticastLock("enclave-mdns").apply {
-      setReferenceCounted(false)
-      acquire()
-    }
     // Read before super.onCreate — onWebViewCreate fires during it and needs
     // the pending route already set.
     pendingRoute = routeFor(intent)
@@ -100,8 +87,6 @@ class MainActivity : TauriActivity() {
 
   override fun onDestroy() {
     widgetScope.cancel()
-    multicastLock?.let { if (it.isHeld) it.release() }
-    multicastLock = null
     super.onDestroy()
   }
 

@@ -34,6 +34,12 @@ import uniffi.core_api.FfiCore
 class SyncService : Service() {
 
   private var wifiLock: WifiManager.WifiLock? = null
+  // mDNS discovery needs this lock or Android's Wi-Fi driver filters multicast
+  // and the peer never appears. It belongs to the sync service, not the
+  // activity: it is acquired while sync is ON and released when the service
+  // stops (sync disabled / vault locked), instead of being held for the whole
+  // app lifetime even with sync off (issue #123).
+  private var multicastLock: WifiManager.MulticastLock? = null
   private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   override fun onBind(intent: Intent?): IBinder? = null
@@ -90,6 +96,12 @@ class SyncService : Service() {
     // Keep Wi-Fi awake while syncing (high-perf mode: multicast + unicast
     // stay alive when the screen is off). Requires ACCESS_WIFI_STATE.
     val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    // Without the multicast lock Android's Wi-Fi driver filters mDNS while the
+    // app is backgrounded, so peers silently disappear mid-sync.
+    multicastLock = wifi.createMulticastLock("enclave-mdns").apply {
+      setReferenceCounted(false)
+      acquire()
+    }
     wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "enclave-sync").apply {
       setReferenceCounted(false)
       acquire()
@@ -99,6 +111,8 @@ class SyncService : Service() {
 
   override fun onDestroy() {
     scope.cancel()
+    multicastLock?.let { if (it.isHeld) it.release() }
+    multicastLock = null
     wifiLock?.let { if (it.isHeld) it.release() }
     wifiLock = null
     super.onDestroy()
