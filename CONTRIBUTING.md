@@ -92,6 +92,15 @@ cargo test --workspace --manifest-path src-tauri/Cargo.toml
 # Frontend type-check (svelte-check)
 npm run check -w @enclave/frontend
 
+# Android — JVM unit tests (widget cache, note JSON)
+cd src-tauri/gen/android && ./gradlew :app:testUniversalDebugUnitTest && cd -
+
+# Android — regenerate the UniFFI Kotlin bindings and check for drift
+# (CI runs the same check; see docs in src-tauri/crates/core-api/src/ffi.rs)
+cd src-tauri && cargo run -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
+  generate --library target/debug/libcore_api.so --language kotlin \
+  --out-dir gen/android/app/src/main/java && git diff --exit-code -- gen/android/app/src/main/java/uniffi/ && cd -
+
 # UI audit (screenshots + DOM checks, desktop + phone profiles)
 npm run audit:ui
 ```

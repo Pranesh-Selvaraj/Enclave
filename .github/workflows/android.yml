@@ -61,6 +61,18 @@ jobs:
       - name: Install cargo-ndk (builds the native shell's core .so)
         run: cargo install cargo-ndk --locked
 
+      # The committed Kotlin bindings are generated, not hand-written. A
+      # change to the core-api UniFFI surface without regenerating them
+      # still compiles and fails at runtime, so fail here instead (#120).
+      - name: Verify UniFFI Kotlin bindings match core-api
+        working-directory: src-tauri
+        run: |
+          cargo build -p core-api --features uniffi
+          cargo run -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
+            generate --library target/debug/libcore_api.so \
+            --language kotlin --out-dir gen/android/app/src/main/java
+          git diff --exit-code -- gen/android/app/src/main/java/uniffi/
+
       - name: npm install
         run: npm ci
 
