@@ -67,7 +67,14 @@ internal object WidgetStore {
             .getBoolean(KEY_HIDE_LOCKED, false)
 
     /** True when widgets must blank out: the dial is on and the vault is locked. */
-    fun shouldHide(context: Context): Boolean = hideWhenLocked(context) && !vaultUnlocked(context)
+    fun shouldHide(context: Context): Boolean = widgetsHidden(hideWhenLocked(context), vaultUnlocked(context))
+
+    /**
+     * Pure form of [shouldHide], split out so the locked/hidden transition is
+     * unit-testable without an Android Context (issue #124).
+     */
+    internal fun widgetsHidden(hideWhenLocked: Boolean, vaultUnlocked: Boolean): Boolean =
+        hideWhenLocked && !vaultUnlocked
 
     private const val PIN_PREFS = "enclave_widget_pin"
     private const val PIN_KEY = "pending_doc_id"
@@ -163,7 +170,7 @@ internal object WidgetStore {
 
     // ── Serialization ───────────────────────────────────────────────────────
 
-    private fun serialize(notes: List<WidgetNote>): String {
+    internal fun serialize(notes: List<WidgetNote>): String {
         val arr = JSONArray()
         notes.forEach { n ->
             arr.put(
@@ -190,7 +197,7 @@ internal object WidgetStore {
         return JSONObject().put("notes", arr).toString()
     }
 
-    private fun parse(raw: String): List<WidgetNote> {
+    internal fun parse(raw: String): List<WidgetNote> {
         val arr = JSONObject(raw).optJSONArray("notes") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val n = arr.optJSONObject(i) ?: return@mapNotNull null

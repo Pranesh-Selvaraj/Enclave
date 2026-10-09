@@ -86,6 +86,10 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Unit tests run on the JVM and the mockable android.jar ships org.json
+    // stubs that throw "Stub!" — the real implementation is used instead so
+    // the note/widget parsers can be tested without a device (issue #124).
+    testImplementation("org.json:json:20250107")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }
