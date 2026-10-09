@@ -4,6 +4,42 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+A backlog sweep: the remaining open bugs were fixed, the auto-updater now fails closed without a signed release, and Android gets event-driven widgets, a working SAF file flow and JVM tests. Anything that cannot be verified without hardware (real-phone RAG, a Windows pass) is called out in the issues rather than silently listed as done.
+
+### Security
+
+- **Update downloads are signed and verified before installation (#83).** Until now the updater trusted the GitHub API: it checked the SHA-256 digest GitHub advertised and only installed a file it had downloaded, but a compromised GitHub account, a malicious release or a TLS-terminating proxy could serve arbitrary code with a matching digest. Every release asset now ships with a detached Ed25519 signature (`<asset>.sig`) over its SHA-256 digest, verified against a public key pinned in the app binary. A missing or invalid signature deletes the download and refuses installation, and the CI release jobs (desktop and Android) fail rather than publish unsigned assets. The private key lives in the `UPDATE_SIGNING_KEY` CI secret, never in the repository; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS`/`SHA256SUMS.sig` for manual installs. This is documented in SECURITY.md, and CONTRIBUTING now covers key generation, backup and rotation.
+- **`source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, #133).** A high-severity event-loop denial of service through indexed source-map section offsets, reached build-time through Vite → PostCSS. `npm audit` is back to 0 vulnerabilities; the dependency never ships in the runtime.
+
+### Added
+
+- **Android JVM unit tests (#124).** The Android project had no test sources; `src/test/kotlin` now covers the widget cache codec, the note-parsing (later moved to Rust), and the hide-when-locked decision. CI runs `:app:testUniversalDebugUnitTest` before the APK build, so parser/codec regressions fail fast. Unit tests need a real `org.json`, since the mockable `android.jar` ships stubs that throw.
+- **A UniFFI binding drift check (#120).** The committed Kotlin bindings are now regenerated in CI and `git diff --exit-code` fails the Android job if the Rust FFI surface changed without regenerating — previously a stale binding compiled fine and failed at runtime on a device.
+- **A locked-capture UI-audit scenario (#22).** The tour now stubs a locked password vault and asserts the Quick Capture window renders the inline unlock guard instead of an auto-unlocked composer, on desktop and phone.
+
+### Changed
+
+- **Widget note projection moved from Kotlin to Rust (#122).** Widgets used to loop `listDocuments()` + `getBlocks(id)` per note and walk ProseMirror JSON in `NoteJson.kt`; `core-db` now fetches every document plus its widget/tags/doc payloads in one query and `core-api` projects typed `WidgetNote`/`ChecklistRow` records, which Kotlin stores in its unchanged Keystore-wrapped cache. Ticking a checklist row is a Rust call that writes through the same block-upsert path as the editor, so rev, FTS and sync react like a normal save. `NoteJson.kt` is deleted; the parsing tests moved to the Rust suite.
+- **Android widget cache refresh is event-driven (#127).** The Rust shell calls a new Kotlin JNI bridge after the mutations that change what widgets show (block saves, title changes, delete/archive/restore, lock, completed sync merges), and the Kotlin side conflates bursts. The old 20-second vault poll is replaced by a two-minute fallback.
+- **The Android sync notification only redraws when its text changes**, and idle discovery backs off from 10 to 60 seconds (10 seconds still applies while peers are found or connecting).
+- **Phones force the matte background.** Glass `backdrop-filter` chrome is desktop-only: the theme store clamps a stored Glass choice to matte at ≤768px and self-heals the setting, and Settings hides the Glass option on phones (tablets and desktop keep it).
+- **Android settings no longer hold the mDNS multicast lock while sync is off (#123).** The lock moved from `MainActivity` (where it lived for the whole app lifetime) into `SyncService`, which starts exactly when sync is enabled and stops when it is disabled or the vault locks.
+
+### Fixed
+
+- **The Android widget lock placeholder could stay stale (#132).** The old cache tick read `widget_hide_locked` even while locked, and that call throws `VaultLocked`; the exception aborted the tick after mirroring the lock state but before re-rendering, so with “hide widgets while locked” on the last-rendered note content could remain on the home screen until an unrelated update. The dial is now read only while unlocked (falling back to the last value), the placeholder always renders when the lock state changes, and locking triggers it directly from Rust.
+- **Android widget updates can no longer take the process down (#121).** `NoteListWidget` had no exception guard, so a failure in `provideGlance` or an update broadcast could surface as “Problem loading widget” and crash the process. A shared helper now catches `Throwable` around every widget's render and each widget's `updateAll`, logs the widget name/id and cause, and renders the failure placeholder. `WidgetStore` also catches `Throwable`, not just `Exception`, on the JNA boundary.
+- **Android Markdown import, page export and backup now work (#38).** The dialog plugin returns `content://` URIs from both Android pickers, but the shell fed them to `std::fs`; a new `AndroidDocuments` ContentResolver bridge reads and writes SAF URIs over JNI, `import_markdown`/`write_file` route them there, and Settings → Backup offers a SAF location so a phone backup can leave app-private storage. Vault-wide folder export is now explicitly desktop-only on Android (the picker cannot choose a directory), with a clear message instead of a bogus path. Restoring a backup on Android remains desktop-only and is tracked in #38.
+- **The Quick Capture window was already fixed for password vaults and is now regression-tested (#22).** The capture route checks the shared core's unlocked state and renders the inline guard when locked, which prompts for the password/PIN and derives the master key; the old path that handed the password-encrypted `vault.key` blob to `unlock_vault` is gone.
+- **`SHA256SUMS` was written outside the released artifact set** in the new signing step (follow-up to #83); it now takes an explicit output path and CI writes it into the release artifacts directory so the checksums actually ship.
+
+### Notes
+
+- **Still open for hardware, not silently closed:** #37 (arm64 offline embeddings) now compiles for arm64 and the ignored round-trip test passes on x86_64 Linux — the model loads, produces 384-dim deterministic vectors — but real-phone ONNX inference and RAG against a local Ollama are unverified; #126 (Windows title bar, DPI/zoom, scrollbars, resize, installer) still needs a Windows pass and the audit harness needs Windows Chrome discovery first; #38 needs on-device confirmation of the new SAF read/write paths; #127 still needs the icon-flicker screen recording and idle battery stats.
+- The version is not bumped by this sweep; the Android `versionCode` counter keeps its usual release-time bump.
+
 ## [1.12.0] — 2026-10-01
 
 Unlocking gets flexible: a vault can now be opened with a PIN or a password, a phone can be registered against an existing desktop account with a one-time code instead of retyping the 12-word seed phrase, and the vault can be locked straight from the sidebar. Sync learned about folders and stopped hiding failures, the Android shell got its back gesture back, and the UI-size setting no longer clips the window.
