@@ -15,7 +15,6 @@
 	--color-surface: #201c17;     /* sidebar, panels, cards */
 	--color-surface-hover: #2a251f;
 	--color-surface-active: #332d26;
-	--color-titlebar: #1a1713;    /* custom window chrome */
 	--color-inset: #100e0b;       /* sunken wells (search, inputs) */
 	--color-border: #2f2a23;
 	--color-border-strong: #3f3830;
@@ -51,7 +50,6 @@
 	--color-surface: #faf7f1;
 	--color-surface-hover: #ebe5db;
 	--color-surface-active: #e2dbcf;
-	--color-titlebar: #f6f2ea;
 	--color-inset: #e6e0d5;
 	--color-border: #ddd6c9;
 	--color-border-strong: #c8c0b0;
@@ -185,7 +183,6 @@ html[data-true-black][data-theme="dark"][data-bg="glassy"] :is(
 	--color-surface: #0d0b09;
 	--color-surface-hover: #15120f;
 	--color-surface-active: #1c1814;
-	--color-titlebar: #070605;
 	--color-inset: #060504;
 	--color-border: #1d1915;
 	--color-border-strong: #2c2620;
