@@ -73,19 +73,21 @@ import kotlinx.coroutines.launch
  */
 class PinnedNoteWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val prefs: Preferences = getAppWidgetState(context, PreferencesGlanceStateDefinition, id)
-        var docId = prefs[KEY_DOC_ID]
-        if (docId == null) {
-            // Freshly pinned from the note editor: bind the note it carried.
-            docId = WidgetStore.consumePendingPin(context)
-            if (docId != null) {
-                updateAppWidgetState(context, id) { state -> state[KEY_DOC_ID] = docId!! }
+        provideGlanceSafely("PinnedNoteWidget", id) {
+            val prefs: Preferences = getAppWidgetState(context, PreferencesGlanceStateDefinition, id)
+            var docId = prefs[KEY_DOC_ID]
+            if (docId == null) {
+                // Freshly pinned from the note editor: bind the note it carried.
+                docId = WidgetStore.consumePendingPin(context)
+                if (docId != null) {
+                    updateAppWidgetState(context, id) { state -> state[KEY_DOC_ID] = docId!! }
+                }
             }
+            val wanted = docId
+            val hidden = WidgetStore.shouldHide(context)
+            val note = if (hidden) null else wanted?.let { id2 -> WidgetStore.notes(context).firstOrNull { it.id == id2 } }
+            provideContent { PinnedNoteContent(note, hidden) }
         }
-        val wanted = docId
-        val hidden = WidgetStore.shouldHide(context)
-        val note = if (hidden) null else wanted?.let { id2 -> WidgetStore.notes(context).firstOrNull { it.id == id2 } }
-        provideContent { PinnedNoteContent(note, hidden) }
     }
 
     companion object {

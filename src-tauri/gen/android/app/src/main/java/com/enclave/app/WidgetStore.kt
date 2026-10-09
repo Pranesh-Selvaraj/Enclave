@@ -94,7 +94,8 @@ internal object WidgetStore {
     /** Shared notes, decrypted for a widget render. Empty on any failure. */
     fun notes(context: Context): List<WidgetNote> = try {
         readCache(context)?.let(::parse) ?: emptyList()
-    } catch (_: Exception) {
+    } catch (t: Throwable) {
+        android.util.Log.e("EnclaveWidgets", "cache read failed", t)
         emptyList()
     }
 
@@ -105,8 +106,8 @@ internal object WidgetStore {
     fun refresh(context: Context, core: FfiCore) {
         try {
             refreshInner(context, core)
-        } catch (e: Exception) {
-            android.util.Log.w("EnclaveWidgets", "cache refresh skipped: " + e.message)
+        } catch (t: Throwable) {
+            android.util.Log.w("EnclaveWidgets", "cache refresh skipped: " + t.message, t)
         }
     }
 
@@ -141,9 +142,11 @@ internal object WidgetStore {
     }
 
     private suspend fun renderAll(context: Context) {
-        NoteListWidget().updateAll(context)
-        PinnedNoteWidget().updateAll(context)
-        QuickCaptureWidget().updateAll(context)
+        // One guard per widget: a single failing Glance render must not stop
+        // the other widgets from updating (issue #121).
+        runWidgetSafely("NoteListWidget.updateAll") { NoteListWidget().updateAll(context) }
+        runWidgetSafely("PinnedNoteWidget.updateAll") { PinnedNoteWidget().updateAll(context) }
+        runWidgetSafely("QuickCaptureWidget.updateAll") { QuickCaptureWidget().updateAll(context) }
     }
 
     /**
