@@ -37,6 +37,10 @@ const MNEMONIC =
 const PROFILES = {
 	desktop: { width: 1440, height: 900, dpr: 1, mobile: false },
 	'desktop-wide': { width: 1920, height: 1080, dpr: 1, mobile: false },
+	// Windows at 125%/150% display scaling: fractional deviceScaleFactor is
+	// where CSS zoom and pixel-rounding bugs show up (issue #126).
+	'windows-125': { width: 1440, height: 900, dpr: 1.25, mobile: false },
+	'windows-150': { width: 1440, height: 900, dpr: 1.5, mobile: false },
 	phone: { width: 412, height: 915, dpr: 2.625, mobile: true }, // Pixel 8 class
 	'phone-small': { width: 360, height: 740, dpr: 3, mobile: true }, // 360dp budget class
 	tablet: { width: 800, height: 1280, dpr: 2, mobile: true },
@@ -59,6 +63,7 @@ function parseArgs(argv) {
 			const [k, ...v] = next().split('=');
 			args.settings[k] = v.join('=');
 		} else if (a === '--keep') args.keep = true;
+		else if (a === '--scrollbars') args.scrollbars = true;
 		else if (a === '--verbose') args.verbose = true;
 		else if (a === '--help' || a === '-h') args.help = true;
 		else throw new Error(`unknown argument: ${a}`);
@@ -1280,7 +1285,9 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 			'--headless=new',
 			'--no-sandbox',
 			'--disable-gpu',
-			'--hide-scrollbars',
+			// Chrome hides scrollbars with this flag; leave it off to see the
+			// platform's real (classic on Windows) scrollbar layout (#126).
+			...(args.scrollbars ? [] : ['--hide-scrollbars']),
 			'--remote-debugging-port=0',
 			'--window-size=1440,900',
 			'--no-first-run',
