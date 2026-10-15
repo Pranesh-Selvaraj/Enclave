@@ -32,17 +32,19 @@ mkdirSync(out, { recursive: true });
 const port = Number(process.env.UI_AUDIT_PORT ?? 4183);
 // vite may be hoisted to the workspace root or installed under the frontend
 // workspace depending on npm's resolution — accept either layout.
-const viteBin = [
-	join(FRONTEND, 'node_modules', '.bin', 'vite'),
-	join(REPO, 'node_modules', '.bin', 'vite'),
+// Vite's JS entry point is portable across OSes; the .bin shim would need
+// vite.cmd on Windows (the old lookup only found the extensionless file).
+const viteJs = [
+	join(FRONTEND, 'node_modules', 'vite', 'bin', 'vite.js'),
+	join(REPO, 'node_modules', 'vite', 'bin', 'vite.js'),
 ].find((p) => existsSync(p));
-if (!viteBin) {
-	console.error('vite binary not found — run: npm install');
+if (!viteJs) {
+	console.error('vite not found — run: npm install');
 	process.exit(2);
 }
 const preview = spawn(
-	viteBin,
-	['preview', '--port', String(port), '--strictPort'],
+	process.execPath,
+	[viteJs, 'preview', '--port', String(port), '--strictPort'],
 	{ cwd: FRONTEND, stdio: ['ignore', 'ignore', 'inherit'] },
 );
 let stopped = false;

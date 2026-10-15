@@ -25,6 +25,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -69,19 +70,32 @@ function findChrome(explicit) {
 	const candidates = [];
 	if (explicit) candidates.push(explicit);
 	if (process.env.CHROME_PATH) candidates.push(process.env.CHROME_PATH);
-	for (const root of [join(process.env.HOME ?? '', '.cache/ms-playwright'), join(process.env.HOME ?? '', '.cache/puppeteer')]) {
+	// Playwright/Puppeteer browser caches: check every platform layout so a
+	// Windows/macOS runner or dev machine is found too (issue #126).
+	for (const root of [join(homedir(), '.cache/ms-playwright'), join(homedir(), '.cache/puppeteer')]) {
 		if (!existsSync(root)) continue;
 		for (const dir of readdirSync(root).sort().reverse()) {
 			for (const rel of [
 				join(root, dir, 'chrome-linux64', 'chrome'),
 				join(root, dir, 'chrome-linux', 'chrome'),
 				join(root, dir, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
+				join(root, dir, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+				join(root, dir, 'chrome-headless-shell-mac-arm64', 'chrome-headless-shell'),
+				join(root, dir, 'chrome-win64', 'chrome.exe'),
+				join(root, dir, 'chrome-win', 'chrome.exe'),
+				join(root, dir, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe'),
 			]) {
 				if (existsSync(rel)) candidates.push(rel);
 			}
 		}
 	}
 	candidates.push('/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome');
+	// Windows: Chrome or Edge (both speak CDP; Edge ships on the runner image).
+	for (const pf of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]) {
+		if (!pf) continue;
+		candidates.push(join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+		candidates.push(join(pf, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+	}
 	const found = candidates.find((c) => c && existsSync(c));
 	if (!found) throw new Error('no Chromium found — pass --chrome <path> or set CHROME_PATH');
 	return found;
