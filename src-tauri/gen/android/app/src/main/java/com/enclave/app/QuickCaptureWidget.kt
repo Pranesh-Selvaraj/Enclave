@@ -30,26 +30,28 @@ import androidx.glance.text.TextStyle
  */
 class QuickCaptureWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            val accent = DayNightColorProvider(day = Color(0xFF6B5CE7), night = Color(0xFF8B7CF6))
-            val onAccent = DayNightColorProvider(day = Color.White, night = Color.White)
-            Box(
-                modifier = GlanceModifier
-                    .fillMaxSize()
-                    .background(accent)
-                    .cornerRadius(20.dp)
-                    .clickable(actionStartActivity(quickCaptureIntent(context))),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "+",
-                        style = TextStyle(color = onAccent, fontSize = 26.sp, fontWeight = FontWeight.Bold),
-                    )
-                    Text(
-                        "New note",
-                        style = TextStyle(color = onAccent, fontSize = 11.sp),
-                    )
+        provideGlanceSafely("QuickCaptureWidget", id) {
+            provideContent {
+                val accent = DayNightColorProvider(day = Color(0xFF6B5CE7), night = Color(0xFF8B7CF6))
+                val onAccent = DayNightColorProvider(day = Color.White, night = Color.White)
+                Box(
+                    modifier = GlanceModifier
+                        .fillMaxSize()
+                        .background(accent)
+                        .cornerRadius(20.dp)
+                        .clickable(actionStartActivity(quickCaptureIntent(context))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "+",
+                            style = TextStyle(color = onAccent, fontSize = 26.sp, fontWeight = FontWeight.Bold),
+                        )
+                        Text(
+                            "New note",
+                            style = TextStyle(color = onAccent, fontSize = 11.sp),
+                        )
+                    }
                 }
             }
         }

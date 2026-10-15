@@ -66,7 +66,7 @@ by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
 | **Database** | Typed table/kanban/list/gallery/timeline views, per-block density (Compact/Spacious) |
 | **Widgets** | Desktop wallpaper widget (tray-toggleable panel: recents + quick capture) and Android home-screen widget |
 | **UI Design** | Matte, fully opaque surfaces with hairline borders and dense layouts — Background styles: Matte / Soft glow / Glass (frosted chrome + blur), accent-tinted to your color |
-| **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download |
+| **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download, and the download is verified (GitHub SHA-256 + a pinned Ed25519 release signature) before the installer is allowed to run |
 | **Theming** | Auto / light / dark (follows system), 6 accent presets + custom color picker, Background styles, corner presets, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
 | **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
 

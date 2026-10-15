@@ -36,9 +36,11 @@ import androidx.glance.unit.ColorProvider
  */
 class NoteListWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val hidden = WidgetStore.shouldHide(context)
-        val notes = if (hidden) emptyList() else WidgetStore.notes(context)
-        provideContent { NoteListContent(context, notes, hidden) }
+        provideGlanceSafely("NoteListWidget", id) {
+            val hidden = WidgetStore.shouldHide(context)
+            val notes = if (hidden) emptyList() else WidgetStore.notes(context)
+            provideContent { NoteListContent(context, notes, hidden) }
+        }
     }
 }
 

@@ -49,3 +49,35 @@ jobs:
           name: ui-audit
           path: tools/ui-audit/shots/**
           if-no-files-found: warn
+
+  # The same DOM/layout tour on Edge/Chromium for Windows, including 125% and
+  # 150% display scaling — the environment issue #126 is about. Kept separate
+  # so a Windows-only rendering regression is visible at a glance.
+  ui-audit-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: npm install
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build -w @enclave/frontend
+
+      - name: Run UI audit (Windows Edge/Chrome, DPI scaling)
+        # One line: the default Windows shell (PowerShell) does not continue
+        # lines with a backslash.
+        run: node tools/ui-audit/run.mjs --profiles desktop,windows-125,windows-150,phone --scenario all,flows,auditPages,settingsMatrix,settingsScales,overlaysXlarge
+
+      - name: Upload screenshots + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-audit-windows
+          path: tools/ui-audit/shots/**
+          if-no-files-found: warn

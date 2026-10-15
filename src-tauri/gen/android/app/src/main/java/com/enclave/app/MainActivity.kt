@@ -3,7 +3,6 @@ package com.enclave.app
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -38,12 +37,6 @@ class MainActivity : TauriActivity() {
   private var webView: RustWebView? = null
   private var pendingRoute: String? = null
 
-  // Held for the app's lifetime: without it Android's Wi-Fi driver filters
-  // multicast, so the Rust mDNS daemon (core-network) sees no peers and sync
-  // never connects. ponytail: kept while the app is alive regardless of
-  // foreground state — battery cost of a multicast lock is negligible and
-  // backgrounded sync reconnects need it too.
-  private var multicastLock: WifiManager.MulticastLock? = null
   private val widgetScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   override fun onWebViewCreate(webView: WebView) {
@@ -79,18 +72,17 @@ class MainActivity : TauriActivity() {
     System.setProperty("jna.library.path", applicationInfo.nativeLibraryDir)
     System.setProperty("uniffi.component.core_api.libraryOverride", "enclave_lib")
     enableEdgeToEdge()
-    // P2P sync: acquire before any network activity — mDNS is broken without it.
-    val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    multicastLock = wifi.createMulticastLock("enclave-mdns").apply {
-      setReferenceCounted(false)
-      acquire()
-    }
     // Read before super.onCreate — onWebViewCreate fires during it and needs
     // the pending route already set.
     pendingRoute = routeFor(intent)
     super.onCreate(savedInstanceState)
     applyPendingRoute()
-    startWidgetCacheLoop()
+    // Widgets refresh on core writes through the JNI bridge; this only wires
+    // the bridge and starts the slow fallback behind it (issue #127).
+    WidgetCacheBridge.install(applicationContext)
+    // SAF document read/write bridge for import/export (issue #38).
+    AndroidDocuments.install(applicationContext)
+    startWidgetCacheFallback()
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -100,8 +92,6 @@ class MainActivity : TauriActivity() {
 
   override fun onDestroy() {
     widgetScope.cancel()
-    multicastLock?.let { if (it.isHeld) it.release() }
-    multicastLock = null
     super.onDestroy()
   }
 
@@ -176,35 +166,19 @@ class MainActivity : TauriActivity() {
   }
 
   /**
-   * Keep the widget cache in step while the app is in memory: refresh after
-   * unlock/saves and render the lock placeholder when the vault locks.
+   * Slow safety net behind the core→widget bridge: the bridge refreshes on
+   * vault writes/locks (issue #127), this two-minute tick only covers changes
+   * that emitted no event, replacing the old 20 s poll.
    */
-  private fun startWidgetCacheLoop() {
+  private fun startWidgetCacheFallback() {
     widgetScope.launch {
       while (isActive) {
+        delay(120_000)
         try {
-          val core = FfiCore(applicationInfo.dataDir)
-          val unlocked = core.isUnlocked()
-          var changed = WidgetStore.vaultUnlocked(applicationContext) != unlocked
-          WidgetStore.setVaultUnlocked(applicationContext, unlocked)
-          // "Hide widgets while locked" lives in the vault (Settings) so both
-          // shells and devices agree; mirror it locally for widget renders.
-          val hide = core.getSetting("widget_hide_locked") == "true"
-          if (WidgetStore.hideWhenLocked(applicationContext) != hide) {
-            WidgetStore.setHideWhenLocked(applicationContext, hide)
-            changed = true
-          }
-          if (unlocked) {
-            WidgetStore.refreshAndUpdate(applicationContext, core)
-          } else if (changed) {
-            WidgetStore.updateAll(applicationContext)
-          }
+          WidgetStore.syncFromCore(applicationContext, FfiCore(applicationInfo.dataDir))
         } catch (t: Throwable) {
-          // Vault locked, core mid-flight or the native bridge unavailable — a
-          // background tick must never take the app down.
-          android.util.Log.w("EnclaveWidgets", "cache tick skipped: " + t.message)
+          android.util.Log.w("EnclaveWidgets", "widget fallback skipped: " + t.message)
         }
-        delay(20_000)
       }
     }
   }

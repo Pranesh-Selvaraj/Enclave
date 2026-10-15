@@ -73,19 +73,21 @@ import kotlinx.coroutines.launch
  */
 class PinnedNoteWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val prefs: Preferences = getAppWidgetState(context, PreferencesGlanceStateDefinition, id)
-        var docId = prefs[KEY_DOC_ID]
-        if (docId == null) {
-            // Freshly pinned from the note editor: bind the note it carried.
-            docId = WidgetStore.consumePendingPin(context)
-            if (docId != null) {
-                updateAppWidgetState(context, id) { state -> state[KEY_DOC_ID] = docId!! }
+        provideGlanceSafely("PinnedNoteWidget", id) {
+            val prefs: Preferences = getAppWidgetState(context, PreferencesGlanceStateDefinition, id)
+            var docId = prefs[KEY_DOC_ID]
+            if (docId == null) {
+                // Freshly pinned from the note editor: bind the note it carried.
+                docId = WidgetStore.consumePendingPin(context)
+                if (docId != null) {
+                    updateAppWidgetState(context, id) { state -> state[KEY_DOC_ID] = docId!! }
+                }
             }
+            val wanted = docId
+            val hidden = WidgetStore.shouldHide(context)
+            val note = if (hidden) null else wanted?.let { id2 -> WidgetStore.notes(context).firstOrNull { it.id == id2 } }
+            provideContent { PinnedNoteContent(note, hidden) }
         }
-        val wanted = docId
-        val hidden = WidgetStore.shouldHide(context)
-        val note = if (hidden) null else wanted?.let { id2 -> WidgetStore.notes(context).firstOrNull { it.id == id2 } }
-        provideContent { PinnedNoteContent(note, hidden) }
     }
 
     companion object {
@@ -276,12 +278,9 @@ class ToggleCheckAction : ActionCallback {
                 context.startActivity(openNoteIntent(context, docId))
                 return
             }
-            val blocks = core.getBlocks(docId)
-            val docJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson ?: return
-            val items = docChecklist(docJson).toMutableList()
-            if (index !in items.indices) return
-            items[index] = items[index].copy(checked = !items[index].checked)
-            core.upsertBlock("$docId-content", docId, "doc", taskListDocJson(items), 0.0)
+            // The toggle lives in Rust now (issue #122): it writes through the
+            // same block-upsert path as the editor and rejects a missing item.
+            core.toggleChecklistItem(docId, index.toUInt())
             WidgetStore.refreshAndUpdate(context, core)
             PinnedNoteWidget().update(context, glanceId)
         } catch (t: Throwable) {

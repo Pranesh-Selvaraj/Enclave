@@ -59,6 +59,16 @@ function apply() {
 	if (typeof document === 'undefined') return;
 	current = mode === 'auto' ? (systemDark ? 'dark' : 'light') : mode;
 	const root = document.documentElement;
+	// Glass is desktop-only chrome (issue #127): backdrop-filter compositing is
+	// expensive on phone GPUs and interacts with WebView zoom repaint glitches.
+	// Phones force matte and a stored Glass choice self-heals on load.
+	if (
+		typeof window !== 'undefined' &&
+		window.matchMedia('(max-width: 768px)').matches &&
+		background === 'glassy'
+	) {
+		background = 'matte';
+	}
 	root.setAttribute('data-theme', current);
 	// Accent: preset ids keep the CSS preset path; raw hex values (and
 	// presets too) are also forced via an inline var so anything works.

@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.glance.appwidget.updateAll
+import uniffi.core_api.ChecklistRow
 import uniffi.core_api.FfiCore
 import java.io.File
 import java.security.KeyStore
@@ -38,7 +39,7 @@ internal object WidgetStore {
         val title: String,
         val tags: List<String>,
         val updatedAt: String,
-        val checklist: List<TaskItem>,
+        val checklist: List<ChecklistRow>,
         val text: String,
     )
 
@@ -67,7 +68,14 @@ internal object WidgetStore {
             .getBoolean(KEY_HIDE_LOCKED, false)
 
     /** True when widgets must blank out: the dial is on and the vault is locked. */
-    fun shouldHide(context: Context): Boolean = hideWhenLocked(context) && !vaultUnlocked(context)
+    fun shouldHide(context: Context): Boolean = widgetsHidden(hideWhenLocked(context), vaultUnlocked(context))
+
+    /**
+     * Pure form of [shouldHide], split out so the locked/hidden transition is
+     * unit-testable without an Android Context (issue #124).
+     */
+    internal fun widgetsHidden(hideWhenLocked: Boolean, vaultUnlocked: Boolean): Boolean =
+        hideWhenLocked && !vaultUnlocked
 
     private const val PIN_PREFS = "enclave_widget_pin"
     private const val PIN_KEY = "pending_doc_id"
@@ -94,7 +102,8 @@ internal object WidgetStore {
     /** Shared notes, decrypted for a widget render. Empty on any failure. */
     fun notes(context: Context): List<WidgetNote> = try {
         readCache(context)?.let(::parse) ?: emptyList()
-    } catch (_: Exception) {
+    } catch (t: Throwable) {
+        android.util.Log.e("EnclaveWidgets", "cache read failed", t)
         emptyList()
     }
 
@@ -105,24 +114,23 @@ internal object WidgetStore {
     fun refresh(context: Context, core: FfiCore) {
         try {
             refreshInner(context, core)
-        } catch (e: Exception) {
-            android.util.Log.w("EnclaveWidgets", "cache refresh skipped: " + e.message)
+        } catch (t: Throwable) {
+            android.util.Log.w("EnclaveWidgets", "cache refresh skipped: " + t.message, t)
         }
     }
 
     private fun refreshInner(context: Context, core: FfiCore) {
-        val notes = core.listDocuments().mapNotNull { doc ->
-            val blocks = core.getBlocks(doc.id)
-            val widget = blocks.firstOrNull { it.blockType == "widget" }
-            if (!widgetBlockEnabled(widget?.contentJson)) return@mapNotNull null
-            val docJson = blocks.firstOrNull { it.blockType == "doc" }?.contentJson
+        // Rust projects the doc JSON (issue #122): one query returns exactly
+        // what widgets render, instead of a getBlocks call per note plus a
+        // ProseMirror walk here.
+        val notes = core.widgetNotes().map { n ->
             WidgetNote(
-                id = doc.id,
-                title = doc.title,
-                tags = tagsOf(blocks.firstOrNull { it.blockType == "tags" }?.contentJson),
-                updatedAt = doc.updatedAt,
-                checklist = docChecklist(docJson),
-                text = docBodyText(docJson),
+                id = n.id,
+                title = n.title,
+                tags = n.labels,
+                updatedAt = n.updatedAt,
+                checklist = n.checklist,
+                text = n.text,
             )
         }
         writeCache(context, serialize(notes))
@@ -141,9 +149,11 @@ internal object WidgetStore {
     }
 
     private suspend fun renderAll(context: Context) {
-        NoteListWidget().updateAll(context)
-        PinnedNoteWidget().updateAll(context)
-        QuickCaptureWidget().updateAll(context)
+        // One guard per widget: a single failing Glance render must not stop
+        // the other widgets from updating (issue #121).
+        runWidgetSafely("NoteListWidget.updateAll") { NoteListWidget().updateAll(context) }
+        runWidgetSafely("PinnedNoteWidget.updateAll") { PinnedNoteWidget().updateAll(context) }
+        runWidgetSafely("QuickCaptureWidget.updateAll") { QuickCaptureWidget().updateAll(context) }
     }
 
     /**
@@ -158,9 +168,33 @@ internal object WidgetStore {
         }
     }
 
+    /**
+     * Mirror the vault's lock state and the hide-when-locked dial into the
+     * widget prefs, then refresh the cache (unlocked) or render the
+     * placeholder (locked). The dial lives in the vault, so it is only
+     * readable while unlocked — a locked tick keeps the last known value and
+     * must still blank the widgets (issue #132).
+     */
+    suspend fun syncFromCore(context: Context, core: FfiCore) {
+        val unlocked = core.isUnlocked()
+        val changed = vaultUnlocked(context) != unlocked
+        setVaultUnlocked(context, unlocked)
+        if (unlocked) {
+            val hide = try {
+                core.getSetting("widget_hide_locked") == "true"
+            } catch (_: Throwable) {
+                hideWhenLocked(context)
+            }
+            if (hideWhenLocked(context) != hide) setHideWhenLocked(context, hide)
+            refreshAndUpdate(context, core)
+        } else if (changed) {
+            updateAll(context)
+        }
+    }
+
     // ── Serialization ───────────────────────────────────────────────────────
 
-    private fun serialize(notes: List<WidgetNote>): String {
+    internal fun serialize(notes: List<WidgetNote>): String {
         val arr = JSONArray()
         notes.forEach { n ->
             arr.put(
@@ -187,7 +221,7 @@ internal object WidgetStore {
         return JSONObject().put("notes", arr).toString()
     }
 
-    private fun parse(raw: String): List<WidgetNote> {
+    internal fun parse(raw: String): List<WidgetNote> {
         val arr = JSONObject(raw).optJSONArray("notes") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val n = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -195,7 +229,7 @@ internal object WidgetStore {
             val checklist = n.optJSONArray("checklist")?.let { c ->
                 (0 until c.length()).mapNotNull { j ->
                     val item = c.optJSONObject(j) ?: return@mapNotNull null
-                    TaskItem(item.optString("text"), item.optBoolean("checked", false))
+                    ChecklistRow(item.optString("text"), item.optBoolean("checked", false))
                 }
             } ?: emptyList()
             WidgetNote(

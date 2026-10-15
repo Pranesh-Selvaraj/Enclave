@@ -24,8 +24,9 @@ script does) and writes screenshots + `index.html` to
 `tools/ui-audit/shots/<timestamp>/`. The command exits non-zero when any
 scenario fails or an audit assertion fails.
 
-Chrome is discovered from `~/.cache/ms-playwright`, `~/.cache/puppeteer`,
-`$CHROME_PATH`, or the system `chromium`/`google-chrome`.
+Chrome/Edge is discovered from `~/.cache/ms-playwright`, `~/.cache/puppeteer`,
+`$CHROME_PATH`, or the system `chromium`/`google-chrome`/Chrome/Edge. The
+harness runs on Linux, macOS and Windows (the Windows CI job uses Edge).
 
 ## Profiles
 
@@ -33,13 +34,17 @@ Chrome is discovered from `~/.cache/ms-playwright`, `~/.cache/puppeteer`,
 |---|---|---|
 | `desktop` | 1440×900 | laptop |
 | `desktop-wide` | 1920×1080 | large monitor |
+| `windows-125` | 1440×900 @ dpr 1.25 | Windows at 125% display scaling |
+| `windows-150` | 1440×900 @ dpr 1.5 | Windows at 150% display scaling |
 | `phone` | 412×915 | Pixel 8 class |
 | `phone-small` | 360×740 | budget 360dp class |
 | `fold` | 673×841 | unfolded inner screen |
 | `tablet` | 800×1280 | tablet |
 
 Mobile profiles also spoof an Android WebView user agent so Android-only UI
-(widget settings, share surfaces) is rendered.
+(widget settings, share surfaces) is rendered. Every profile starts from a
+cleared localStorage, so appearance changes made by an earlier profile cannot
+scale later measurements (issues #126/#134).
 
 ## Scenarios
 
@@ -55,11 +60,14 @@ See `shot.mjs` for what each one asserts. Useful extras:
 - `--theme dark|light` — emulate `prefers-color-scheme`.
 - `--setting k=v` — seed `enclave-settings` localStorage (e.g.
   `--setting trueBlack=true --setting uiScale=xlarge`).
+- `--scrollbars` — keep the browser's scrollbars visible instead of passing
+  `--hide-scrollbars` (useful when checking scrollbar-related layout shifts).
 - `--out DIR`, `--chrome PATH`, `--verbose`.
 
 ## CI
 
 `.github/workflows/ui-audit.yml` runs a desktop+phone audit on
 `workflow_dispatch` and weekly, then uploads the screenshots + report as a
-build artifact. Failures block the run but never a release (it is a separate,
-opt-in workflow).
+build artifact. A second job runs the same tour on `windows-latest` with the
+DPI profiles on Edge/Chrome. Failures block the run but never a release (it is
+a separate, opt-in workflow).

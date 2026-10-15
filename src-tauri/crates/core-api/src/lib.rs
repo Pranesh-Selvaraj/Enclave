@@ -106,6 +106,188 @@ pub enum SyncEvent {
     },
 }
 
+// ── Home-screen widget projection ───────────────────────────────────────────
+// The Android widgets render from this projection instead of walking
+// ProseMirror JSON in Kotlin (issue #122): one Rust implementation, unit
+// tested here, so a document-schema change cannot silently break a widget.
+
+/// One checklist row a widget shows.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChecklistRow {
+    pub text: String,
+    pub checked: bool,
+}
+
+/// A note shared to widgets, projected to exactly what they render.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WidgetNote {
+    pub id: String,
+    pub title: String,
+    pub labels: Vec<String>,
+    pub updated_at: String,
+    pub is_favorite: bool,
+    /// Body text as the pinned widget renders it (paragraphs joined with
+    /// blank lines, hard breaks as newlines).
+    pub text: String,
+    pub checklist: Vec<ChecklistRow>,
+}
+
+fn json_opt(raw: &Option<String>) -> Option<serde_json::Value> {
+    raw.as_deref().and_then(|s| serde_json::from_str(s).ok())
+}
+
+/// Recursively append `text` leaves; hard breaks become newlines and task
+/// items are separated by a space (mirrors the editor's own text walk).
+fn collect_text(node: &serde_json::Value, out: &mut String) {
+    match node.get("type").and_then(|t| t.as_str()) {
+        Some("text") => out.push_str(node.get("text").and_then(|t| t.as_str()).unwrap_or("")),
+        Some("hardBreak") => out.push('\n'),
+        Some("taskItem") => out.push(' '),
+        _ => {}
+    }
+    if let Some(children) = node.get("content").and_then(|c| c.as_array()) {
+        for child in children {
+            if let Some(s) = child.as_str() {
+                out.push_str(s);
+            } else {
+                collect_text(child, out);
+            }
+        }
+    }
+}
+
+/// Body text: top-level nodes except task lists, blank-line separated.
+fn doc_body_text(doc: &serde_json::Value) -> String {
+    let Some(nodes) = doc.get("content").and_then(|c| c.as_array()) else {
+        return String::new();
+    };
+    let mut paragraphs = Vec::new();
+    for node in nodes {
+        if node.get("type").and_then(|t| t.as_str()) == Some("taskList") {
+            continue;
+        }
+        let mut text = String::new();
+        collect_text(node, &mut text);
+        let text = text.trim();
+        if !text.is_empty() {
+            paragraphs.push(text.to_string());
+        }
+    }
+    paragraphs.join("\n\n")
+}
+
+/// Checklist rows from the first top-level task list, if any.
+fn doc_checklist(doc: &serde_json::Value) -> Vec<ChecklistRow> {
+    let items = doc
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|nodes| {
+            nodes
+                .iter()
+                .find(|n| n.get("type").and_then(|t| t.as_str()) == Some("taskList"))
+        })
+        .and_then(|list| list.get("content").and_then(|c| c.as_array()));
+    let Some(items) = items else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            if item.get("type").and_then(|t| t.as_str()) != Some("taskItem") {
+                return None;
+            }
+            let mut text = String::new();
+            collect_text(item, &mut text);
+            Some(ChecklistRow {
+                text: text.trim().to_string(),
+                checked: item
+                    .get("attrs")
+                    .and_then(|a| a.get("checked"))
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
+/// Labels from a tags block JSON (`{"tags":[...]}`).
+fn tags_of(tags: Option<&serde_json::Value>) -> Vec<String> {
+    tags.and_then(|t| t.get("tags"))
+        .and_then(|t| t.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Project raw widget sources: only documents whose `widget` block is
+/// enabled, with malformed/missing content degrading to empty fields.
+/// Pure so the projection is unit-tested without a vault.
+pub fn project_widget_notes(sources: Vec<core_db::WidgetSource>) -> Vec<WidgetNote> {
+    sources
+        .into_iter()
+        .filter_map(|source| {
+            let widget = json_opt(&source.widget_json)?;
+            if !widget
+                .get("enabled")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false)
+            {
+                return None;
+            }
+            let doc = json_opt(&source.doc_json).unwrap_or_else(|| serde_json::json!({}));
+            Some(WidgetNote {
+                id: source.document.id,
+                title: source.document.title,
+                labels: tags_of(json_opt(&source.tags_json).as_ref()),
+                updated_at: source.document.updated_at,
+                is_favorite: source.document.is_favorite,
+                text: doc_body_text(&doc),
+                checklist: doc_checklist(&doc),
+            })
+        })
+        .collect()
+}
+
+/// Flip `attrs.checked` on the task item at `index` (first task list).
+/// Returns false when the document has no such item.
+fn toggle_task_at(content: &mut serde_json::Value, index: usize) -> bool {
+    let Some(item) = content
+        .get_mut("content")
+        .and_then(|c| c.as_array_mut())
+        .and_then(|nodes| {
+            nodes
+                .iter_mut()
+                .find(|n| n.get("type").and_then(|t| t.as_str()) == Some("taskList"))
+        })
+        .and_then(|list| list.get_mut("content"))
+        .and_then(|c| c.as_array_mut())
+        .and_then(|items| items.get_mut(index))
+    else {
+        return false;
+    };
+    if item.get("type").and_then(|t| t.as_str()) != Some("taskItem") {
+        return false;
+    }
+    let Some(obj) = item.as_object_mut() else {
+        return false;
+    };
+    let attrs = obj.entry("attrs").or_insert_with(|| serde_json::json!({}));
+    let Some(attrs) = attrs.as_object_mut() else {
+        return false;
+    };
+    let checked = attrs
+        .get("checked")
+        .and_then(|c| c.as_bool())
+        .unwrap_or(false);
+    attrs.insert("checked".to_string(), serde_json::Value::Bool(!checked));
+    true
+}
+
 // ── Core context ────────────────────────────────────────────────────────────
 
 /// Owns the vault connection, the vault-derived sync key and the P2P network.
@@ -467,6 +649,47 @@ impl EnclaveCore {
 
     pub fn delete_block(&self, id: &str) -> CoreResult<()> {
         self.with_db(|db| core_db::delete_block(db, id).map_err(db_err))
+    }
+
+    // ── Home-screen widgets ─────────────────────────────────────────────────
+
+    /// Notes the user shared to widgets, projected in one query (issue #122).
+    /// The Android cache wraps this in its Keystore envelope; widgets render
+    /// the same rows on every platform.
+    pub fn widget_notes(&self) -> CoreResult<Vec<WidgetNote>> {
+        self.with_db(|db| {
+            let sources = core_db::query_widget_sources(db).map_err(db_err)?;
+            Ok(project_widget_notes(sources))
+        })
+    }
+
+    /// Tick/untick one checklist row from a widget. Writes the document's own
+    /// `doc` block through the same upsert path the editor uses, so rev, FTS
+    /// and sync react exactly as a normal save.
+    pub fn toggle_checklist_item(&self, doc_id: &str, index: usize) -> CoreResult<()> {
+        self.with_db(|db| {
+            let blocks = core_db::query_blocks(db, doc_id).map_err(db_err)?;
+            let doc_block = blocks
+                .iter()
+                .find(|b| b.block_type == "doc")
+                .ok_or_else(|| CoreError::InvalidInput("This page has no checklist".into()))?;
+            let mut content = doc_block.content.clone();
+            if !toggle_task_at(&mut content, index) {
+                return Err(CoreError::InvalidInput("Checklist item not found".into()));
+            }
+            let now = chrono::Utc::now().to_rfc3339();
+            let block = Block {
+                id: doc_block.id.clone(),
+                document_id: doc_id.to_string(),
+                block_type: "doc".to_string(),
+                content,
+                sort_order: doc_block.sort_order,
+                created_at: now.clone(),
+                updated_at: now,
+            };
+            core_db::upsert_block(db, &block).map_err(db_err)?;
+            Ok(())
+        })
     }
 
     // ── Search, tags, pages, backlinks ──────────────────────────────────────
@@ -1042,5 +1265,145 @@ mod tests {
             CoreError::InvalidInput("No password set".into()).to_string(),
             "No password set"
         );
+    }
+
+    // ── Widget projection (#122) ────────────────────────────────────────────
+
+    fn sample_doc_json() -> serde_json::Value {
+        serde_json::json!({
+            "type": "doc",
+            "content": [
+                { "type": "paragraph", "content": [
+                    { "type": "text", "text": "Intro line" },
+                    { "type": "hardBreak" },
+                    { "type": "text", "text": "continued" }
+                ]},
+                { "type": "taskList", "content": [
+                    { "type": "taskItem", "attrs": { "checked": false }, "content": [
+                        { "type": "paragraph", "content": [ { "type": "text", "text": "milk" } ] }
+                    ]},
+                    { "type": "taskItem", "attrs": { "checked": true }, "content": [
+                        { "type": "paragraph", "content": [ { "type": "text", "text": "bread" } ] }
+                    ]}
+                ]}
+            ]
+        })
+    }
+
+    fn widget_source(
+        widget: Option<&str>,
+        tags: Option<&str>,
+        doc: Option<&str>,
+    ) -> core_db::WidgetSource {
+        core_db::WidgetSource {
+            document: Document {
+                id: "doc-1".into(),
+                title: "Groceries".into(),
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-02T00:00:00Z".into(),
+                is_favorite: true,
+                is_archived: false,
+                rev: 1,
+                deleted_at: None,
+                folder_id: None,
+            },
+            widget_json: widget.map(str::to_string),
+            tags_json: tags.map(str::to_string),
+            doc_json: doc.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn widget_projection_extracts_body_checklist_and_labels() {
+        let notes = project_widget_notes(vec![widget_source(
+            Some(r#"{"enabled":true}"#),
+            Some(r#"{"tags":["home","","errands"]}"#),
+            Some(&sample_doc_json().to_string()),
+        )]);
+        assert_eq!(notes.len(), 1);
+        let note = &notes[0];
+        assert_eq!(note.text, "Intro line\ncontinued");
+        assert_eq!(note.labels, vec!["home", "errands"]);
+        assert_eq!(
+            note.checklist,
+            vec![
+                ChecklistRow { text: "milk".into(), checked: false },
+                ChecklistRow { text: "bread".into(), checked: true },
+            ]
+        );
+        assert!(note.is_favorite);
+    }
+
+    #[test]
+    fn widget_projection_skips_unshared_and_malformed_notes() {
+        assert!(project_widget_notes(vec![widget_source(None, None, None)]).is_empty());
+        assert!(
+            project_widget_notes(vec![widget_source(Some(r#"{"enabled":false}"#), None, None)])
+                .is_empty()
+        );
+        assert!(project_widget_notes(vec![widget_source(Some("junk"), None, None)]).is_empty());
+
+        // Shared but empty document: still a note, with empty fields.
+        let notes =
+            project_widget_notes(vec![widget_source(Some(r#"{"enabled":true}"#), None, None)]);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].text.is_empty());
+        assert!(notes[0].checklist.is_empty());
+        assert!(notes[0].labels.is_empty());
+    }
+
+    #[test]
+    fn widget_notes_and_toggle_work_through_a_vault() {
+        let (_dir, core) = unlocked();
+        let doc = core.create_document("Groceries").unwrap();
+        core.upsert_block(&format!("{}-content", doc.id), &doc.id, "doc", sample_doc_json(), 0.0)
+            .unwrap();
+        core.upsert_block(
+            &format!("{}-tags", doc.id),
+            &doc.id,
+            "tags",
+            serde_json::json!({ "tags": ["home"] }),
+            2.0,
+        )
+        .unwrap();
+        core.upsert_block(
+            &format!("{}-widget", doc.id),
+            &doc.id,
+            "widget",
+            serde_json::json!({ "enabled": true }),
+            4.0,
+        )
+        .unwrap();
+
+        // A second, unshared note must not appear.
+        core.create_document("Private").unwrap();
+
+        let notes = core.widget_notes().unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "Groceries");
+        assert!(notes[0].checklist[1].checked);
+
+        core.toggle_checklist_item(&doc.id, 1).unwrap();
+        let notes = core.widget_notes().unwrap();
+        assert!(!notes[0].checklist[1].checked);
+
+        // Out-of-range and checklist-less documents are rejected, not ignored.
+        assert!(matches!(
+            core.toggle_checklist_item(&doc.id, 9),
+            Err(CoreError::InvalidInput(_))
+        ));
+        let plain = core.create_document("No checklist").unwrap();
+        assert!(matches!(
+            core.toggle_checklist_item(&plain.id, 0),
+            Err(CoreError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn widget_notes_reject_a_locked_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        assert!(matches!(core.widget_notes(), Err(CoreError::VaultLocked)));
+        assert!(matches!(core.toggle_checklist_item("x", 0), Err(CoreError::VaultLocked)));
     }
 }

@@ -69,6 +69,16 @@ export async function importMarkdownFiles(onImported?: (count: number) => void):
 
 /** Export every document to a user-chosen folder as .md with frontmatter. */
 export async function exportVaultAsMarkdown(): Promise<number> {
+	// Android's document picker cannot choose a folder (the Tauri dialog uses
+	// ACTION_GET_CONTENT/ACTION_CREATE_DOCUMENT and returns content:// URIs),
+	// so a vault-wide folder export has no destination there. Per-page export
+	// works through the save dialog (write_file routes content:// through the
+	// Kotlin ContentResolver bridge, issue #38).
+	if (typeof navigator !== 'undefined' && navigator.userAgent.includes('Android')) {
+		throw new Error(
+			'Folder export is desktop-only. On Android, open a page and use its menu to export it individually.',
+		);
+	}
 	const dir = await open({ directory: true });
 	if (!dir) return 0;
 	const docs = await invoke<Document[]>('get_document_list');

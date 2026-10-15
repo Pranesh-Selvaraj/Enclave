@@ -25,6 +25,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +37,10 @@ const MNEMONIC =
 const PROFILES = {
 	desktop: { width: 1440, height: 900, dpr: 1, mobile: false },
 	'desktop-wide': { width: 1920, height: 1080, dpr: 1, mobile: false },
+	// Windows at 125%/150% display scaling: fractional deviceScaleFactor is
+	// where CSS zoom and pixel-rounding bugs show up (issue #126).
+	'windows-125': { width: 1440, height: 900, dpr: 1.25, mobile: false },
+	'windows-150': { width: 1440, height: 900, dpr: 1.5, mobile: false },
 	phone: { width: 412, height: 915, dpr: 2.625, mobile: true }, // Pixel 8 class
 	'phone-small': { width: 360, height: 740, dpr: 3, mobile: true }, // 360dp budget class
 	tablet: { width: 800, height: 1280, dpr: 2, mobile: true },
@@ -58,6 +63,7 @@ function parseArgs(argv) {
 			const [k, ...v] = next().split('=');
 			args.settings[k] = v.join('=');
 		} else if (a === '--keep') args.keep = true;
+		else if (a === '--scrollbars') args.scrollbars = true;
 		else if (a === '--verbose') args.verbose = true;
 		else if (a === '--help' || a === '-h') args.help = true;
 		else throw new Error(`unknown argument: ${a}`);
@@ -69,19 +75,32 @@ function findChrome(explicit) {
 	const candidates = [];
 	if (explicit) candidates.push(explicit);
 	if (process.env.CHROME_PATH) candidates.push(process.env.CHROME_PATH);
-	for (const root of [join(process.env.HOME ?? '', '.cache/ms-playwright'), join(process.env.HOME ?? '', '.cache/puppeteer')]) {
+	// Playwright/Puppeteer browser caches: check every platform layout so a
+	// Windows/macOS runner or dev machine is found too (issue #126).
+	for (const root of [join(homedir(), '.cache/ms-playwright'), join(homedir(), '.cache/puppeteer')]) {
 		if (!existsSync(root)) continue;
 		for (const dir of readdirSync(root).sort().reverse()) {
 			for (const rel of [
 				join(root, dir, 'chrome-linux64', 'chrome'),
 				join(root, dir, 'chrome-linux', 'chrome'),
 				join(root, dir, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
+				join(root, dir, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+				join(root, dir, 'chrome-headless-shell-mac-arm64', 'chrome-headless-shell'),
+				join(root, dir, 'chrome-win64', 'chrome.exe'),
+				join(root, dir, 'chrome-win', 'chrome.exe'),
+				join(root, dir, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe'),
 			]) {
 				if (existsSync(rel)) candidates.push(rel);
 			}
 		}
 	}
 	candidates.push('/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome');
+	// Windows: Chrome or Edge (both speak CDP; Edge ships on the runner image).
+	for (const pf of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]) {
+		if (!pf) continue;
+		candidates.push(join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+		candidates.push(join(pf, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+	}
 	const found = candidates.find((c) => c && existsSync(c));
 	if (!found) throw new Error('no Chromium found — pass --chrome <path> or set CHROME_PATH');
 	return found;
@@ -184,6 +203,9 @@ function stubSource() {
         // Root layout skips the guard when the shared core is already open.
         // The tour wants the guard on the main routes, but capture/widget
         // routes are inline-guarded and should render their unlocked form.
+        // The locked_capture query param exercises the locked password-vault
+        // path (#22): the capture window must show the inline unlock guard.
+        if (new URLSearchParams(location.search).has('locked_capture')) return false;
         return location.pathname.startsWith('/capture') || location.pathname.startsWith('/widget');
       // VaultGuard uses the seed-phrase path in the tour; the capture/widget
       // routes auto-unlock with a stored key and never decrypt it.
@@ -417,19 +439,19 @@ class Session {
 
 // ── Settings tour helpers ────────────────────────────────────────────────────
 async function openSettings(s) {
+	// Phones/folds have no bottom nav (removed with the Keep-style shell), so
+	// open the drawer and use its Settings button. The drawer is the single
+	// mobile settings entry point now.
 	if (s.profile.mobile) {
-		await s.eval(
-			`(() => { const tab = [...document.querySelectorAll('.bottom-nav .nav-tab')].find((b) => b.textContent.includes('Settings')); if (tab) tab.click(); return !!tab; })()`,
-		);
+		const already = await s.eval(`document.querySelector('.settings-panel') !== null`);
+		if (!already) {
+			await s.eval(`document.querySelector('.mobile-topbar [title="Menu"]')?.click()`);
+			await sleep(500);
+		}
 	}
-	// Tablets use the desktop sidebar/menu even though they are mobile profiles.
 	let opened = await s.eval(`document.querySelector('.settings-panel') !== null`);
-	if (!opened && s.profile.mobile) {
-		// Doc pages render no bottom nav — open the drawer and use its button.
-		await s.eval(`document.querySelector('.mobile-topbar [title="Menu"]')?.click()`);
-		await sleep(350);
-	}
 	if (!opened) {
+		// Expanded drawer → labeled footer button; collapsed rail → mini button.
 		await s.eval(
 			`(() => { const b = [...document.querySelectorAll('.sidebar .icon-btn, .mini-nav .mini-btn')].find((x) => (x.title || '').includes('Settings')); if (b) b.click(); return !!b; })()`,
 		);
@@ -716,7 +738,11 @@ const SCENARIOS = {
 		await openSettings(s);
 		await s.shot('settings-initial');
 		for (const group of SETTINGS_MATRIX) {
+			// Page width is a desktop-only control (hidden on phones by design).
+			if (group.key === 'pagewidth' && s.profile.mobile) continue;
 			for (const option of group.options) {
+				// Glass is desktop-only: phones force matte (issue #127).
+				if (group.key === 'bg' && option === 'Glass' && s.profile.width <= 768) continue;
 				const res = await clickSeg(s, group.label, option);
 				s.check(`seg-${group.key}-${option}`, res === 'ok', `click returned ${res}`);
 				if (res !== 'ok') continue;
@@ -777,12 +803,15 @@ const SCENARIOS = {
 		const savedSort = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').homeSort`);
 		s.check('homesort-persist', savedSort === 'title', `homeSort=${savedSort}`);
 		await clickSeg(s, 'Home page order', 'Recent');
-		const hapticsBefore = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
-		await toggleSwitch(s, 'Vibration feedback');
-		await sleep(150);
-		const hapticsAfter = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
-		s.check('switch-haptics', hapticsAfter !== hapticsBefore, `before=${hapticsBefore} after=${hapticsAfter}`);
-		await toggleSwitch(s, 'Vibration feedback');
+		// Vibration feedback is phone-only (hidden on desktop by design).
+		if (s.profile.mobile) {
+			const hapticsBefore = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
+			await toggleSwitch(s, 'Vibration feedback');
+			await sleep(150);
+			const hapticsAfter = await s.eval(`JSON.parse(localStorage.getItem('enclave-settings') || '{}').haptics`);
+			s.check('switch-haptics', hapticsAfter !== hapticsBefore, `before=${hapticsBefore} after=${hapticsAfter}`);
+			await toggleSwitch(s, 'Vibration feedback');
+		}
 		await toggleSwitch(s, 'Reduce motion');
 		await sleep(150);
 		attr = await s.eval(`document.documentElement.hasAttribute('data-reduce-motion')`);
@@ -1195,6 +1224,16 @@ const SCENARIOS = {
 		await s.waitFor(() => document.querySelector('.note'), 15000, 'capture composer');
 		await s.shot('capture');
 	},
+
+	// #22: a locked password vault must show the inline unlock guard on the
+	// capture window instead of an auto-unlocked composer (the old code passed
+	// the password-encrypted vault.key to unlock_vault as a raw DB key).
+	async 'capture-locked'(s) {
+		await s.boot(`${s.base}/capture?locked_capture=1`);
+		await s.waitFor(() => document.querySelector('.vault-card'), 20000, 'capture unlock guard');
+		s.check('capture-locked-shows-guard', true, 'guard rendered for a locked vault');
+		await s.shot('capture-locked');
+	},
 	async widget(s) {
 		await s.boot(`${s.base}/widget`);
 		await s.waitFor(() => document.querySelector('.w-list, .w-hint'), 15000, 'widget');
@@ -1205,8 +1244,8 @@ const SCENARIOS = {
 
 function defaultTour(profile) {
 	return profile.mobile
-		? ['welcome', 'unlock', 'home', 'drawer', 'doc', 'sheet', 'palette', 'whiteboard', 'settingsMobile', 'capture', 'widget']
-		: ['welcome', 'unlock', 'home', 'sidebar', 'doc', 'whiteboard', 'graph', 'settings', 'palette', 'split', 'capture', 'widget'];
+		? ['welcome', 'unlock', 'home', 'drawer', 'doc', 'sheet', 'palette', 'whiteboard', 'settingsMobile', 'capture', 'capture-locked', 'widget']
+		: ['welcome', 'unlock', 'home', 'sidebar', 'doc', 'whiteboard', 'graph', 'settings', 'palette', 'split', 'capture', 'capture-locked', 'widget'];
 }
 
 function scenariosFor(profile, name) {
@@ -1246,7 +1285,9 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 			'--headless=new',
 			'--no-sandbox',
 			'--disable-gpu',
-			'--hide-scrollbars',
+			// Chrome hides scrollbars with this flag; leave it off to see the
+			// platform's real (classic on Windows) scrollbar layout (#126).
+			...(args.scrollbars ? [] : ['--hide-scrollbars']),
 			'--remote-debugging-port=0',
 			'--window-size=1440,900',
 			'--no-first-run',
@@ -1326,6 +1367,14 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 					: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
 			});
 			const session = new Session(cdp, { url: args.url, out: args.out, profile, profileName, theme: args.theme, verbose: args.verbose });
+			// Scenarios intentionally leave non-default appearance settings behind
+			// (settingsMatrix ends on Xlarge). Without a reset they leak into the
+			// next profile and scale every later measurement — the false sidebar
+			// failures the Windows DPI profiles found in #126/#134. Boot once on
+			// the app origin to clear, then let each scenario boot as usual; the
+			// --setting seeds reapply on every navigation by design.
+			await session.boot(args.url);
+			await session.eval('localStorage.clear()');
 			for (const scenario of scenariosFor(profile, args.scenario)) {
 				try {
 					// Hard cap so a wedged CDP call can't stall the whole run.

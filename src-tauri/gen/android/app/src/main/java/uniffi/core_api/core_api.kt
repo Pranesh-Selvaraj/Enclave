@@ -819,6 +819,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -914,6 +918,8 @@ fun uniffi_core_api_checksum_method_fficore_sync_digest(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_sync_snapshot_for(
 ): Short
+fun uniffi_core_api_checksum_method_fficore_toggle_checklist_item(
+): Short
 fun uniffi_core_api_checksum_method_fficore_toggle_favorite(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_unlock_vault(
@@ -929,6 +935,8 @@ fun uniffi_core_api_checksum_method_fficore_upsert_block(
 fun uniffi_core_api_checksum_method_fficore_upsert_embedding(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_validate_mnemonic(
+): Short
+fun uniffi_core_api_checksum_method_fficore_widget_notes(
 ): Short
 fun uniffi_core_api_checksum_constructor_fficore_new(
 ): Short
@@ -1067,6 +1075,8 @@ fun uniffi_core_api_fn_method_fficore_sync_digest(`ptr`: Pointer,uniffi_out_err:
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_sync_snapshot_for(`ptr`: Pointer,`ids`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_toggle_checklist_item(`ptr`: Pointer,`docId`: RustBuffer.ByValue,`index`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_core_api_fn_method_fficore_toggle_favorite(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_unlock_vault(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1083,6 +1093,8 @@ fun uniffi_core_api_fn_method_fficore_upsert_embedding(`ptr`: Pointer,`blockId`:
 ): Unit
 fun uniffi_core_api_fn_method_fficore_validate_mnemonic(`ptr`: Pointer,`mnemonic`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_core_api_fn_method_fficore_widget_notes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun ffi_core_api_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_core_api_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1329,6 +1341,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_core_api_checksum_method_fficore_sync_snapshot_for() != 26935.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_core_api_checksum_method_fficore_toggle_checklist_item() != 31001.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_core_api_checksum_method_fficore_toggle_favorite() != 9044.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1351,6 +1366,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_validate_mnemonic() != 56330.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_widget_notes() != 12688.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_constructor_fficore_new() != 19580.toShort()) {
@@ -1954,6 +1972,11 @@ public interface FfiCoreInterface {
     
     fun `syncSnapshotFor`(`ids`: List<kotlin.String>): kotlin.String?
     
+    /**
+     * Toggle one checklist row by index through the vault write path.
+     */
+    fun `toggleChecklistItem`(`docId`: kotlin.String, `index`: kotlin.UInt)
+    
     fun `toggleFavorite`(`id`: kotlin.String): Document
     
     fun `unlockVault`(`key`: kotlin.ByteArray)
@@ -1978,6 +2001,11 @@ public interface FfiCoreInterface {
      * BIP39 validation for live form feedback.
      */
     fun `validateMnemonic`(`mnemonic`: kotlin.String): kotlin.Boolean
+    
+    /**
+     * Notes shared to widgets, already projected (checklist, labels, body).
+     */
+    fun `widgetNotes`(): List<WidgetNote>
     
     companion object
 }
@@ -2651,6 +2679,21 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     
 
     
+    /**
+     * Toggle one checklist row by index through the vault write path.
+     */
+    @Throws(EnclaveException::class)override fun `toggleChecklistItem`(`docId`: kotlin.String, `index`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(EnclaveException) { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_toggle_checklist_item(
+        it, FfiConverterString.lower(`docId`),FfiConverterUInt.lower(`index`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(EnclaveException::class)override fun `toggleFavorite`(`id`: kotlin.String): Document {
             return FfiConverterTypeDocument.lift(
     callWithPointer {
@@ -2752,6 +2795,22 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_validate_mnemonic(
         it, FfiConverterString.lower(`mnemonic`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Notes shared to widgets, already projected (checklist, labels, body).
+     */
+    @Throws(EnclaveException::class)override fun `widgetNotes`(): List<WidgetNote> {
+            return FfiConverterSequenceTypeWidgetNote.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EnclaveException) { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_widget_notes(
+        it, _status)
 }
     }
     )
@@ -2883,6 +2942,41 @@ public object FfiConverterTypeBlock: FfiConverterRustBuffer<Block> {
             FfiConverterDouble.write(value.`sortOrder`, buf)
             FfiConverterString.write(value.`createdAt`, buf)
             FfiConverterString.write(value.`updatedAt`, buf)
+    }
+}
+
+
+
+/**
+ * One checklist row a home-screen widget shows (#122).
+ */
+data class ChecklistRow (
+    var `text`: kotlin.String, 
+    var `checked`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChecklistRow: FfiConverterRustBuffer<ChecklistRow> {
+    override fun read(buf: ByteBuffer): ChecklistRow {
+        return ChecklistRow(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChecklistRow) = (
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterBoolean.allocationSize(value.`checked`)
+    )
+
+    override fun write(value: ChecklistRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterBoolean.write(value.`checked`, buf)
     }
 }
 
@@ -3270,6 +3364,63 @@ public object FfiConverterTypeTagInfo: FfiConverterRustBuffer<TagInfo> {
 
 
 
+/**
+ * A note shared to widgets, projected by Rust so Kotlin never walks
+ * ProseMirror JSON. `text` is the full body the pinned widget renders; the
+ * list widget flattens it for its two-line preview.
+ */
+data class WidgetNote (
+    var `id`: kotlin.String, 
+    var `title`: kotlin.String, 
+    var `labels`: List<kotlin.String>, 
+    var `updatedAt`: kotlin.String, 
+    var `isFavorite`: kotlin.Boolean, 
+    var `text`: kotlin.String, 
+    var `checklist`: List<ChecklistRow>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeWidgetNote: FfiConverterRustBuffer<WidgetNote> {
+    override fun read(buf: ByteBuffer): WidgetNote {
+        return WidgetNote(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeChecklistRow.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: WidgetNote) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterSequenceString.allocationSize(value.`labels`) +
+            FfiConverterString.allocationSize(value.`updatedAt`) +
+            FfiConverterBoolean.allocationSize(value.`isFavorite`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterSequenceTypeChecklistRow.allocationSize(value.`checklist`)
+    )
+
+    override fun write(value: WidgetNote, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterSequenceString.write(value.`labels`, buf)
+            FfiConverterString.write(value.`updatedAt`, buf)
+            FfiConverterBoolean.write(value.`isFavorite`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterSequenceTypeChecklistRow.write(value.`checklist`, buf)
+    }
+}
+
+
+
 
 
 /**
@@ -3496,6 +3647,34 @@ public object FfiConverterSequenceTypeBlock: FfiConverterRustBuffer<List<Block>>
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeChecklistRow: FfiConverterRustBuffer<List<ChecklistRow>> {
+    override fun read(buf: ByteBuffer): List<ChecklistRow> {
+        val len = buf.getInt()
+        return List<ChecklistRow>(len) {
+            FfiConverterTypeChecklistRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ChecklistRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeChecklistRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ChecklistRow>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeChecklistRow.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeDocument: FfiConverterRustBuffer<List<Document>> {
     override fun read(buf: ByteBuffer): List<Document> {
         val len = buf.getInt()
@@ -3682,6 +3861,34 @@ public object FfiConverterSequenceTypeTagInfo: FfiConverterRustBuffer<List<TagIn
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeTagInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeWidgetNote: FfiConverterRustBuffer<List<WidgetNote>> {
+    override fun read(buf: ByteBuffer): List<WidgetNote> {
+        val len = buf.getInt()
+        return List<WidgetNote>(len) {
+            FfiConverterTypeWidgetNote.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<WidgetNote>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeWidgetNote.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<WidgetNote>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeWidgetNote.write(it, buf)
         }
     }
 }

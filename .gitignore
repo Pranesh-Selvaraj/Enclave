@@ -50,22 +50,13 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 
-# ── AI / LLM tooling (never committed) ─────────────────────────────────────
+# ── Agent workflow artifacts (never committed) ─────────────────────────────
 AGENTS.md
 hooks/
 skills/
+# Active AI editors on this project (see issue #7)
 .claude/
 .cursor/
-.github/copilot-instructions.md
-.windsurf/
-.trae/
-.aider*
-.roo/
-.cline/
-.codex/
-.clinerules/
-.rules/
-.gpt-*
 
 # Misc common artifacts
 *.bak

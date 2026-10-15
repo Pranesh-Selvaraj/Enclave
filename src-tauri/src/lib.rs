@@ -18,6 +18,8 @@ mod embed;
 
 mod updater;
 
+mod update_signature;
+
 mod android_sync;
 
 // ── App State ───────────────────────────────────────────────────────────────
@@ -62,6 +64,8 @@ async fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.core.lock_vault().await.map_err(msg)?;
     // Android: no vault key = no foreground sync service.
     let _ = android_sync::set_service(false);
+    // Blank the home-screen widgets promptly (issue #132).
+    android_sync::widgets_changed();
     Ok(())
 }
 
@@ -91,17 +95,23 @@ fn create_document(state: tauri::State<AppState>, title: String) -> Result<core_
 
 #[tauri::command(async)]
 fn delete_document(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    state.core.delete_document(&id).map_err(msg)
+    state.core.delete_document(&id).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(())
 }
 
 #[tauri::command(async)]
 fn archive_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
-    state.core.archive_document(&id).map_err(msg)
+    let doc = state.core.archive_document(&id).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(doc)
 }
 
 #[tauri::command(async)]
 fn restore_document(state: tauri::State<AppState>, id: String) -> Result<core_api::Document, String> {
-    state.core.restore_document(&id).map_err(msg)
+    let doc = state.core.restore_document(&id).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(doc)
 }
 
 #[tauri::command(async)]
@@ -115,7 +125,9 @@ fn update_document_title(
     id: String,
     title: String,
 ) -> Result<core_api::Document, String> {
-    state.core.update_document_title(&id, &title).map_err(msg)
+    let doc = state.core.update_document_title(&id, &title).map_err(msg)?;
+    android_sync::widgets_changed();
+    Ok(doc)
 }
 
 #[tauri::command(async)]
@@ -184,10 +196,13 @@ fn upsert_block(
     content: serde_json::Value,
     sort_order: f64,
 ) -> Result<core_api::Block, String> {
-    state
+    let block = state
         .core
         .upsert_block(&id, &document_id, &block_type, content, sort_order)
-        .map_err(msg)
+        .map_err(msg)?;
+    // Android widgets: save/tags/meta all come through here (issue #127).
+    android_sync::widgets_changed();
+    Ok(block)
 }
 
 #[tauri::command(async)]
@@ -258,13 +273,36 @@ fn export_file(state: tauri::State<AppState>, filename: String, data: Vec<u8>) -
 
 #[tauri::command(async)]
 fn import_markdown(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
+    let bytes = read_user_file(&path)?;
+    String::from_utf8(bytes).map_err(|_| "Imported file is not valid UTF-8 text".to_string())
 }
 
-/// Write bytes to a user-chosen path (markdown vault export, PNG saves).
+/// Bytes behind a user-picked path: `content://` (Android SAF picker, #38)
+/// goes through the Kotlin ContentResolver, everything else through std::fs.
+fn read_user_file(path: &str) -> Result<Vec<u8>, String> {
+    if path.starts_with("content://") {
+        android_sync::read_content_uri(path)
+    } else {
+        std::fs::read(path).map_err(|e| format!("Failed to read file: {e}"))
+    }
+}
+
+/// Write bytes to a user-chosen path. Android's create-document picker
+/// returns a `content://` URI, which needs the ContentResolver bridge.
 #[tauri::command(async)]
 fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
-    std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
+    if path.starts_with("content://") {
+        android_sync::write_content_uri(&path, &data)
+    } else {
+        std::fs::write(&path, &data).map_err(|e| format!("Failed to write file: {e}"))
+    }
+}
+
+/// Read raw bytes (vault backup export on Android copies the file to a
+/// user-chosen SAF location).
+#[tauri::command(async)]
+fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))
 }
 
 /// Consistent encrypted snapshot of the vault via VACUUM INTO (SQLCipher-safe;
@@ -572,6 +610,8 @@ pub fn run() {
                                     "blocks_changed": blocks_changed,
                                 }),
                             );
+                            // Merged notes change what widgets show (issue #127).
+                            android_sync::widgets_changed();
                         }
                         Ok(core_api::SyncEvent::PeerFailed { host, error }) => {
                             let _ = app_handle.emit(
@@ -628,6 +668,7 @@ pub fn run() {
             // markdown import/export
             export_file,
             write_file,
+            read_file_bytes,
             import_markdown,
             // vault key
             store_vault_key,
