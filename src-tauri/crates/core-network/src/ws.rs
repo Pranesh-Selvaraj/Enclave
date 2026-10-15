@@ -136,20 +136,20 @@ async fn await_frame(
     kind: &str,
 ) -> Result<serde_json::Value, String> {
     tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-        loop {
-            match read.next().await {
-                Some(Ok(Message::Text(t))) => {
-                    let v: serde_json::Value =
-                        serde_json::from_str(&t).map_err(|e| e.to_string())?;
-                    if v["kind"] == kind {
-                        return Ok(v);
-                    }
-                    return Err(format!("expected {kind} frame, got {}", v["kind"]));
+        // Every arm returns, so this is a single wait — do not wrap it in a
+        // `loop` (clippy::never_loop is deny-by-default and the loop hid it).
+        match read.next().await {
+            Some(Ok(Message::Text(t))) => {
+                let v: serde_json::Value =
+                    serde_json::from_str(&t).map_err(|e| e.to_string())?;
+                if v["kind"] == kind {
+                    return Ok(v);
                 }
-                Some(Ok(_)) => return Err(format!("expected text {kind} frame")),
-                Some(Err(e)) => return Err(e.to_string()),
-                None => return Err("peer closed during handshake".into()),
+                Err(format!("expected {kind} frame, got {}", v["kind"]))
             }
+            Some(Ok(_)) => Err(format!("expected text {kind} frame")),
+            Some(Err(e)) => Err(e.to_string()),
+            None => Err("peer closed during handshake".into()),
         }
     })
     .await
