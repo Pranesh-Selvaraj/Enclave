@@ -40,7 +40,7 @@ A backlog sweep: the remaining open bugs were fixed, the auto-updater now fails 
 
 ### Notes
 
-- **Still open for hardware, not silently closed:** #37 (arm64 offline embeddings) now compiles for arm64 and the ignored round-trip test passes on x86_64 Linux — the model loads, produces 384-dim deterministic vectors — but real-phone ONNX inference and RAG against a local Ollama are unverified; #126 now has continuous Windows CI coverage (71/71 scenarios at 100%/125%/150% scaling) with only an interactive window-resize and real NSIS/MSI install pass left, which needs a Windows machine with the Rust toolchain; #38 needs on-device confirmation of the new SAF read/write paths; #127 still needs the icon-flicker screen recording and idle battery stats.
+- **Still open for hardware (tracked in issues, not claimed as done):** #37 (arm64 offline embeddings) now compiles for arm64 and the ignored round-trip test passes on x86_64 Linux — the model loads, produces 384-dim deterministic vectors — but real-phone ONNX inference and RAG against a local Ollama are unverified; #126 now has continuous Windows CI coverage (71/71 scenarios at 100%/125%/150% scaling) with only an interactive window-resize and real NSIS/MSI install pass left, which needs a Windows machine with the Rust toolchain; #38 needs on-device confirmation of the new SAF read/write paths; #127 still needs the icon-flicker screen recording and idle battery stats.
 - The version is not bumped by this sweep; the Android `versionCode` counter keeps its usual release-time bump.
 
 ## [1.12.0] — 2026-10-01
