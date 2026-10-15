@@ -1279,6 +1279,11 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 	for (const p of profileNames) if (!PROFILES[p]) throw new Error(`unknown profile: ${p}`);
 
 	await mkdir(args.out, { recursive: true });
+	// Fixed (random, collision-unlikely) debugging port: readiness is polled
+	// over HTTP instead of parsing the browser's stderr banner, which some
+	// Chrome/Edge builds write to stdout or after a slow cold start (the
+	// windows-latest job hit "did not report a DevTools endpoint").
+	const devtoolsPort = 10000 + Math.floor(Math.random() * 50000);
 	const chrome = spawn(
 		chromePath,
 		[
@@ -1288,29 +1293,40 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 			// Chrome hides scrollbars with this flag; leave it off to see the
 			// platform's real (classic on Windows) scrollbar layout (#126).
 			...(args.scrollbars ? [] : ['--hide-scrollbars']),
-			'--remote-debugging-port=0',
+			`--remote-debugging-port=${devtoolsPort}`,
 			'--window-size=1440,900',
 			'--no-first-run',
 			'--no-default-browser-check',
 			'about:blank',
 		],
-		{ stdio: ['ignore', 'ignore', 'pipe'] },
+		{ stdio: ['ignore', 'pipe', 'pipe'] },
 	);
-	// Chromium prints the browser endpoint (port 0 = ephemeral). We need a page
-	// target, so parse the port and ask /json/list for the page websocket.
-	const devtoolsPort = await new Promise((resolve, reject) => {
-		let buf = '';
-		const timer = setTimeout(() => reject(new Error('Chromium did not report a DevTools endpoint')), 20000);
-		chrome.stderr.on('data', (d) => {
-			buf += d.toString();
-			const m = /ws:\/\/127\.0\.0\.1:(\d+)\//.exec(buf);
-			if (m) {
-				clearTimeout(timer);
-				resolve(Number(m[1]));
-			}
-		});
-		chrome.on('exit', (code) => reject(new Error(`Chromium exited early (${code})`)));
+	let chromeExited = false;
+	const chromeLog = [];
+	chrome.stdout.on('data', (d) => chromeLog.push(d.toString()));
+	chrome.stderr.on('data', (d) => chromeLog.push(d.toString()));
+	chrome.on('exit', () => {
+		chromeExited = true;
 	});
+	let endpointReady = false;
+	for (let i = 0; i < 120 && !chromeExited; i++) {
+		try {
+			if ((await fetch(`http://127.0.0.1:${devtoolsPort}/json/version`)).ok) {
+				endpointReady = true;
+				break;
+			}
+		} catch {
+			/* not up yet */
+		}
+		await sleep(500);
+	}
+	if (!endpointReady) {
+		throw new Error(
+			`Chromium did not expose a DevTools endpoint on :${devtoolsPort}` +
+				(chromeExited ? ' (process exited)' : '') +
+				`\n${chromeLog.join('').slice(-2000)}`,
+		);
+	}
 
 	let pageWsUrl;
 	for (let i = 0; i < 50 && !pageWsUrl; i++) {
