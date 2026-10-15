@@ -1340,6 +1340,14 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 			features: [{ name: 'prefers-color-scheme', value: args.theme === 'light' ? 'light' : 'dark' }],
 		});
 		await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: stubSource() });
+		// Every audited document starts clean: tour appearance changes must not
+		// leak across profiles or into a reload, and an in-page clear can race
+		// the app's own boot, which re-persists whatever it read (issues
+		// #126/#134). --setting seeds are registered after this, so they
+		// reapply on every navigation.
+		await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+			source: 'try { localStorage.clear(); } catch { /* opaque origin */ }',
+		});
 		const seed = settingsSeedSource(args.settings);
 		if (seed) await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: seed });
 		if (args.verbose) {
@@ -1367,14 +1375,6 @@ Output goes OUTSIDE the repo (default ${join(HERE, 'shots')}).`);
 					: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
 			});
 			const session = new Session(cdp, { url: args.url, out: args.out, profile, profileName, theme: args.theme, verbose: args.verbose });
-			// Scenarios intentionally leave non-default appearance settings behind
-			// (settingsMatrix ends on Xlarge). Without a reset they leak into the
-			// next profile and scale every later measurement — the false sidebar
-			// failures the Windows DPI profiles found in #126/#134. Boot once on
-			// the app origin to clear, then let each scenario boot as usual; the
-			// --setting seeds reapply on every navigation by design.
-			await session.boot(args.url);
-			await session.eval('localStorage.clear()');
 			for (const scenario of scenariosFor(profile, args.scenario)) {
 				try {
 					// Hard cap so a wedged CDP call can't stall the whole run.
