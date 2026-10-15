@@ -76,17 +76,18 @@ jobs:
       - name: npm install
         run: npm ci
 
-      # JVM unit tests (widget cache codec, note JSON parsing) — fast and
-      # independent of the native build, so they run before it.
-      - name: Android JVM unit tests
-        working-directory: src-tauri/gen/android
-        run: ./gradlew :app:testUniversalDebugUnitTest
-        env:
-          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13846066
-
       - name: Build release APK + AAB (arm64)
         working-directory: src-tauri
         run: npx tauri android build --target aarch64
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13846066
+
+      # Runs after the build on purpose: the Tauri CLI generates the
+      # gitignored tauri.settings.gradle / tauri.build.gradle.kts that Gradle
+      # needs, and they do not exist on a fresh checkout (issue #137).
+      - name: Android JVM unit tests
+        working-directory: src-tauri/gen/android
+        run: ./gradlew :app:testUniversalDebugUnitTest
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13846066
 
