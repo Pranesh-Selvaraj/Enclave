@@ -70,10 +70,9 @@ jobs:
         run: npm run build -w @enclave/frontend
 
       - name: Run UI audit (Windows Edge/Chrome, DPI scaling)
-        run: |
-          node tools/ui-audit/run.mjs \
-            --profiles desktop,windows-125,windows-150,phone \
-            --scenario all,flows,auditPages,settingsMatrix,settingsScales,overlaysXlarge
+        # One line: the default Windows shell (PowerShell) does not continue
+        # lines with a backslash.
+        run: node tools/ui-audit/run.mjs --profiles desktop,windows-125,windows-150,phone --scenario all,flows,auditPages,settingsMatrix,settingsScales,overlaysXlarge
 
       - name: Upload screenshots + report
         if: always()
