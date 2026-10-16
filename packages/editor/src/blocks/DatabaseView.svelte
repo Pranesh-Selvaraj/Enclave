@@ -828,6 +828,9 @@
 		gap: 8px;
 		padding: 6px 8px;
 		border-bottom: 1px solid var(--color-border);
+		/* The view switch + group-by + density + filter + add-row row is wider
+		   than a phone; scroll it rather than clipping the last controls (#165). */
+		overflow-x: auto;
 	}
 
 	.db-view-switch {
