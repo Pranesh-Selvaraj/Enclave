@@ -163,6 +163,31 @@
 		}
 	});
 
+	// ── Phone gestures (issue #161) ──
+	// Swipe the drawer closed; open it with a left-edge swipe. Only deliberate,
+	// mostly-horizontal swipes fire, so vertical scrolling and the editor's own
+	// horizontal gestures are untouched.
+	let touchStart: { x: number; y: number } | null = null;
+	function onTouchStart(e: TouchEvent) {
+		const t = e.touches[0];
+		if (t) touchStart = { x: t.clientX, y: t.clientY };
+	}
+	function onTouchMove(e: TouchEvent) {
+		if (!touchStart || !isMobile) return;
+		const t = e.touches[0];
+		if (!t) return;
+		const dx = t.clientX - touchStart.x;
+		const dy = t.clientY - touchStart.y;
+		if (Math.abs(dx) < 24 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+		if (sidebarOpen && dx < -50) {
+			sidebarOpen = false;
+			touchStart = null;
+		} else if (!sidebarOpen && touchStart.x <= 24 && dx > 50) {
+			openUI('drawer');
+			touchStart = null;
+		}
+	}
+
 	/** Sidebar lock button: lock the vault and drop the session seed. */
 	async function lockNow() {
 		try {
@@ -897,7 +922,7 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} ontouchstart={onTouchStart} ontouchmove={onTouchMove} />
 
 {#if currentPath.startsWith('/capture') || currentPath.startsWith('/widget')}
 	{@render children?.()}
@@ -927,6 +952,42 @@
 					</a>
 				{/if}
 			</nav>
+
+			{#if isMobile}
+				<!-- Phone drawer: app actions, not the note tree (issue #161). -->
+				<div class="drawer-actions">
+					<button class="drawer-action" onclick={() => (syncCardOpen = !syncCardOpen)} aria-expanded={syncCardOpen}>
+						<span class="drawer-action-icon" class:online={networkRunning}><Icon name="network" size={18} /></span>
+						<span class="drawer-action-text">
+							<span class="drawer-action-title">Sync</span>
+							<span class="drawer-action-sub">{syncLabel}</span>
+						</span>
+						<span class="drawer-action-chevron"><Icon name={syncCardOpen ? 'chevronDown' : 'chevronRight'} size={15} /></span>
+					</button>
+					<button class="drawer-action" onclick={() => theme.toggle()}>
+						<span class="drawer-action-icon"><Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={18} /></span>
+						<span class="drawer-action-text">
+							<span class="drawer-action-title">Theme</span>
+							<span class="drawer-action-sub">{theme.mode === 'auto' ? 'Auto (system)' : theme.value === 'dark' ? 'Dark' : 'Light'}</span>
+						</span>
+					</button>
+					<button class="drawer-action" onclick={() => { sidebarOpen = false; openUI('settings'); }}>
+						<span class="drawer-action-icon"><Icon name="settings" size={18} /></span>
+						<span class="drawer-action-text">
+							<span class="drawer-action-title">Settings</span>
+							<span class="drawer-action-sub">Appearance, AI, backup, shortcuts</span>
+						</span>
+						<span class="drawer-action-chevron"><Icon name="chevronRight" size={15} /></span>
+					</button>
+					<button class="drawer-action" onclick={lockNow}>
+						<span class="drawer-action-icon"><Icon name="lock" size={18} /></span>
+						<span class="drawer-action-text">
+							<span class="drawer-action-title">Lock vault</span>
+							<span class="drawer-action-sub">Close the vault on this device</span>
+						</span>
+					</button>
+				</div>
+			{/if}
 
 			<div class="pages-section" class:hidden-mobile={isMobile}>
 				<div class="section-head">
@@ -1247,6 +1308,13 @@
 					</div>
 				</div>
 			</div>
+			{#if isMobile}
+				<!-- Anchors the bottom of the phone drawer instead of a dead gap. -->
+				<div class="drawer-foot">
+					<div class="drawer-foot-title">Enclave</div>
+					<div class="drawer-foot-sub">Local-first · encrypted vault · no cloud</div>
+				</div>
+			{/if}
 		{:else}
 			<!-- Collapsed sidebar: icon rail with the essentials. -->
 			<nav class="mini-nav" aria-label="Main">
@@ -2657,6 +2725,62 @@
 			letter-spacing: -0.02em;
 			color: var(--color-text);
 		}
+		/* App-actions panel — the phone drawer is settings/actions, not the
+		   note tree (issue #161). */
+		.drawer-actions { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; }
+		.drawer-action {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			width: 100%;
+			min-height: 52px;
+			padding: 8px 12px;
+			border: none;
+			background: transparent;
+			color: var(--color-text);
+			border-radius: var(--radius-lg);
+			text-align: left;
+			font: inherit;
+			cursor: pointer;
+		}
+		.drawer-action:hover { background: var(--color-surface-hover); }
+		.drawer-action:active { background: var(--color-surface-active); }
+		.drawer-action-icon {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 34px;
+			height: 34px;
+			border-radius: 10px;
+			background: var(--color-surface-hover);
+			color: var(--color-accent);
+			flex-shrink: 0;
+		}
+		.drawer-action-icon.online { color: var(--color-success); }
+		.drawer-action-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+		.drawer-action-title { font-size: 15px; font-weight: 600; }
+		.drawer-action-sub {
+			font-size: 12px;
+			color: var(--color-text-muted);
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		.drawer-action-chevron { color: var(--color-text-muted); flex-shrink: 0; }
+		/* Creation is the FAB and the app actions moved into the body above, so
+		   the duplicated footer chips and New page row are gone on phones. */
+		.new-page-btn, .footer-row { display: none; }
+		/* No page tree on phones, so the sync card follows the actions instead of
+		   being pinned to the bottom (which left a dead gap in the middle). */
+		.sidebar-footer { position: static; margin-top: 0; }
+		/* Small brand/privacy footer anchors the bottom of the drawer. */
+		.drawer-foot {
+			margin-top: auto;
+			padding: 18px 16px calc(14px + var(--safe-bottom));
+			border-top: 1px solid var(--color-border);
+		}
+		.drawer-foot-title { font-size: 13px; font-weight: 600; color: var(--color-text-muted); }
+		.drawer-foot-sub { font-size: 12px; color: var(--color-text-faint); margin-top: 2px; }
 		.side-nav { gap: 4px; padding: 4px 10px 10px; }
 		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
 		.section-head { padding: 14px 16px 6px; }

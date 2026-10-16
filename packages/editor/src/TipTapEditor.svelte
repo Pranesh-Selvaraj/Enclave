@@ -176,8 +176,12 @@ import { makeReactive } from './reactivity.js';
 	/* ── Tables ── */
 	:global(.tiptap-editor table) {
 		border-collapse: collapse;
-		width: 100%;
 		margin: 0.4em 0;
+		/* Phones: a table is wider than the column, so make it a horizontal
+		   scroll container instead of clipping the right-hand columns (#163). */
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
 	}
 
 	:global(.tiptap-editor th),

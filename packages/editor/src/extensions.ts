@@ -59,15 +59,20 @@ export function editorExtensions(options: { placeholder?: string } = {}) {
 		CodeBlock.extend({
 			addNodeView() {
 				return ({ node, editor, getPos }) => {
+					// ProseMirror owns `contentDOM`; build the whole node shell here and
+					// mount the Svelte toolbar into a sibling host. Moving contentDOM
+					// from inside a component effect wedged the editor (issue #162).
 					const dom = document.createElement('div');
+					dom.className = 'cb-node';
+					const barHost = document.createElement('div');
 					const contentDOM = document.createElement('pre');
 					contentDOM.className = 'cb-pre';
+					dom.append(barHost, contentDOM);
 					let lang = node.attrs.language ?? 'plaintext';
 					const view = mount(CodeBlockView, {
-						target: dom,
+						target: barHost,
 						props: {
 							language: lang,
-							contentDOM,
 							onLanguageChange: (next: string) => {
 								const pos = getPos();
 								if (pos == null) return;

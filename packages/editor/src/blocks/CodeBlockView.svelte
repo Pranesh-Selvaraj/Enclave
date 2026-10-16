@@ -5,11 +5,9 @@
 
 	let {
 		language,
-		contentDOM,
 		onLanguageChange,
 	}: {
 		language: string;
-		contentDOM: HTMLElement;
 		onLanguageChange: (lang: string) => void;
 	} = $props();
 
@@ -23,16 +21,15 @@
 		lang = next;
 	}
 
-	let host: HTMLDivElement | undefined = $state();
+	let root: HTMLDivElement | undefined = $state();
 	let copied = $state(false);
 
-	$effect(() => {
-		if (host && contentDOM && !contentDOM.isConnected) host.appendChild(contentDOM);
-	});
-
 	async function copy() {
+		// The node view mounts this toolbar next to the code <pre> (contentDOM),
+		// so read the text from the shared .cb-node wrapper (issue #162).
+		const text = root?.closest('.cb-node')?.querySelector('.cb-pre')?.textContent ?? '';
 		try {
-			await navigator.clipboard.writeText(contentDOM.textContent ?? '');
+			await navigator.clipboard.writeText(text);
 			copied = true;
 			setTimeout(() => (copied = false), 1200);
 		} catch {
@@ -41,38 +38,47 @@
 	}
 </script>
 
-<div class="cb-wrap">
-	<div class="cb-bar">
-		<div class="cb-bar-left">
-			<Icon name="code" size={13} />
-			<select
-				class="cb-lang"
-				value={lang || 'plaintext'}
-				onchange={(e: Event) => onLanguageChange((e.currentTarget as HTMLSelectElement).value)}
-				aria-label="Code language"
-			>
-				{#each LANGUAGES as l}
-					<option value={l}>{l}</option>
-				{/each}
-			</select>
-		</div>
-		<button class="cb-copy" onclick={copy} title="Copy code">
-			<Icon name={copied ? 'check' : 'copy'} size={13} />
-			{copied ? 'Copied' : 'Copy'}
-		</button>
+<div class="cb-bar" bind:this={root}>
+	<div class="cb-bar-left">
+		<Icon name="code" size={13} />
+		<select
+			class="cb-lang"
+			value={lang || 'plaintext'}
+			onchange={(e: Event) => onLanguageChange((e.currentTarget as HTMLSelectElement).value)}
+			aria-label="Code language"
+		>
+			{#each LANGUAGES as l}
+				<option value={l}>{l}</option>
+			{/each}
+		</select>
 	</div>
-	<div bind:this={host}></div>
+	<button class="cb-copy" onclick={copy} title="Copy code">
+		<Icon name={copied ? 'check' : 'copy'} size={13} />
+		{copied ? 'Copied' : 'Copy'}
+	</button>
 </div>
 
 <style>
-	.cb-wrap {
+	/* The node view builds .cb-node (wrapper) + .cb-pre (ProseMirror content)
+	   itself, so style them globally here. */
+	:global(.cb-node) {
 		margin: 0.5em 0;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		overflow: hidden;
 		background: var(--color-surface);
 	}
-
+	:global(.cb-node .cb-pre) {
+		margin: 0;
+		border: none;
+		border-radius: 0;
+		padding: 10px 12px;
+		overflow-x: auto;
+		/* Long code lines scroll instead of wrapping (issue #164). */
+		white-space: pre;
+		overflow-wrap: normal;
+		word-break: normal;
+	}
 	.cb-bar {
 		display: flex;
 		align-items: center;
@@ -114,11 +120,5 @@
 	.cb-copy:hover {
 		background: var(--color-surface-active);
 		color: var(--color-text);
-	}
-
-	:global(.cb-wrap pre) {
-		margin: 0;
-		border: none;
-		border-radius: 0;
 	}
 </style>
