@@ -58,11 +58,14 @@ const stub = stubSource().replace(
 
 // Inject the stub before the app's module scripts (the static page has no CSP
 // meta, so an inline script is fine here; the audit injects the same source
-// through CDP).
-const indexHtml = readFileSync(join(BUILD, 'index.html'), 'utf8').replace(
-	'<script src="/theme-boot.js"></script>',
-	`<script src="/theme-boot.js"></script>\n\t\t<script>${stub}</script>`,
-);
+// through CDP). Read per request: caching it meant a rebuild during a running
+// demo served stale asset hashes and the page came up blank.
+function renderIndex() {
+	return readFileSync(join(BUILD, 'index.html'), 'utf8').replace(
+		'<script src="/theme-boot.js"></script>',
+		`<script src="/theme-boot.js"></script>\n\t\t<script>${stub}</script>`,
+	);
+}
 
 const server = createServer((req, res) => {
 	const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
@@ -75,7 +78,7 @@ const server = createServer((req, res) => {
 	}
 	// SPA fallback: /, /doc-1, /graph, /settings, …
 	res.writeHead(200, { 'content-type': TYPES['.html'] });
-	res.end(indexHtml);
+	res.end(renderIndex());
 });
 
 server.listen(PORT, () => {
