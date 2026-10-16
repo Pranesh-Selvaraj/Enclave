@@ -64,6 +64,22 @@ See `shot.mjs` for what each one asserts. Useful extras:
   `--hide-scrollbars` (useful when checking scrollbar-related layout shifts).
 - `--out DIR`, `--chrome PATH`, `--verbose`.
 
+## Local demo (click through the UI)
+
+The same stub powers an interactive browser demo — handy for reviewing the UI
+without the Tauri toolchain:
+
+```bash
+npm run build -w @enclave/frontend   # once
+node tools/ui-audit/demo.mjs          # http://localhost:4300
+```
+
+It serves `apps/frontend/build` with the stub injected, opens straight into
+the workspace, and supports the whole interface (pages, editor, whiteboard,
+graph, settings, themes/accents). State is the demo vault and resets on
+reload; `/?fresh` shows the vault creation flow. Add `--port <n>` to change
+the port. This is dev tooling, not a product feature.
+
 ## CI
 
 `.github/workflows/ui-audit.yml` runs a desktop+phone audit on
