@@ -1127,24 +1127,47 @@ const SCENARIOS = {
 	},
 
 	async vaultFlow(s) {
-		// Fresh vault: welcome → create password → recovery phrase → shell.
+		// Fresh vault: welcome → create secret → recovery phrase → shell.
+		// v1.12.0 has no password length floor (any non-empty secret); PINs are
+		// 4–12 digits and Android defaults to PIN, so pick Password explicitly.
 		await s.boot(`${s.base}/?fresh`);
 		await s.waitFor(() => document.querySelector('.vault-features'), 25000, 'welcome card');
+		const createDisabled = () =>
+			s.eval(
+				`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Create vault')); return b ? b.disabled : null; })()`,
+			);
+		const pickMode = (label) =>
+			s.eval(
+				`(() => { const b = [...document.querySelectorAll('.auth-switch-btn')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (b) b.click(); return !!b; })()`,
+			);
+
+		await pickMode('Password');
+		await sleep(150);
+		await s.fill('#password', '');
+		await s.fill('#confirm', '');
+		await sleep(150);
+		s.check('vault-empty-password-disabled', (await createDisabled()) === true, 'empty password keeps Create vault disabled');
 		await s.fill('#password', 'abc');
 		await s.fill('#confirm', 'abc');
 		await sleep(200);
-		const disabledShort = await s.eval(
-			`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Create vault')); return b ? b.disabled : null; })()`,
-		);
-		s.check('vault-short-password-rejected', disabledShort === true, `disabled=${disabledShort}`);
-		await s.fill('#password', '1234567');
-		await s.fill('#confirm', '1234567');
-		await sleep(200);
-		const disabledSeven = await s.eval(
-			`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Create vault')); return b ? b.disabled : null; })()`,
-		);
-		s.check('vault-7char-password-rejected', disabledSeven === true, `disabled=${disabledSeven}`);
+		s.check('vault-short-password-accepted', (await createDisabled()) === false, 'any non-empty password is accepted (v1.12.0 policy)');
 		await s.shot('vault-welcome');
+
+		// PIN mode stays numeric and 4–12 digits long.
+		await pickMode('PIN');
+		await sleep(150);
+		await s.fill('#password', '12');
+		await s.fill('#confirm', '12');
+		await sleep(200);
+		s.check('vault-pin-short-rejected', (await createDisabled()) === true, '2-digit PIN rejected');
+		await s.fill('#password', '1234');
+		await s.fill('#confirm', '1234');
+		await sleep(200);
+		s.check('vault-pin-accepted', (await createDisabled()) === false, '4-digit PIN accepted');
+
+		// Back to a password for the full create → seed → shell flow.
+		await pickMode('Password');
+		await sleep(150);
 		await s.fill('#password', 'hunter2secret');
 		await s.fill('#confirm', 'hunter2secret');
 		await sleep(200);
@@ -1250,13 +1273,19 @@ function defaultTour(profile) {
 		: ['welcome', 'unlock', 'home', 'sidebar', 'doc', 'whiteboard', 'graph', 'settings', 'palette', 'split', 'capture', 'capture-locked', 'widget'];
 }
 
+/** Scenarios that require the desktop layout (sidebar, split view, graph). */
+const DESKTOP_ONLY = new Set(['sidebar', 'split', 'graph', 'graphPan', 'settings']);
+
 function scenariosFor(profile, name) {
 	const names = name.split(',').map((s) => s.trim()).filter(Boolean);
 	const out = [];
 	for (const n of names) {
 		if (n === 'all') out.push(...defaultTour(profile));
-		else if (SCENARIOS[n]) out.push(n);
-		else throw new Error(`unknown scenario: ${n} (have: ${Object.keys(SCENARIOS).join(', ')}, all)`);
+		else if (!SCENARIOS[n]) throw new Error(`unknown scenario: ${n} (have: ${Object.keys(SCENARIOS).join(', ')}, all)`);
+		// Explicitly requesting a desktop-only scenario on a phone/fold used to
+		// hang for 150 s; skip it with a note instead (issue #148).
+		else if (profile.mobile && DESKTOP_ONLY.has(n)) console.log(`  (skipping ${n}: desktop-only)`);
+		else out.push(n);
 	}
 	return out.length > 0 ? out : defaultTour(profile);
 }
