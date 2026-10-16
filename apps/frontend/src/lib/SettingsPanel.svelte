@@ -461,7 +461,7 @@ sentinel check</pre>
 					<Button onclick={backupVault} disabled={backingUp}>{backingUp ? 'Backing up…' : 'Back up'}</Button>
 				</div>
 				{#if backupMsg}
-					<div class="backup-msg" role="status">{backupMsg}</div>
+					<div class="backup-msg" role="status" title={backupMsg}>{backupMsg}</div>
 				{/if}
 				<div class="backup-hint">
 					{#if isAndroid}
@@ -630,7 +630,7 @@ sentinel check</pre>
 	 * text take the remaining width (wrapping instead of squeezing the button). */
 	.ai-status-row :global(.btn) { flex-shrink: 0; white-space: nowrap; }
 	.ai-status { font-size: 12px; color: var(--color-text-muted); line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
-	.backup-msg { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); word-break: break-all; }
+	.backup-msg { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 	.backup-hint { margin-top: 8px; font-size: 12px; color: var(--color-text-faint); line-height: 1.5; }
 	.backup-hint code {
 		background: var(--color-surface-hover); border: 1px solid var(--color-border);

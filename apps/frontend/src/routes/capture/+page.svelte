@@ -94,6 +94,10 @@
 	{:else if status === 'locked'}
 		<VaultGuard onunlock={handleUnlock} />
 	{:else}
+		<header class="capture-head">
+			<span class="capture-title">Quick capture</span>
+			<span class="capture-hint"><kbd>Esc</kbd> close</span>
+		</header>
 		<!-- svelte-ignore a11y_autofocus -->
 		<textarea
 			class="note"
@@ -127,6 +131,15 @@
 		   glassy gradients) so quick capture matches the main app. */
 		background: transparent;
 	}
+	.capture-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: calc(10px + var(--safe-top)) 16px 0;
+		font-size: 12px;
+		color: var(--color-text-muted);
+	}
+	.capture-title { font-weight: 600; color: var(--color-text); }
 	.note {
 		flex: 1;
 		border: none;
@@ -137,7 +150,7 @@
 		font-size: 15px;
 		line-height: 1.6;
 		font-family: inherit;
-		padding: calc(14px + var(--safe-top)) 16px 14px;
+		padding: 10px 16px 14px;
 	}
 	.note::placeholder { color: var(--color-text-faint); }
 	.bar {

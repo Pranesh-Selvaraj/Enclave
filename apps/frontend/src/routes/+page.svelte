@@ -127,7 +127,7 @@
 					<a href="/{doc.id}" class="doc-card keep-card">
 						<span class="keep-title">{doc.title || 'Untitled'}</span>
 						<span class="keep-foot">
-							{#if doc.is_favorite}<span class="keep-fav"><Icon name="star" size={13} /></span>{/if}
+							{#if doc.is_favorite}<span class="keep-fav"><Icon name="star" size={13} filled /></span>{/if}
 							<span class="keep-time">{timeAgo(doc.updated_at)}</span>
 						</span>
 					</a>

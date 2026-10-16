@@ -268,6 +268,19 @@
 	} | null>(null);
 	let lastSync = $state('');
 	const connectedCount = $derived(networkStatus?.peers.filter(p => p.connected).length ?? 0);
+	// Sync-state label for the phone top-bar avatar (issue #146): the dot alone
+	// was ambiguous and too small, so the button now announces and paints off /
+	// searching / connected distinctly.
+	const syncState = $derived(
+		!networkRunning ? 'off' : connectedCount > 0 ? 'connected' : 'searching',
+	);
+	const syncLabel = $derived(
+		syncState === 'connected'
+			? `${connectedCount} device${connectedCount === 1 ? '' : 's'} connected`
+			: syncState === 'searching'
+				? 'Searching for your devices on this network'
+				: 'Sync is off — open to enable',
+	);
 	// Collapsed by default — the footer stays dense; the card opens on demand.
 	// ponytail: per-device localStorage, not account state — no backend for it.
 	let syncCardOpen = $state(false);
@@ -934,12 +947,12 @@
 								oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
 								onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
 								<span class="tree-item-icon">
-									<Icon name="star" size={14} />
+									<Icon name="star" size={14} filled />
 								</span>
 								<span class="tree-item-label">{doc.title || 'Untitled'}</span>
 								<span class="tree-item-actions">
-									<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Unfavorite">
-										<Icon name="star" size={13} />
+									<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Unfavorite" aria-label="Remove from favorites">
+										<Icon name="star" size={13} filled />
 									</button>
 									<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
 										<Icon name="more" size={13} />
@@ -1394,8 +1407,14 @@
 					</button>
 				{/if}
 			</div>
-			<button class="topbar-btn topbar-avatar" onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }} aria-label="P2P sync" title="P2P sync">
-				<span class="topbar-sync-dot" class:online={networkRunning} class:peers={connectedCount > 0}></span>
+			<button
+				class="topbar-btn topbar-avatar sync-{syncState}"
+				onclick={() => { openUI('drawer'); syncCardOpen = true; haptic(); }}
+				aria-label="P2P sync — {syncLabel}"
+				title={syncLabel}
+			>
+				{#if connectedCount > 0}<span class="topbar-sync-count">{connectedCount}</span>{/if}
+				<span class="topbar-sync-dot"></span>
 			</button>
 		</header>
 		<div class="main-pane">
@@ -1623,8 +1642,9 @@
 	}
 	.pill-action:active { background: var(--color-surface-active); }
 	.topbar-avatar {
-		width: 38px;
-		height: 38px;
+		position: relative;
+		width: 44px;
+		height: 44px;
 		border-radius: 50%;
 		background: var(--color-surface-hover);
 	}
@@ -1649,11 +1669,29 @@
 		width: 9px;
 		height: 9px;
 		border-radius: 50%;
-		background: var(--color-border-strong);
-		transition: background 0.2s;
+		/* Off is a visible hollow ring, not a faint fill (issue #146). */
+		background: transparent;
+		border: 2px solid var(--color-text-muted);
+		transition: background 0.2s, border-color 0.2s;
 	}
-	.topbar-sync-dot.online { background: var(--color-success); }
-	.topbar-sync-dot.peers { animation: sync-pulse 2.4s ease-out infinite; }
+	.sync-searching .topbar-sync-dot { background: var(--color-warning); border-color: var(--color-warning); animation: sync-pulse 2.4s ease-out infinite; }
+	.sync-connected .topbar-sync-dot { background: var(--color-success); border-color: var(--color-success); }
+	.topbar-sync-count {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		min-width: 14px;
+		height: 14px;
+		padding: 0 3px;
+		border-radius: 999px;
+		background: var(--color-success);
+		color: var(--color-on-accent);
+		font-size: 9px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 
 	.drawer-title { display: none; }
 
