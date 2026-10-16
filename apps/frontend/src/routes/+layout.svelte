@@ -1582,7 +1582,7 @@
 		height: 42px;
 		margin: 0 6px;
 		padding: 0 2px 0 2px;
-		border: 1px solid var(--color-border);
+		border: 1px solid var(--color-control-border);
 		border-radius: 999px;
 		background: var(--color-surface-hover);
 	}
@@ -1764,7 +1764,7 @@
 		padding: 0 4px;
 		border-radius: 999px;
 		background: var(--color-accent);
-		color: #fff;
+		color: var(--color-on-accent);
 		font-size: 9px;
 		font-weight: 700;
 		display: flex;
@@ -2075,7 +2075,7 @@
 		transition: background 0.15s;
 	}
 	.new-page-btn:hover { background: var(--color-accent);
-		color: #fff; }
+		color: var(--color-on-accent); }
 
 	.footer-row {
 		display: flex;
@@ -2228,7 +2228,7 @@
 		font-size: 12px;
 		transition: background 0.15s, color 0.15s;
 	}
-	.sync-start:hover { background: var(--color-accent); color: #fff; }
+	.sync-start:hover { background: var(--color-accent); color: var(--color-on-accent); }
 
 	/* Account pairing (one-time code + LAN address). */
 	.pair-box {
@@ -2305,7 +2305,7 @@
 		flex: 1;
 		min-width: 0;
 		background: var(--color-surface-hover);
-		border: 1px solid var(--color-border);
+		border: 1px solid var(--color-control-border);
 		border-radius: var(--radius-sm);
 		color: var(--color-text);
 		font-size: 11px;
@@ -2325,7 +2325,7 @@
 		display: flex;
 		align-items: center;
 	}
-	.peer-add-btn:hover { background: var(--color-accent); color: #fff; }
+	.peer-add-btn:hover { background: var(--color-accent); color: var(--color-on-accent); }
 
 	.last-sync { font-size: 11px; color: var(--color-text-faint); }
 

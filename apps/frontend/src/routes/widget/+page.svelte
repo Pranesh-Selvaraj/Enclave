@@ -277,7 +277,7 @@
 		border: none;
 		border-radius: 10px;
 		background: var(--color-accent);
-		color: #fff;
+		color: var(--color-on-accent);
 		font-size: 14px;
 		font-weight: 600;
 		font-family: inherit;

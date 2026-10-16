@@ -330,10 +330,10 @@
 		font-family: inherit;
 		cursor: pointer;
 	}
-	.btn.primary { background: var(--color-accent); color: #fff; }
+	.btn.primary { background: var(--color-accent); color: var(--color-on-accent); }
 	.btn.primary:hover { background: var(--color-accent-hover); }
 	.btn.primary:disabled { opacity: 0.45; cursor: default; }
-	.btn.secondary { background: var(--color-surface-hover); color: var(--color-text); border: 1px solid var(--color-border); }
+	.btn.secondary { background: var(--color-surface-hover); color: var(--color-text); border: 1px solid var(--color-control-border); }
 	.btn.secondary:hover { background: var(--color-surface-active); }
 	.btn.secondary:disabled { opacity: 0.45; cursor: default; }
 

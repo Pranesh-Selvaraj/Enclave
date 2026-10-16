@@ -1,5 +1,7 @@
 // Reactive theme + appearance settings. Persisted to localStorage.
 
+import { tuneAccent, onAccent } from './color.js';
+
 let mode = $state<'auto' | 'dark' | 'light'>('auto');
 /** Effective theme — `auto` resolves to the OS preference. */
 let current = $state<'dark' | 'light'>('dark');
@@ -70,10 +72,13 @@ function apply() {
 		background = 'matte';
 	}
 	root.setAttribute('data-theme', current);
-	// Accent: preset ids keep the CSS preset path; raw hex values (and
-	// presets too) are also forced via an inline var so anything works.
+	// Accent: one source of truth in JS so preset *and* custom colors are tuned
+	// per resolved theme (accent text on surface + accent-subtle clears AA, and
+	// on-accent ink clears AA on the fill). See issues #142/#143/#144.
 	root.setAttribute('data-accent', ACCENTS.some((a) => a.id === accent) ? accent : 'custom');
-	root.style.setProperty('--color-accent', accentHex(accent));
+	const appliedAccent = tuneAccent(accentHex(accent), current);
+	root.style.setProperty('--color-accent', appliedAccent);
+	root.style.setProperty('--color-on-accent', onAccent(appliedAccent));
 	root.setAttribute('data-font', font);
 	root.setAttribute('data-density', density);
 	root.setAttribute('data-font-size', fontSize);
