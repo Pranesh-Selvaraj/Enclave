@@ -5,7 +5,7 @@ import { makeReactive } from './reactivity.js';
 
 	let {
 		content = undefined,
-		placeholder = 'Type / for commands…',
+		placeholder = 'Write something…',
 		editable = true,
 		autofocus = false,
 		editor: boundEditor = $bindable(undefined as Editor | undefined),
@@ -30,7 +30,7 @@ import { makeReactive } from './reactivity.js';
 	function mountEditor(node: HTMLElement) {
 		const instance = new Editor({
 			element: node,
-			extensions: editorExtensions(),
+			extensions: editorExtensions({ placeholder }),
 			content: content as string | undefined,
 			editable,
 			autofocus,
@@ -98,10 +98,10 @@ import { makeReactive } from './reactivity.js';
 		position: relative;
 	}
 
-	:global(.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before) {
+	:global(.tiptap-editor .ProseMirror .is-empty::before) {
 		content: attr(data-placeholder);
 		float: left;
-		color: var(--color-text-muted);
+		color: var(--color-text-faint);
 		pointer-events: none;
 		height: 0;
 	}

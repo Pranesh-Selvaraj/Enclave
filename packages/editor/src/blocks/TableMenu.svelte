@@ -24,10 +24,16 @@
 		const start = ed.view.coordsAtPos(from);
 		const end = ed.view.coordsAtPos(to);
 
-		position = {
-			x: Math.min(Math.max((start.left + end.right) / 2 - 130, 8), window.innerWidth - 276),
-			y: Math.min(Math.max(start.top - 44, 8), window.innerHeight - 52),
-		};
+		const MENU_W = 268;
+		const MENU_H = 40;
+		const x = Math.min(Math.max((start.left + end.right) / 2 - MENU_W / 2, 8), window.innerWidth - MENU_W - 8);
+		// Prefer below the selected row: opening above covered the page tags when
+		// the table was the first block (issue #156). Flip above only when there
+		// is no room below.
+		const below = end.bottom + 6;
+		const above = start.top - MENU_H - 6;
+		const y = below + MENU_H <= window.innerHeight - 8 ? below : Math.max(above, 8);
+		position = { x, y };
 		visible = true;
 	}
 

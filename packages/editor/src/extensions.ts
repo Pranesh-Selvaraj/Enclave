@@ -4,10 +4,10 @@ import Link from '@tiptap/extension-link';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { mount, unmount } from 'svelte';
 import CodeBlockView from './blocks/CodeBlockView.svelte';
-import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { SlashCommand } from './extensions/slash-command.js';
+import { BlockPlaceholders } from './extensions/placeholders.js';
 import { PageLink } from './extensions/page-link.js';
 import { Mention, MentionTrigger } from './extensions/mention.js';
 import { Callout } from './extensions/callout.js';
@@ -20,7 +20,7 @@ import { Bookmark } from './extensions/bookmark.js';
 import { DragHandle } from './extensions/drag-handle.js';
 
 /** Shared editor extension list — used by the editor and by HTML/JSON converters. */
-export function editorExtensions() {
+export function editorExtensions(options: { placeholder?: string } = {}) {
 	return [
 		StarterKit.configure({
 			heading: { levels: [1, 2, 3] },
@@ -30,7 +30,7 @@ export function editorExtensions() {
 			// (a duplicate would throw "Duplicate extension names found").
 			link: false,
 		}),
-		Placeholder,
+		BlockPlaceholders.configure({ fallback: options.placeholder ?? 'Write something…' }),
 		TaskList,
 		TaskItem.configure({ nested: true }),
 		// External links: clickable <a> marks. openOnClick keeps the standard

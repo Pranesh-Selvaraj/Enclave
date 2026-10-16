@@ -181,6 +181,31 @@ await probe('link', 'link', (e) => {
 	e.chain().focus().insertContent('docs link').selectAll().setLink({ href: 'https://example.com' }).run();
 }, '[docs link](https://example.com)');
 
+// ── Empty-block placeholders (#155) ──────────────────────────────────────────
+async function expectPlaceholder(name: string, insert: (e: Editor) => void, expected: string) {
+	reset();
+	insert(ed);
+	// The slash command leaves the caret inside the inserted block; an empty
+	// programmatic command can leave a node/all-selection instead, so move the
+	// caret into the first empty textblock to match real usage.
+	let caret: number | null = null;
+	ed.state.doc.descendants((node, pos) => {
+		// descendants keeps walking siblings, so latch the first match.
+		if (caret === null && node.type.isTextblock && node.content.size === 0) caret = pos + 1;
+		return true;
+	});
+	if (caret !== null) ed.commands.setTextSelection(caret);
+	await new Promise((r) => setTimeout(r, 0));
+	const found = [...ed.view.dom.querySelectorAll('[data-placeholder]')].map((el) => el.getAttribute('data-placeholder'));
+	assert.ok(found.includes(expected), `${name}: expected placeholder "${expected}", found [${found.join(', ')}] doc=${JSON.stringify(ed.getJSON())} html=${ed.view.dom.innerHTML.slice(0, 220)}`);
+}
+await expectPlaceholder('paragraph', () => {}, 'Write something…');
+await expectPlaceholder('callout', (e) => { e.chain().focus().toggleCallout().run(); }, 'Callout text…');
+await expectPlaceholder('quote', (e) => { e.chain().focus().toggleBlockquote().run(); }, 'Quote…');
+await expectPlaceholder('toggle', (e) => { e.chain().focus().setToggleBlock().run(); }, 'Toggle content…');
+await expectPlaceholder('heading', (e) => { e.chain().focus().setHeading({ level: 2 }).run(); }, 'Heading 2');
+console.log('empty-block placeholders: PASS');
+
 // ── Report ───────────────────────────────────────────────────────────────────
 console.log('\n=== Editor element / data-format matrix ===\n');
 let losses = 0;

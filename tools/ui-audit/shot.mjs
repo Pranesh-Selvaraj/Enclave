@@ -1097,6 +1097,33 @@ const SCENARIOS = {
 		await s.shot('whiteboard-toolbar-scrolled');
 	},
 
+	// Regression check for #156: with a table at the top of the page the table
+	// menu must not cover the tag row above the editor.
+	async editorTableMenu(s) {
+		await s.unlock();
+		await s.openDoc('doc-1');
+		await sleep(300);
+		await s.eval(`document.querySelector('.tiptap-editor .ProseMirror')?.focus()`);
+		await s.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+		await s.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+		await s.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+		await s.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+		await sleep(150);
+		await s.cdp.send('Input.insertText', { text: '/' });
+		await s.waitFor(() => document.querySelector('.slash-menu'), 5000, 'slash menu');
+		await sleep(150);
+		await s.eval(
+			`(() => { const it = [...document.querySelectorAll('.slash-item')].find((x) => x.querySelector('.slash-item-label')?.textContent.trim() === 'Markdown Table'); if (it) it.click(); return !!it; })()`,
+		);
+		await s.waitFor(() => document.querySelector('.tb-menu'), 5000, 'table menu');
+		await sleep(150);
+		const overlap = await s.eval(
+			`(() => { const m = document.querySelector('.tb-menu')?.getBoundingClientRect(); const t = document.querySelector('.doc-tags')?.getBoundingClientRect(); if (!m || !t) return null; return m.top < t.bottom && m.bottom > t.top && m.left < t.right && m.right > t.left; })()`,
+		);
+		s.check('editorel-table-menu-no-tags-overlap', overlap === false, `table menu overlaps the page tags (${overlap})`);
+		await s.shot('editorel-table-menu');
+	},
+
 	async capture(s) {
 		await s.boot(`${s.base}/capture`);
 		await s.waitFor(() => document.querySelector('.note'), 15000, 'capture composer');
@@ -1127,7 +1154,7 @@ function defaultTour(profile) {
 }
 
 /** Scenarios that require the desktop layout (sidebar, split view, graph). */
-const DESKTOP_ONLY = new Set(['sidebar', 'split', 'graph', 'graphPan', 'settings']);
+const DESKTOP_ONLY = new Set(['sidebar', 'split', 'graph', 'graphPan', 'settings', 'editorTableMenu']);
 
 function scenariosFor(profile, name) {
 	const names = name.split(',').map((s) => s.trim()).filter(Boolean);

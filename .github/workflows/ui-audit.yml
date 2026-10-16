@@ -40,7 +40,7 @@ jobs:
         run: |
           node tools/ui-audit/run.mjs \
             --profiles desktop,phone \
-            --scenario all,flows,auditPages,settingsMatrix,appearanceMatrix,settingsScales,overlaysXlarge,vaultFlow,settingsAI,settingsUpdates,settingsBackup,settingsLock,graphPan,whiteboardScroll
+            --scenario all,flows,auditPages,settingsMatrix,appearanceMatrix,settingsScales,overlaysXlarge,vaultFlow,settingsAI,settingsUpdates,settingsBackup,settingsLock,graphPan,whiteboardScroll,editorTableMenu
 
       - name: Upload screenshots + report
         if: always()
@@ -72,7 +72,7 @@ jobs:
       - name: Run UI audit (Windows Edge/Chrome, DPI scaling)
         # One line: the default Windows shell (PowerShell) does not continue
         # lines with a backslash. Desktop-only scenarios skip on phone (#148).
-        run: node tools/ui-audit/run.mjs --profiles desktop,windows-125,windows-150,phone --scenario all,flows,auditPages,settingsMatrix,appearanceMatrix,settingsScales,overlaysXlarge,vaultFlow,settingsAI,settingsUpdates,settingsBackup,settingsLock,graphPan,whiteboardScroll
+        run: node tools/ui-audit/run.mjs --profiles desktop,windows-125,windows-150,phone --scenario all,flows,auditPages,settingsMatrix,appearanceMatrix,settingsScales,overlaysXlarge,vaultFlow,settingsAI,settingsUpdates,settingsBackup,settingsLock,graphPan,whiteboardScroll,editorTableMenu
 
       - name: Upload screenshots + report
         if: always()
