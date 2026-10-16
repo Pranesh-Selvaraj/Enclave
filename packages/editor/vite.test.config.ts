@@ -1,9 +1,10 @@
-// Test-only vite config: bundles test-insert.ts (which imports the editor's
-// extensions, some of which are Svelte node views) into a node-runnable file.
-// All node_modules stay external; the test runs with `node --conditions=browser`
-// so bare 'svelte' resolves to the client runtime — the same instance the
-// components' 'svelte/internal/client' imports use (a split runtime makes
-// svelte throw effect_orphan on mount).
+// Test-only vite config: bundles the editor test entrypoints (which import the
+// editor's extensions, some of which are Svelte node views) into node-runnable
+// files. All node_modules stay external; the tests run with
+// `node --conditions=browser` so bare 'svelte' resolves to the client runtime —
+// the same instance the components' 'svelte/internal/client' imports use (a
+// split runtime makes svelte throw effect_orphan on mount).
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
@@ -15,10 +16,14 @@ export default defineConfig({
 		noExternal: [],
 	},
 	build: {
-		ssr: 'test-insert.ts',
+		ssr: true,
 		outDir: 'dist-test',
 		ssrEmitAssets: false,
 		rollupOptions: {
+			input: {
+				'test-insert': fileURLToPath(new URL('./test-insert.ts', import.meta.url)),
+				'test-elements': fileURLToPath(new URL('./test-elements.ts', import.meta.url)),
+			},
 			external: ['svelte', 'svelte/internal/client'],
 		},
 	},
