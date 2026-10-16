@@ -9,13 +9,15 @@ export function stubSource() {
     { id: 'doc-2', title: 'Meeting notes — design sync', created_at: iso(300), updated_at: iso(5), is_favorite: false, is_archived: false, folder_id: 'f-1' },
     { id: 'doc-3', title: 'Reading list', created_at: iso(200), updated_at: iso(30), is_favorite: true, is_archived: false, folder_id: null },
     { id: 'doc-4', title: 'Vault architecture', created_at: iso(150), updated_at: iso(70), is_favorite: false, is_archived: false, folder_id: null },
-    { id: 'doc-5', title: 'Weekly review — sprint 12', created_at: iso(100), updated_at: iso(80), is_favorite: false, is_archived: false, folder_id: null }
+    { id: 'doc-5', title: 'Weekly review — sprint 12', created_at: iso(100), updated_at: iso(80), is_favorite: false, is_archived: false, folder_id: null },
+    { id: 'doc-rich', title: 'Everything bagel', created_at: iso(20), updated_at: iso(0), is_favorite: false, is_archived: false, folder_id: null }
   ];
   const archived = [{ id: 'doc-x', title: 'Old draft', created_at: iso(500), updated_at: iso(400), is_favorite: false, is_archived: true, folder_id: null }];
   let createdCount = 0;
   const folders = [{ id: 'f-1', name: 'Projects', created_at: iso(600) }];
   const tags = [
     { doc_id: 'doc-1', tags: ['product', 'planning'] },
+    { doc_id: 'doc-rich', tags: ['kitchen-sink'] },
     { doc_id: 'doc-2', tags: ['design'] },
     { doc_id: 'doc-3', tags: ['reading'] }
   ];
@@ -29,6 +31,46 @@ export function stubSource() {
       { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'UI rework pass on desktop + mobile' }] }] }
     ]},
     { type: 'paragraph', content: [{ type: 'text', text: 'Next: split view polish and the graph touch targets.' }] }
+  ]};
+  const richContent = { type: 'doc', content: [
+    { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Everything bagel' }] },
+    { type: 'paragraph', content: [
+      { type: 'text', marks: [{ type: 'bold' }], text: 'Bold' }, { type: 'text', text: ', ' },
+      { type: 'text', marks: [{ type: 'italic' }], text: 'italic' }, { type: 'text', text: ', ' },
+      { type: 'text', marks: [{ type: 'strike' }], text: 'strike' }, { type: 'text', text: ', ' },
+      { type: 'text', marks: [{ type: 'code' }], text: 'code' }, { type: 'text', text: ' and a ' },
+      { type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com/a/very/long/link' } }], text: 'link' }, { type: 'text', text: '.' }
+    ]},
+    { type: 'bulletList', content: [
+      { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First bullet with a fairly long sentence to stress wrapping at 360px width.' }] }] },
+      { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Second bullet' }] }] }
+    ]},
+    { type: 'taskList', content: [
+      { type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Unchecked task' }] }] },
+      { type: 'taskItem', attrs: { checked: true }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Checked task' }] }] }
+    ]},
+    { type: 'callout', attrs: { type: 'info' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Callout with a long body that must wrap inside the rounded box without overflowing on a phone.' }] }] },
+    { type: 'toggleBlock', attrs: { collapsed: false }, content: [
+      { type: 'toggleSummary', content: [{ type: 'text', text: 'Toggle title' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Toggle body content.' }] }
+    ]},
+    { type: 'codeBlock', attrs: { language: 'js' }, content: [{ type: 'text', text: 'const veryLongLine = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";' }] },
+    { type: 'table', content: [
+      { type: 'tableRow', content: [
+        { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Column one' }] }] },
+        { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Column two' }] }] },
+        { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Column three' }] }] }
+      ]},
+      { type: 'tableRow', content: [
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A cell with a long value that should wrap or scroll' }] }] },
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'short' }] }] },
+        { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'another' }] }] }
+      ]}
+    ]},
+    { type: 'database', attrs: { data: JSON.stringify({ columns: [{ id: 'c1', name: 'Task', type: 'text' }, { id: 'c2', name: 'Status', type: 'select' }, { id: 'c3', name: 'Notes', type: 'text' }], rows: [ { id: 'r1', cells: { c1: 'Ship the mobile drawer', c2: 'Done', c3: 'long note' } }, { id: 'r2', cells: { c1: 'Audit editor components', c2: 'Doing', c3: '' } } ], density: 'comfortable' }) } },
+    { type: 'image', attrs: { src: 'https://example.com/pic.png', alt: 'Placeholder image', caption: 'A caption under the image' } },
+    { type: 'bookmark', attrs: { url: 'https://example.com/a/very/long/url/that/should/ellipsize/nicely', title: 'A bookmark card title' } },
+    { type: 'horizontalRule' }
   ]};
   const whiteboard = { elements: [
     { id: 'sh-1', type: 'sticky', x: 60, y: 80, w: 180, h: 120, text: 'Ship incremental sync' },
@@ -105,8 +147,9 @@ export function stubSource() {
       case 'get_blocks': {
         const id = args && args.documentId;
         const t = (tags.find((x) => x.doc_id === id) || {}).tags || [];
+        const content = id === 'doc-rich' ? richContent : docContent;
         const blocks = [
-          { id: id + '-content', document_id: id, type: 'doc', content: docContent, sort_order: 0, created_at: iso(1), updated_at: iso(1) },
+          { id: id + '-content', document_id: id, type: 'doc', content, sort_order: 0, created_at: iso(1), updated_at: iso(1) },
           { id: id + '-tags', document_id: id, type: 'tags', content: { tags: t }, sort_order: 2, created_at: iso(1), updated_at: iso(1) },
           { id: id + '-meta', document_id: id, type: 'meta', content: { icon: '🚀', cover: id === 'doc-1' ? 'grad-2' : '' }, sort_order: 3, created_at: iso(1), updated_at: iso(1) }
         ];

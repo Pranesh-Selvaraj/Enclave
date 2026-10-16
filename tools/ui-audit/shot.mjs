@@ -1124,6 +1124,39 @@ const SCENARIOS = {
 		await s.shot('editorel-table-menu');
 	},
 
+	// Kitchen-sink document: every editor component in one page, captured at
+	// each profile and the database views (issue #162).
+	async docRich(s) {
+		await s.unlock();
+		await s.openDoc('doc-rich');
+		await sleep(400);
+		await s.shot('docrich-top');
+		const scrollToSel = async (sel) => {
+			const ok = await s.eval(
+				`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; el.scrollIntoView({ block: 'center' }); return true; })()`,
+			);
+			await sleep(250);
+			return ok;
+		};
+		await scrollToSel('.tiptap-editor [data-callout]');
+		await s.shot('docrich-blocks');
+		await scrollToSel('.tiptap-editor table');
+		await s.shot('docrich-table');
+		await scrollToSel('.tiptap-editor [data-database]');
+		await s.shot('docrich-database');
+		for (const v of ['kanban', 'gallery', 'list']) {
+			const ok = await s.eval(
+				`(() => { const b = [...document.querySelectorAll('.db-view-btn')].find((x) => x.textContent.trim() === ${JSON.stringify(v)}); if (b) b.click(); return !!b; })()`,
+			);
+			s.check(`docrich-db-${v}`, ok, `database view "${v}" available`);
+			await sleep(250);
+			await s.shot(`docrich-db-${v}`);
+		}
+		await s.eval(`(() => { const b = [...document.querySelectorAll('.db-view-btn')].find((x) => x.textContent.trim() === 'table'); if (b) b.click(); return !!b; })()`);
+		await scrollToSel('.tiptap-editor figure[data-img]');
+		await s.shot('docrich-media');
+	},
+
 	async capture(s) {
 		await s.boot(`${s.base}/capture`);
 		await s.waitFor(() => document.querySelector('.note'), 15000, 'capture composer');
