@@ -61,12 +61,22 @@ export const Image = Node.create({
 	},
 
 	parseHTML() {
-		return [{ tag: 'figure[data-img]' }];
+		// `img[src]` lets Markdown/HTML import (and pasted images) create an
+		// image node — without it, imported `![alt](src)` was dropped.
+		return [{ tag: 'figure[data-img]' }, { tag: 'img[src]' }];
 	},
 
 	renderHTML({ HTMLAttributes }) {
-		// ponytail: ZWSP child — the markdown serializer skips blank nodes
-		return ['figure', mergeAttributes(HTMLAttributes, { 'data-img': '' }), '\u200b'];
+		// The visible UI is a Svelte node view, which HTML/Markdown serializers
+		// never run — so the serialized form must carry the real <img> itself,
+		// or export (and copy/paste) silently drops the image. The outer figure
+		// keeps src/alt for parseHTML round-tripping.
+		const { src, alt } = HTMLAttributes as { src?: string; alt?: string };
+		return [
+			'figure',
+			mergeAttributes(HTMLAttributes, { 'data-img': '' }),
+			['img', { src: src ?? '', alt: alt ?? '' }],
+		];
 	},
 
 	addNodeView() {

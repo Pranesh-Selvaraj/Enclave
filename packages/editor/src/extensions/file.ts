@@ -51,7 +51,16 @@ export const File = Node.create({
 	},
 
 	renderHTML({ HTMLAttributes }) {
-		return ['div', mergeAttributes(HTMLAttributes, { 'data-file': '' }), '\u200b'];
+		// The UI is a Svelte node view that serializers never run, so the file
+		// must be serialized as a real link or export drops it entirely. The
+		// div keeps path/name for parseHTML round-tripping.
+		const { path, name } = HTMLAttributes as { path?: string; name?: string };
+		const label = name || path || 'Attached file';
+		return [
+			'div',
+			mergeAttributes(HTMLAttributes, { 'data-file': '' }),
+			['a', { href: path ?? '' }, label],
+		];
 	},
 
 	addCommands() {
