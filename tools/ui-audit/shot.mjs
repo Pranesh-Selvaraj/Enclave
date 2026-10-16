@@ -795,7 +795,9 @@ const SCENARIOS = {
 		await sleep(250);
 		const custom = await s.eval(`document.documentElement.getAttribute('data-accent')`);
 		const customVar = await s.eval(`getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim()`);
-		s.check('accent-custom', custom === 'custom' && customVar.toLowerCase() === '#cc00ff', `data-accent=${custom} var=${customVar}`);
+		// The theme store tunes a custom accent per theme for contrast (issues
+		// #142/#143), so assert the attribute and a valid hex, not the raw value.
+		s.check('accent-custom', custom === 'custom' && /^#[0-9a-f]{6}$/i.test(customVar), `data-accent=${custom} var=${customVar}`);
 		await s.shot('set-accent-custom');
 		// General + Security toggles.
 		await clickSeg(s, 'Home page order', 'Title');

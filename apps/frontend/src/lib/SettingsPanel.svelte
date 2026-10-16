@@ -596,7 +596,7 @@ sentinel check</pre>
 	.color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 	.color-field input[type="color"]::-webkit-color-swatch { border: none; border-radius: 6px; }
 	.seg {
-		background: var(--color-surface-hover); border: 1px solid var(--color-border);
+		background: var(--color-surface-hover); border: 1px solid var(--color-control-border);
 		border-radius: var(--radius-sm); color: var(--color-text-muted);
 		padding: 3px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
 		text-transform: capitalize;
@@ -621,7 +621,7 @@ sentinel check</pre>
 	.switch input:checked + .switch-slider { background: var(--color-accent); }
 	.switch input:checked + .switch-slider::before { transform: translateX(16px); background: #fff; }
 	.ai-input {
-		background: var(--color-surface-hover); border: 1px solid var(--color-border);
+		background: var(--color-surface-hover); border: 1px solid var(--color-control-border);
 		border-radius: var(--radius-sm); color: var(--color-text);
 		font-size: 13px; font-family: var(--font-mono); padding: 3px 8px; width: 190px;
 	}

@@ -303,7 +303,7 @@
 		transition: background 0.15s, border-color 0.15s;
 	}
 	.quick-btn:hover { background: var(--color-surface-hover); border-color: var(--color-border-strong); }
-	.quick-btn.primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+	.quick-btn.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
 	.quick-btn.primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 	.quick-icon { display: flex; }
 
@@ -548,7 +548,7 @@
 			border: none;
 			border-radius: 18px;
 			background: var(--color-accent);
-			color: #fff;
+			color: var(--color-on-accent);
 			box-shadow: var(--shadow-md);
 			cursor: pointer;
 			transition: border-radius 0.15s, transform 0.08s ease-out, box-shadow 0.15s, background 0.15s, color 0.15s;

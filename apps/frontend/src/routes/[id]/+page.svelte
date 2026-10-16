@@ -1304,7 +1304,7 @@
 		border: none; border-radius: var(--radius-md);
 		padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
 	}
-	.ai-send { background: var(--color-accent); color: #fff; }
+	.ai-send { background: var(--color-accent); color: var(--color-on-accent); }
 	.ai-send:disabled { opacity: 0.5; cursor: default; }
 	.ai-stop { background: var(--color-surface-active); color: var(--color-text); }
 

@@ -559,7 +559,7 @@
 		gap: 4px;
 		padding: 3px;
 		margin: 0 0 18px;
-		border: 1px solid var(--color-border);
+		border: 1px solid var(--color-control-border);
 		border-radius: 999px;
 		background: var(--color-surface-hover);
 	}
@@ -650,7 +650,7 @@
 		width: 100%;
 		box-sizing: border-box;
 		padding: 12px 14px;
-		border: 1px solid var(--color-border);
+		border: 1px solid var(--color-control-border);
 		border-radius: 10px;
 		background: var(--color-bg);
 		color: var(--color-text);
