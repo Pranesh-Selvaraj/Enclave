@@ -1,4 +1,12 @@
-# Enclave
+<p align="center">
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.svg">
+    <img src="docs/brand/lockup.svg" width="470" alt="Enclave">
+  </picture>
+  <br>
+  <br>
+</p>
 
 > **Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi.**
 >
@@ -149,6 +157,9 @@ enclave/
 │   ├── workflows/android.yml      # CI: Android release APK/AAB (signs with secrets)
 │   └── workflows/ui-audit.yml     # CI: scheduled screenshot + layout audit
 ├── apps/
+│   ├── android/                    # Native Android app — Kotlin + Jetpack Compose (ADR 0005)
+│   │   ├── app/src/main/java/com/enclave/app/    # Screens, core binding, block renderer
+│   │   └── scripts/build-core.sh  # Builds the core .so + UniFFI bindings into the app
 │   └── frontend/                  # Shared SvelteKit frontend — desktop + Android shells
 │       ├── src/
 │       │   ├── app.html           # Root HTML shell (viewport-fit=cover for safe areas)
@@ -196,11 +207,11 @@ enclave/
 │       └── src/
 │           ├── theme.svelte.ts     # Theme/appearance + notes view/sort settings (persisted)
 │           └── components/         # Icon, Logo, Button, EmojiPicker, ShortcutsDialog
-├── src-tauri/                      # Rust backend (Tauri v2)
-│   ├── crates/
-│   │   ├── core-db/                # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
-│   │   ├── core-network/           # mDNS + WebSocket P2P transport (auth + AEAD)
-│   │   └── core-api/               # Shell-agnostic API + UniFFI bindings for the Android app
+├── core/                           # Shared Rust core (ADR 0003) — the only shared code
+│   ├── core-db/                    # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
+│   ├── core-network/               # mDNS + WebSocket P2P transport (auth + AEAD)
+│   └── core-api/                   # Shell-agnostic API + UniFFI bindings for the native apps
+├── src-tauri/                      # Desktop shell (Tauri v2) — consumes core/ by path
 │   ├── src/
 │   │   ├── main.rs                 # Binary entry point
 │   │   ├── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
@@ -316,7 +327,8 @@ npx tsx apps/frontend/tests/saveRetry.test.ts
 npx tsx apps/frontend/tests/wbLayout.test.ts
 
 # Rust workspace tests
-cargo test --workspace --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path core/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 
 # Frontend type-check
 npm run check -w @enclave/frontend
@@ -444,6 +456,7 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 - [docs/HISTORY.md](docs/HISTORY.md) — what the project was built with, why, and what changed
 - [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
 - [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
+- [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules
 
 ## License
 

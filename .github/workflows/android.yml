@@ -65,13 +65,13 @@ jobs:
       # change to the core-api UniFFI surface without regenerating them
       # still compiles and fails at runtime, so fail here instead (#120).
       - name: Verify UniFFI Kotlin bindings match core-api
-        working-directory: src-tauri
+        working-directory: core
         run: |
           cargo build -p core-api --features uniffi
           cargo run -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
             generate --library target/debug/libcore_api.so \
-            --language kotlin --out-dir gen/android/app/src/main/java
-          git diff --exit-code -- gen/android/app/src/main/java/uniffi/
+            --language kotlin --out-dir ../src-tauri/gen/android/app/src/main/java
+          git diff --exit-code -- ../src-tauri/gen/android/app/src/main/java/uniffi/
 
       - name: npm install
         run: npm ci

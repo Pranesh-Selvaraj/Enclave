@@ -76,6 +76,14 @@ fn set_cipher_pragmas(conn: &Connection, key: &[u8]) -> rusqlite::Result<()> {
     ))
 }
 
+/// Current vault schema version.
+///
+/// Bump this and add a guarded step in [`migrate`] whenever the on-disk schema
+/// changes. The value lives in SQLite's `user_version`, so it travels with the
+/// encrypted database file and any build can tell exactly how old a vault is.
+/// Versions are never renumbered.
+pub const SCHEMA_VERSION: i32 = 1;
+
 fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS documents (
@@ -127,6 +135,45 @@ fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(conn, "documents", "rev", "ALTER TABLE documents ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(conn, "documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TEXT")?;
     ensure_column(conn, "documents", "folder_id", "ALTER TABLE documents ADD COLUMN folder_id TEXT")?;
+    Ok(())
+}
+
+fn schema_version(conn: &Connection) -> rusqlite::Result<i32> {
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+}
+
+fn set_schema_version(conn: &Connection, version: i32) -> rusqlite::Result<()> {
+    conn.execute_batch(&format!("PRAGMA user_version = {version};"))
+}
+
+/// Bring the database to [`SCHEMA_VERSION`].
+///
+/// Every step is guarded by its version and written idempotently, so the same
+/// call is safe on a fresh vault, on an existing vault from before versioning
+/// (`user_version` is still 0), and on a vault already at this version. A vault
+/// written by a newer build is refused rather than half-read.
+fn migrate(conn: &Connection) -> Result<(), String> {
+    let mut version =
+        schema_version(conn).map_err(|e| format!("Failed to read the vault schema version: {e}"))?;
+
+    if version > SCHEMA_VERSION {
+        return Err(format!(
+            "vault schema v{version} is newer than this build supports (v{SCHEMA_VERSION}) — update Enclave"
+        ));
+    }
+
+    // v1 — the original schema, previously applied implicitly by `create_tables`
+    // on every open. Existing vaults already have it.
+    if version < 1 {
+        create_tables(conn).map_err(|e| format!("Failed to apply vault schema v1: {e}"))?;
+        set_schema_version(conn, 1).map_err(|e| format!("Failed to record vault schema v1: {e}"))?;
+        version = 1;
+    }
+
+    // Future migrations append here:
+    // if version < 2 { apply_v2(conn)?; set_schema_version(conn, 2)?; version = 2; }
+    let _ = version;
+
     Ok(())
 }
 
@@ -517,7 +564,7 @@ pub fn init_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     ensure_vec_extension();
     let conn = Connection::open(db_path).map_err(|e| format!("Failed to create database: {e}"))?;
     set_cipher_pragmas(&conn, key).map_err(|e| format!("Failed to set encryption key: {e}"))?;
-    create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    migrate(&conn)?;
     set_perf_pragmas(&conn).map_err(|e| format!("Failed to set perf pragmas: {e}"))?;
     Ok(conn)
 }
@@ -533,8 +580,8 @@ pub fn open_vault(db_path: &std::path::Path, key: &[u8]) -> Result<Connection, S
     conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |_| Ok(()))
         .map_err(|_| "Invalid vault key".to_string())?;
 
-    // Ensure tables exist (idempotent — safe to call on every unlock)
-    create_tables(&conn).map_err(|e| format!("Failed to create tables: {e}"))?;
+    // Apply any pending migrations (idempotent — safe to call on every unlock)
+    migrate(&conn)?;
     set_perf_pragmas(&conn).map_err(|e| format!("Failed to set perf pragmas: {e}"))?;
 
     Ok(conn)
@@ -1989,5 +2036,151 @@ mod tests {
         let (b_docs, _) = query_sync_data(&b).unwrap();
         assert!(b_docs[0].deleted_at.is_none());
         assert_eq!(b_docs[0].title, "resurrected");
+    }
+
+    #[test]
+    fn vault_stamps_and_migrates_schema_version() {
+        let dir = std::env::temp_dir().join(format!("enclave-schema-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let key = [9u8; 32];
+
+        let conn = init_vault(&db_path, &key).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION, "fresh vault is stamped");
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 'Doc', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+
+        // Simulate a vault created before versioning: the schema is present but
+        // user_version is still 0.
+        set_schema_version(&conn, 0).unwrap();
+        drop(conn);
+
+        let conn = open_vault(&db_path, &key).unwrap();
+        assert_eq!(
+            schema_version(&conn).unwrap(),
+            SCHEMA_VERSION,
+            "opening an unversioned vault migrates and stamps it"
+        );
+        let docs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM documents", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(docs, 1, "migration must not touch data");
+        drop(conn);
+
+        // Idempotent: a second open leaves the version unchanged.
+        let conn = open_vault(&db_path, &key).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn vault_refuses_a_newer_schema() {
+        let dir = std::env::temp_dir().join(format!("enclave-schema-newer-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let key = [10u8; 32];
+
+        let conn = init_vault(&db_path, &key).unwrap();
+        set_schema_version(&conn, SCHEMA_VERSION + 1).unwrap();
+        drop(conn);
+
+        let err = match open_vault(&db_path, &key) {
+            Ok(_) => panic!("a vault from a newer build must be refused"),
+            Err(e) => e,
+        };
+        assert!(err.contains("newer"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn vault_schema_contract_is_stable() {
+        let dir =
+            std::env::temp_dir().join(format!("enclave-schema-contract-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let key = [11u8; 32];
+        let conn = init_vault(&db_path, &key).unwrap();
+
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .unwrap();
+        let tables: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        for expected in ["documents", "blocks", "folders", "embeddings", "settings"] {
+            assert!(tables.iter().any(|t| t == expected), "missing table {expected}");
+        }
+
+        let mut stmt = conn.prepare("PRAGMA table_info(documents)").unwrap();
+        let columns: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        // Columns are append-only within a schema version: adding is fine,
+        // removing or renaming requires a version bump and a migration.
+        for expected in [
+            "id",
+            "title",
+            "created_at",
+            "updated_at",
+            "is_favorite",
+            "is_archived",
+            "rev",
+            "deleted_at",
+            "folder_id",
+        ] {
+            assert!(
+                columns.iter().any(|c| c == expected),
+                "missing documents.{expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn block_schema_v1_json_round_trips_unchanged() {
+        let dir =
+            std::env::temp_dir().join(format!("enclave-block-schema-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("test.db");
+        let key = [12u8; 32];
+        let conn = init_vault(&db_path, &key).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('d1', 'Doc', 'c', 'u')",
+            [],
+        )
+        .unwrap();
+
+        // The canonical editor document (every node and mark the contract
+        // supports). A native editor must produce and consume exactly this
+        // shape, so the core's job is to preserve it verbatim.
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/block-schema-v1.json"
+        ));
+        let content: serde_json::Value = serde_json::from_str(raw).unwrap();
+        upsert_block(
+            &conn,
+            &Block {
+                id: "b1".into(),
+                document_id: "d1".into(),
+                block_type: "doc".into(),
+                content: content.clone(),
+                sort_order: 0.0,
+                created_at: "t1".into(),
+                updated_at: "t1".into(),
+            },
+        )
+        .unwrap();
+
+        let blocks = query_blocks(&conn, "d1").unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(
+            blocks[0].content, content,
+            "the core must preserve the editor's document JSON verbatim — it is the block-schema contract"
+        );
     }
 }

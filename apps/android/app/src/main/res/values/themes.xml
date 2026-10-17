@@ -1,0 +1,6 @@
+<resources>
+    <!-- Window chrome only; all in-app colour comes from the Compose theme. -->
+    <style name="Theme.enclave" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFF6F5F2</item>
+    </style>
+</resources>

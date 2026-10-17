@@ -45,8 +45,11 @@ jobs:
       - name: npm install
         run: npm ci
 
-      - name: Rust tests
-        run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+      - name: Rust tests (core)
+        run: cargo test --manifest-path core/Cargo.toml
+
+      - name: Rust tests (desktop shell)
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Svelte typecheck
         run: npm run check -w @enclave/frontend

@@ -1,0 +1,12 @@
+# Gradle
+.gradle/
+build/
+app/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Built by apps/android/scripts/build-core.sh
+app/src/main/jniLibs/
