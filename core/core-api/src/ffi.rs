@@ -77,6 +77,17 @@ impl From<CoreDocument> for Document {
     }
 }
 
+/// Latest-release information for the in-app updater.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct UpdateInfo {
+    pub current_version: String,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub notes: String,
+    pub asset_name: Option<String>,
+    pub asset_size: Option<u64>,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Folder {
     pub id: String,
@@ -357,6 +368,27 @@ impl FfiCore {
     /// user chooses — SAF on Android. Restoring is desktop-only for now.
     pub fn backup_vault(&self) -> Result<String, EnclaveError> {
         Ok(self.core.backup_vault()?)
+    }
+
+    /// Check GitHub Releases for a newer version. `current_version` comes from
+    /// the shell (its own version), so the core need not know it.
+    pub async fn check_update(&self, current_version: String) -> Result<UpdateInfo, EnclaveError> {
+        let info = self.core.check_update(&current_version).await?;
+        Ok(UpdateInfo {
+            current_version: info.current_version,
+            latest_version: info.latest_version,
+            update_available: info.update_available,
+            notes: info.notes,
+            asset_name: info.asset_name,
+            asset_size: info.asset_size,
+        })
+    }
+
+    /// Download the asset from the last check into `dest_dir` and return its
+    /// path. Fails closed on a bad SHA-256 digest or Ed25519 signature; the
+    /// shell only has to hand the verified file to the platform installer.
+    pub async fn download_update(&self, dest_dir: String) -> Result<String, EnclaveError> {
+        Ok(self.core.download_update(&dest_dir).await?)
     }
 
     /// Create a vault protected by `password`; returns the recovery mnemonic

@@ -19,6 +19,7 @@ use rusqlite::Connection;
 
 pub mod crypto;
 pub mod pairing;
+pub mod updater;
 
 // Re-exported so shells never need to depend on core-db directly.
 pub use core_db::{
@@ -304,6 +305,9 @@ pub struct EnclaveCore {
     sync_events: tokio::sync::broadcast::Sender<SyncEvent>,
     /// Cancels the active one-time pairing listener, if any.
     pairing_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// The asset selected by the last update check; a download never takes a
+    /// URL from a caller.
+    updater_pending: std::sync::Mutex<Option<updater::UpdateAsset>>,
     /// Monotonic counter bumped by data-changing operations, including sync
     /// merges. Shells poll it to refresh derived state (home-screen widgets)
     /// without an event bridge or a JNI hook (ADR 0006).
@@ -320,8 +324,35 @@ impl EnclaveCore {
             network: Arc::new(NetworkState::new()),
             sync_events,
             pairing_cancel: Mutex::new(None),
+            updater_pending: std::sync::Mutex::new(None),
             mutation_revision: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Look up the latest GitHub release for `current_version` and remember
+    /// its asset for a verified download. Returns what the shell should show.
+    pub async fn check_update(&self, current_version: &str) -> CoreResult<updater::UpdateInfo> {
+        let current = current_version.to_string();
+        let (info, asset) = tokio::task::spawn_blocking(move || updater::check_for_update(&current))
+            .await
+            .map_err(|e| CoreError::Network(e.to_string()))??;
+        *self.updater_pending.lock().map_err(|_| poisoned())? = asset;
+        Ok(info)
+    }
+
+    /// Download the asset from the last check into `dest_dir`, verifying its
+    /// SHA-256 digest, size and Ed25519 signature; returns the local path.
+    pub async fn download_update(&self, dest_dir: &str) -> CoreResult<String> {
+        let asset = self
+            .updater_pending
+            .lock()
+            .map_err(|_| poisoned())?
+            .clone()
+            .ok_or_else(|| CoreError::InvalidInput("Run an update check first".into()))?;
+        let dir = PathBuf::from(dest_dir);
+        tokio::task::spawn_blocking(move || updater::download_update(&asset, &dir))
+            .await
+            .map_err(|e| CoreError::Network(e.to_string()))?
     }
 
     /// Monotonic count of data-changing operations. A shell polls it and

@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- P2P sync (mDNS): Android's Wi-Fi driver drops multicast unless the app
          holds a MulticastLock, which needs these two permissions. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

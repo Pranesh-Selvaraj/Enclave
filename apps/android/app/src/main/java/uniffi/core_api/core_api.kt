@@ -827,6 +827,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -848,6 +852,8 @@ fun uniffi_core_api_checksum_method_fficore_archive_document(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_backup_vault(
 ): Short
+fun uniffi_core_api_checksum_method_fficore_check_update(
+): Short
 fun uniffi_core_api_checksum_method_fficore_connect_peer(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_create_document(
@@ -861,6 +867,8 @@ fun uniffi_core_api_checksum_method_fficore_delete_block(
 fun uniffi_core_api_checksum_method_fficore_delete_document(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_delete_folder(
+): Short
+fun uniffi_core_api_checksum_method_fficore_download_update(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_duplicate_document(
 ): Short
@@ -1009,6 +1017,8 @@ fun uniffi_core_api_fn_method_fficore_archive_document(`ptr`: Pointer,`id`: Rust
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_backup_vault(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_check_update(`ptr`: Pointer,`currentVersion`: RustBuffer.ByValue,
+): Long
 fun uniffi_core_api_fn_method_fficore_connect_peer(`ptr`: Pointer,`host`: RustBuffer.ByValue,`port`: Short,
 ): Long
 fun uniffi_core_api_fn_method_fficore_create_document(`ptr`: Pointer,`title`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1023,6 +1033,8 @@ fun uniffi_core_api_fn_method_fficore_delete_document(`ptr`: Pointer,`id`: RustB
 ): Unit
 fun uniffi_core_api_fn_method_fficore_delete_folder(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_core_api_fn_method_fficore_download_update(`ptr`: Pointer,`destDir`: RustBuffer.ByValue,
+): Long
 fun uniffi_core_api_fn_method_fficore_duplicate_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_find_or_create_document(`ptr`: Pointer,`title`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1242,6 +1254,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_core_api_checksum_method_fficore_backup_vault() != 20058.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_core_api_checksum_method_fficore_check_update() != 61038.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_core_api_checksum_method_fficore_connect_peer() != 6581.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1261,6 +1276,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_delete_folder() != 64178.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_download_update() != 50188.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_duplicate_document() != 6748.toShort()) {
@@ -1906,6 +1924,12 @@ public interface FfiCoreInterface {
      */
     fun `backupVault`(): kotlin.String
     
+    /**
+     * Check GitHub Releases for a newer version. `current_version` comes from
+     * the shell (its own version), so the core need not know it.
+     */
+    suspend fun `checkUpdate`(`currentVersion`: kotlin.String): UpdateInfo
+    
     suspend fun `connectPeer`(`host`: kotlin.String, `port`: kotlin.UShort)
     
     fun `createDocument`(`title`: kotlin.String): Document
@@ -1923,6 +1947,13 @@ public interface FfiCoreInterface {
     fun `deleteDocument`(`id`: kotlin.String)
     
     fun `deleteFolder`(`id`: kotlin.String)
+    
+    /**
+     * Download the asset from the last check into `dest_dir` and return its
+     * path. Fails closed on a bad SHA-256 digest or Ed25519 signature; the
+     * shell only has to hand the verified file to the platform installer.
+     */
+    suspend fun `downloadUpdate`(`destDir`: kotlin.String): kotlin.String
     
     fun `duplicateDocument`(`id`: kotlin.String): Document
     
@@ -2181,6 +2212,31 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     
 
     
+    /**
+     * Check GitHub Releases for a newer version. `current_version` comes from
+     * the shell (its own version), so the core need not know it.
+     */
+    @Throws(EnclaveException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `checkUpdate`(`currentVersion`: kotlin.String) : UpdateInfo {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_check_update(
+                thisPtr,
+                FfiConverterString.lower(`currentVersion`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeUpdateInfo.lift(it) },
+        // Error FFI converter
+        EnclaveException.ErrorHandler,
+    )
+    }
+
+    
     @Throws(EnclaveException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `connectPeer`(`host`: kotlin.String, `port`: kotlin.UShort) {
@@ -2280,6 +2336,32 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     }
     
     
+
+    
+    /**
+     * Download the asset from the last check into `dest_dir` and return its
+     * path. Fails closed on a bad SHA-256 digest or Ed25519 signature; the
+     * shell only has to hand the verified file to the platform installer.
+     */
+    @Throws(EnclaveException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `downloadUpdate`(`destDir`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_download_update(
+                thisPtr,
+                FfiConverterString.lower(`destDir`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
+        // Error FFI converter
+        EnclaveException.ErrorHandler,
+    )
+    }
 
     
     @Throws(EnclaveException::class)override fun `duplicateDocument`(`id`: kotlin.String): Document {
@@ -3428,6 +3510,57 @@ public object FfiConverterTypeTagInfo: FfiConverterRustBuffer<TagInfo> {
     override fun write(value: TagInfo, buf: ByteBuffer) {
             FfiConverterString.write(value.`docId`, buf)
             FfiConverterSequenceString.write(value.`tags`, buf)
+    }
+}
+
+
+
+/**
+ * Latest-release information for the in-app updater.
+ */
+data class UpdateInfo (
+    var `currentVersion`: kotlin.String, 
+    var `latestVersion`: kotlin.String, 
+    var `updateAvailable`: kotlin.Boolean, 
+    var `notes`: kotlin.String, 
+    var `assetName`: kotlin.String?, 
+    var `assetSize`: kotlin.ULong?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeUpdateInfo: FfiConverterRustBuffer<UpdateInfo> {
+    override fun read(buf: ByteBuffer): UpdateInfo {
+        return UpdateInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: UpdateInfo) = (
+            FfiConverterString.allocationSize(value.`currentVersion`) +
+            FfiConverterString.allocationSize(value.`latestVersion`) +
+            FfiConverterBoolean.allocationSize(value.`updateAvailable`) +
+            FfiConverterString.allocationSize(value.`notes`) +
+            FfiConverterOptionalString.allocationSize(value.`assetName`) +
+            FfiConverterOptionalULong.allocationSize(value.`assetSize`)
+    )
+
+    override fun write(value: UpdateInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`currentVersion`, buf)
+            FfiConverterString.write(value.`latestVersion`, buf)
+            FfiConverterBoolean.write(value.`updateAvailable`, buf)
+            FfiConverterString.write(value.`notes`, buf)
+            FfiConverterOptionalString.write(value.`assetName`, buf)
+            FfiConverterOptionalULong.write(value.`assetSize`, buf)
     }
 }
 

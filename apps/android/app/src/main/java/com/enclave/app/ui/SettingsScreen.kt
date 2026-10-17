@@ -1,9 +1,12 @@
 package com.enclave.app.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,17 +16,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +37,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,20 +53,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.enclave.app.BuildConfig
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.core_api.UpdateInfo
 import java.io.File
 
 private enum class SettingsSheet { THEME, ACCENT }
 
 /**
  * Settings: appearance (device-local), security (the widget-hide dial is vault
- * data because both the widget renderer and the app must agree on it), and
- * about. Backup and updates land with the SAF/updater work.
+ * data because both the widget renderer and the app must agree on it), data
+ * (backup export), updates (opt-in, like the desktop app) and about.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,9 +77,19 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
     val scope = rememberCoroutineScope()
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
     var hideWidgets by remember { mutableStateOf<String?>(null) }
-    var pendingBackupPath by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var pendingBackupPath by remember { mutableStateOf<String?>(null) }
+
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateBusy by remember { mutableStateOf<String?>(null) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        hideWidgets = withContext(Dispatchers.IO) {
+            runCatching { Core.ffi.getSetting("widget_hide_locked") }.getOrNull()
+        }
+    }
 
     // The export writes the encrypted snapshot the core produced to wherever
     // the user points the system picker (SAF); no storage permission needed.
@@ -85,12 +103,6 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
         }
         // The private snapshot is a duplicate once copied (or abandoned).
         if (path != null) runCatching { File(path).delete() }
-    }
-
-    LaunchedEffect(Unit) {
-        hideWidgets = withContext(Dispatchers.IO) {
-            runCatching { Core.ffi.getSetting("widget_hide_locked") }.getOrNull()
-        }
     }
 
     Scaffold(
@@ -188,20 +200,57 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
                 }
             }
             item {
-                Column {
-                    Text(
-                        "The backup is the encrypted vault database — without your password or recovery phrase it stays unreadable.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    message?.let {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                Text(
+                    "The backup is the encrypted vault database — without your password or recovery phrase it stays unreadable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            item { SectionTitle("Updates") }
+            item {
+                SettingsRow(
+                    title = "Check for updates",
+                    value = updateBusy,
+                ) {
+                    if (updateBusy != null) return@SettingsRow
+                    scope.launch {
+                        updateBusy = "Checking…"
+                        updateError = null
+                        message = null
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                Core.ffi.checkUpdate(BuildConfig.VERSION_NAME)
+                            }
+                        }
+                            .onSuccess { info ->
+                                updateBusy = null
+                                if (info.updateAvailable) {
+                                    updateInfo = info
+                                } else {
+                                    message = "You're on the latest version (${info.currentVersion})."
+                                }
+                            }
+                            .onFailure {
+                                updateBusy = null
+                                updateError = "Update check failed: ${it.message}"
+                            }
                     }
+                }
+            }
+            item {
+                Text(
+                    "Enclave never checks on its own — only when you ask. A download is verified against the pinned release key before the installer runs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                (updateError ?: message)?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
 
@@ -237,6 +286,79 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
         )
 
         null -> Unit
+    }
+
+    updateInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { if (updateBusy == null) updateInfo = null },
+            title = { Text("Enclave ${info.latestVersion} is available") },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        "You are on ${info.currentVersion}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        info.notes.ifBlank { "No release notes for this version." },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    info.assetSize?.let { size ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Download: ${size / 1024uL / 1024uL} MB",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    updateError?.let {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = updateBusy == null,
+                    onClick = {
+                        scope.launch {
+                            updateBusy = "Downloading…"
+                            updateError = null
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    Core.ffi.downloadUpdate(context.cacheDir.absolutePath)
+                                }
+                            }
+                                .onSuccess { path ->
+                                    updateBusy = null
+                                    updateInfo = null
+                                    val started = runCatching { installApk(context, path) }
+                                    message = started.fold(
+                                        onSuccess = { "Update verified — starting the installer…" },
+                                        onFailure = { "Could not start the installer: ${it.message}" },
+                                    )
+                                }
+                                .onFailure {
+                                    updateBusy = null
+                                    updateError = "Update failed: ${it.message}"
+                                }
+                        }
+                    },
+                ) { Text(updateBusy ?: "Download & install") }
+            },
+            dismissButton = {
+                TextButton(enabled = updateBusy == null, onClick = { updateInfo = null }) {
+                    Text("Later")
+                }
+            },
+        )
     }
 }
 
@@ -299,3 +421,20 @@ private fun copyToUri(context: Context, path: String, uri: Uri): String = runCat
         ?: error("the chosen location could not be opened")
     "Backup saved (${bytes.size / 1024} KB)."
 }.getOrElse { "Could not save the backup: ${it.message}" }
+
+/**
+ * Hands a verified APK to the Android package installer. It over-installs the
+ * running app (user data is kept) and needs REQUEST_INSTALL_PACKAGES.
+ */
+private fun installApk(context: Context, path: String) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        File(path),
+    )
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(intent)
+}
