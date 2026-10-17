@@ -4,6 +4,11 @@
 >
 > No cloud. No servers. No internet required (the optional local-AI assistant talks only to an endpoint you configure).
 
+> [!IMPORTANT]
+> **Enclave is migrating to dedicated native apps for every platform.**
+> The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
+> **If you want to use Enclave today, download the latest stable release, currently [v1.13.0](https://github.com/Pranesh-Selvaraj/Enclave/releases/latest).** That release is the supported product while the native apps are built; build from `main` only if you are contributing to the migration.
+
 ## Screenshots
 
 Desktop — notes dashboard, editor with backlinks, whiteboard and the link graph:
