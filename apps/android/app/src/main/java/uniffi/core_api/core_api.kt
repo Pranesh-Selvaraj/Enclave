@@ -825,6 +825,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -843,6 +845,8 @@ internal interface IntegrityCheckingUniffiLib : Library {
     fun uniffi_core_api_checksum_method_fficore_app_dir(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_archive_document(
+): Short
+fun uniffi_core_api_checksum_method_fficore_backup_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_connect_peer(
 ): Short
@@ -1002,6 +1006,8 @@ fun uniffi_core_api_fn_constructor_fficore_new(`appDir`: RustBuffer.ByValue,unif
 fun uniffi_core_api_fn_method_fficore_app_dir(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_archive_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_backup_vault(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_connect_peer(`ptr`: Pointer,`host`: RustBuffer.ByValue,`port`: Short,
 ): Long
@@ -1231,6 +1237,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_archive_document() != 42180.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_backup_vault() != 20058.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_connect_peer() != 6581.toShort()) {
@@ -1889,6 +1898,14 @@ public interface FfiCoreInterface {
     
     fun `archiveDocument`(`id`: kotlin.String): Document
     
+    /**
+     * Write a consistent, still-encrypted snapshot of the vault (SQLCipher's
+     * `VACUUM INTO`, so WAL state is included) and return its path inside the
+     * app's private storage. The shell copies that file to a location the
+     * user chooses — SAF on Android. Restoring is desktop-only for now.
+     */
+    fun `backupVault`(): kotlin.String
+    
     suspend fun `connectPeer`(`host`: kotlin.String, `port`: kotlin.UShort)
     
     fun `createDocument`(`title`: kotlin.String): Document
@@ -2138,6 +2155,25 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     uniffiRustCallWithError(EnclaveException) { _status ->
     UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_archive_document(
         it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Write a consistent, still-encrypted snapshot of the vault (SQLCipher's
+     * `VACUUM INTO`, so WAL state is included) and return its path inside the
+     * app's private storage. The shell copies that file to a location the
+     * user chooses — SAF on Android. Restoring is desktop-only for now.
+     */
+    @Throws(EnclaveException::class)override fun `backupVault`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EnclaveException) { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_backup_vault(
+        it, _status)
 }
     }
     )

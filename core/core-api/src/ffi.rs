@@ -351,6 +351,14 @@ impl FfiCore {
         Ok(self.core.reset_vault()?)
     }
 
+    /// Write a consistent, still-encrypted snapshot of the vault (SQLCipher's
+    /// `VACUUM INTO`, so WAL state is included) and return its path inside the
+    /// app's private storage. The shell copies that file to a location the
+    /// user chooses — SAF on Android. Restoring is desktop-only for now.
+    pub fn backup_vault(&self) -> Result<String, EnclaveError> {
+        Ok(self.core.backup_vault()?)
+    }
+
     /// Create a vault protected by `password`; returns the recovery mnemonic
     /// to show once. CPU-heavy (Argon2id) — call off the main thread.
     pub fn create_vault(&self, password: String) -> Result<String, EnclaveError> {

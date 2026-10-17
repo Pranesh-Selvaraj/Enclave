@@ -1,5 +1,9 @@
 package com.enclave.app.ui
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,6 +53,7 @@ import com.enclave.app.core.Core
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private enum class SettingsSheet { THEME, ACCENT }
 
@@ -63,6 +69,23 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
     val scope = rememberCoroutineScope()
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
     var hideWidgets by remember { mutableStateOf<String?>(null) }
+    var pendingBackupPath by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    // The export writes the encrypted snapshot the core produced to wherever
+    // the user points the system picker (SAF); no storage permission needed.
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        val path = pendingBackupPath
+        pendingBackupPath = null
+        if (uri != null && path != null) {
+            message = copyToUri(context, path, uri)
+        }
+        // The private snapshot is a duplicate once copied (or abandoned).
+        if (path != null) runCatching { File(path).delete() }
+    }
 
     LaunchedEffect(Unit) {
         hideWidgets = withContext(Dispatchers.IO) {
@@ -141,6 +164,46 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
                 }
             }
             item { SettingsRow("Lock now", "The password is required to open it again") { onLock() } }
+
+            item { SectionTitle("Data") }
+            item {
+                SettingsRow(
+                    title = "Export vault backup",
+                    value = if (busy) "Preparing…" else null,
+                ) {
+                    scope.launch {
+                        busy = true
+                        message = null
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { Core.ffi.backupVault() }
+                        }
+                        busy = false
+                        result
+                            .onSuccess { path ->
+                                pendingBackupPath = path
+                                exportLauncher.launch(File(path).name)
+                            }
+                            .onFailure { message = "Could not create the backup: ${it.message}" }
+                    }
+                }
+            }
+            item {
+                Column {
+                    Text(
+                        "The backup is the encrypted vault database — without your password or recovery phrase it stays unreadable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    message?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
 
             item { SectionTitle("About") }
             item { SettingsRow("Version", BuildConfig.VERSION_NAME, onClick = null) }
@@ -228,3 +291,11 @@ private fun SettingsRow(
         }
     }
 }
+
+/** Copies the core's private snapshot to the user-chosen SAF location. */
+private fun copyToUri(context: Context, path: String, uri: Uri): String = runCatching {
+    val bytes = File(path).readBytes()
+    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+        ?: error("the chosen location could not be opened")
+    "Backup saved (${bytes.size / 1024} KB)."
+}.getOrElse { "Could not save the backup: ${it.message}" }
