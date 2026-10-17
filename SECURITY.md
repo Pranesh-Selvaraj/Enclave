@@ -76,6 +76,22 @@ Auto-updates are strictly opt-in and never run unattended: **Settings → Update
 
 This removes the "compromised GitHub account/release or TLS-terminating proxy" path to arbitrary code execution. It is why an unsigned release fails closed instead of installing.
 
+## Known Dependency Advisories
+
+Some alerts on this repository cannot be fixed here, because the fix lives upstream. They are listed so that an open alert is not mistaken for an oversight.
+
+### `glib` < 0.20.0 — GHSA-wrw7-89jp-8q8g (medium)
+
+`glib 0.18.5` is reported for unsound `Iterator` and `DoubleEndedIterator` implementations in `glib::VariantStrIter`. The patched release is `0.20.0`, and **no version of the desktop shell can reach it**:
+
+- `glib` arrives transitively, on Linux only, through `tauri` → `gtk 0.18.2` → `glib ^0.18`.
+- `gtk 0.18` accepts only `glib ^0.18`, so `cargo update -p glib --precise 0.20.0` fails to resolve: *"failed to select a version for the requirement `glib = "^0.18"`"*.
+- Upgrading Tauri does not help. The newest `wry` (0.57.0) still pins `gtk ^0.18` and `webkit2gtk 2.0.2`, and `webkit2gtk` itself is still at 2.0.2. Dependabot's own bump attempts for this package fail for the same reason.
+
+The vulnerable iterator is never called: Enclave does not use `glib` directly, and the advisory concerns a specific iterator type rather than a path reachable from user input. It is an upstream soundness issue, not a remote-code-execution one, and it is confined to the Linux desktop build.
+
+**Resolution.** ADR 0002 removes the webview from the shipping product, which takes `gtk`, `webkit2gtk`, `wry` and `glib` out of the dependency graph entirely. Until that lands, this alert is expected and accepted, and the Dependabot alert is dismissed with this section as the reason.
+
 ## Supported Versions
 
 Only the latest release receives security patches. There are no LTS releases.
