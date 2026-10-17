@@ -436,6 +436,9 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
 - [SECURITY.md](SECURITY.md) — vulnerability reporting and security model
+- [docs/HISTORY.md](docs/HISTORY.md) — what the project was built with, why, and what changed
+- [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
+- [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
 
 ## License
 
