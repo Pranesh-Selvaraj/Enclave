@@ -75,6 +75,13 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        Intent.ACTION_SEND -> scope.launch {
+                            val text = entry.getStringExtra(Intent.EXTRA_TEXT)
+                            screen = Screen.Note(
+                                NoteFactory.create(CreateKind.TEXT, prefill = text).id,
+                            )
+                        }
+
                         EnclaveIntents.ACTION_OPEN_NOTE -> {
                             entry.getStringExtra(EnclaveIntents.EXTRA_DOC_ID)
                                 ?.let { screen = Screen.Note(it) }
