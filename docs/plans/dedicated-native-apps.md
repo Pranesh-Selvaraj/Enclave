@@ -21,24 +21,18 @@ Ship a native Android app and a native desktop app that share no UI code, both b
 
 ## Phases
 
+Phases are criteria-driven, not calendar-driven: a phase ends when its exit criteria are met, and the next begins as soon as its dependencies are complete.
+
 ```mermaid
-gantt
-    title Dedicated native apps — phased plan (indicative)
-    dateFormat YYYY-MM-DD
-    axisFormat %b %Y
-    section Decide
-    Phase 0 — spike and stack decision        :p0, 2026-11-01, 28d
-    section Core
-    Phase 1 — core extraction and contract    :p1, after p0, 21d
-    section Android
-    Phase 2 — native Android app              :p2, after p1, 70d
-    section Desktop
-    Phase 3 — native desktop app              :p3, after p1, 84d
-    section Release
-    Phase 4 — parity, interop, rollout        :p4, after p2, 45d
+graph LR
+    P0["Phase 0<br/>Spike and stack decision"] --> P1["Phase 1<br/>Core extraction and contract"]
+    P1 --> P2["Phase 2<br/>Native Android app"]
+    P1 --> P3["Phase 3<br/>Native desktop app"]
+    P2 --> P4["Phase 4<br/>Parity, interop, rollout"]
+    P3 --> P4
 ```
 
-### Phase 0 — Spike and stack decision (2–4 weeks)
+### Phase 0 — Spike and stack decision
 
 **Deliverables**
 
@@ -54,7 +48,7 @@ gantt
 - The Android slice proves the UniFFI path end to end on a real device.
 - The contract tests exist as a skeleton (vault fixture, one sync frame fixture).
 
-### Phase 1 — Core extraction and contract (2–3 weeks)
+### Phase 1 — Core extraction and contract
 
 **Deliverables**
 
@@ -70,7 +64,7 @@ gantt
 - The Tauri app still reads and writes the same vaults, unchanged, against the new core layout.
 - Contract documentation is complete enough for an app developer to build against without reading core internals.
 
-### Phase 2 — Native Android app (8–12 weeks)
+### Phase 2 — Native Android app
 
 **Deliverables**
 
@@ -84,7 +78,7 @@ gantt
 - Background sync survives restart and screen-off on a real device; battery measurements recorded.
 - TalkBack pass on primary flows; widgets render while locked.
 
-### Phase 3 — Native desktop app (10–14 weeks, overlaps Phase 2 after Phase 1)
+### Phase 3 — Native desktop app (can run alongside Phase 2 once Phase 1 is complete)
 
 **Deliverables**
 
@@ -98,7 +92,7 @@ gantt
 - Screen-reader pass on primary flows; keyboard-only navigation works.
 - Auto-update path verified on all three OSes, including signature verification.
 
-### Phase 4 — Parity, interoperability, rollout (4–6 weeks)
+### Phase 4 — Parity, interoperability, rollout
 
 **Deliverables**
 
@@ -110,12 +104,12 @@ gantt
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Editor rebuild is larger than estimated | Highest — blocks both apps | Phase 0 prototype with a hard go/no-go; treat the editor as its own subproject with its own milestones. |
+| Editor rebuild proves larger than planned | Highest — blocks both apps | Phase 0 prototype with a hard go/no-go; treat the editor as its own subproject with its own milestones. |
 | Contract drift between apps | Sync breakage, data loss | ADR 0006: versioned surfaces, golden fixtures, interop CI against one core SHA. |
-| Desktop stack choice is wrong | Months lost | Spike both candidates before committing; record evidence in the ADR. |
+| Desktop stack choice is wrong | Costly rework | Spike both candidates before committing; record evidence in the ADR. |
 | Vault migration failure | Data loss | One-way migrations tested against canonical fixtures from every released version; never ship a migration without a round-trip test. |
 | Parity gap (whiteboard, graph, database) | Native apps feel incomplete | Publish a parity checklist per app; do not deprecate Tauri until it is fully green. |
-| Three apps during transition | Maintenance load, confusion | Time-box the transition; keep `main` as the source of truth and release Tauri from its own tags. |
+| Three apps during transition | Maintenance load, confusion | Bound the transition by parity criteria; keep `main` as the source of truth and release Tauri from its own tags. |
 | Android background/battery restrictions | Sync reliability | Foreground service with visible state; measure on real devices; fall back to manual sync when restricted. |
 | C++/new-language risk (if Qt) | Velocity | Confine non-Rust code to presentation; keep the FFI boundary small and typed. |
 
