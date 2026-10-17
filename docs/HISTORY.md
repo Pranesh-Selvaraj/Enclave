@@ -36,7 +36,7 @@ This is the narrative record of **what Enclave was built with, why, what changed
 | 2026-10-17 | Decision to build dedicated native apps on the shared Rust core. | Remove the webview; native platform behaviour; keep one audited core. | ADR 0002 |
 | 2026-10-17 | Monorepo with the core as the only shared code. | Atomic contract changes and one interop test surface. | ADR 0003 |
 | 2026-10-17 | Android app stack: Kotlin + Jetpack Compose. | Native Android with the proven UniFFI path. | ADR 0005 |
-| 2026-10-17 | Desktop stack: Qt 6 (provisional) vs Avalonia, decided by the Phase 0 editor spike. | The editor is the deciding cost and risk. | ADR 0004 |
+| 2026-10-17 | Desktop stack decided: Qt 6, with C++ confined to presentation and the Rust core behind a C ABI. | Mission-first: one audited UI surface, no browser engine or JS runtime, and one mature document engine for the block editor. | ADR 0004 |
 | 2026-10-17 | Contract versioning formalised: vault schema, block schema, sync protocol, FFI. | Two independent apps must never drift. | ADR 0006 |
 | 2026-10-17 | Vault schema versioning implemented: `PRAGMA user_version`, ordered migrations, refusal of newer vaults, and a contract test that locks the v1 table/column set. The canonical editor document is now a checked-in golden fixture that the core must preserve verbatim. | First piece of ADR 0006 in code: every released build can tell how old a vault is, migrate it safely, and prove the document format it reads and writes. | ADR 0006 |
 | 2026-10-17 | Repository restructured around the plan: the core moved to `core/` (its own Cargo workspace, the only shared code) and `apps/android` was created for the native app; the Tauri desktop shell consumes `core/` by path and keeps shipping. CI, CODEOWNERS and docs follow the new layout. | Implements ADR 0003 and makes the core an independently consumable artifact. | ADR 0003 |
@@ -44,8 +44,8 @@ This is the narrative record of **what Enclave was built with, why, what changed
 
 ## Open questions
 
-- **Desktop stack** — ADR 0004 is Proposed until the Phase 0 spike records measurements in an Accepted record.
-- **Android app** — the first slice (vault, notes home, read-only blocks) builds into an APK. Next: the editable Compose editor, the Create stack and the other three layouts, folders/tags/settings, sync UI, and porting the foreground sync service and Glance widgets from the Tauri Android project.
+- **Qt verification** — ADR 0004 is accepted, but Qt is not yet installed on the development machine. Phase 0 must confirm the toolchain, the editor slice, packaging/signing/update and accessibility before implementation; Avalonia is the measured fallback.
+- **Vault schema versioning** — the explicit version and formal migration chain required by ADR 0006 do not exist yet; Phase 1 delivers them.
 - **iOS** — out of scope for the current plan, but the contract must not preclude it.
 
 ## Notable corrections
