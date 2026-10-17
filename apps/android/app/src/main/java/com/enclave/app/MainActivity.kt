@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
             EnclaveTheme(mode = AppPrefs.themeMode, accent = AppPrefs.accent) {
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Vault) }
+                var notice by remember { mutableStateOf<String?>(null) }
 
                 val lock: () -> Unit = {
                     scope.launch {
@@ -106,7 +107,9 @@ class MainActivity : ComponentActivity() {
 
                 when (val current = screen) {
                     Screen.Vault -> VaultScreen(
+                        notice = notice,
                         onUnlocked = {
+                            notice = null
                             SyncController.resumeIfEnabled(this@MainActivity)
                             // Widgets render live again now that the vault is open.
                             WidgetCacheBridge.requestRefresh()
@@ -133,7 +136,14 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Settings -> {
                         BackHandler { screen = Screen.Home }
-                        SettingsScreen(onBack = { screen = Screen.Home }, onLock = lock)
+                        SettingsScreen(
+                            onBack = { screen = Screen.Home },
+                            onLock = lock,
+                            onRestored = {
+                                notice = it
+                                screen = Screen.Vault
+                            },
+                        )
                     }
                 }
             }

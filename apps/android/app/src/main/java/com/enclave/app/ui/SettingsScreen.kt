@@ -33,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -57,6 +58,7 @@ import androidx.core.content.FileProvider
 import com.enclave.app.BuildConfig
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
+import com.enclave.app.sync.SyncController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,7 +74,11 @@ private enum class SettingsSheet { THEME, ACCENT }
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onLock: () -> Unit,
+    onRestored: (String) -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
@@ -84,6 +90,12 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateBusy by remember { mutableStateOf<String?>(null) }
     var updateError by remember { mutableStateOf<String?>(null) }
+
+    var restoreBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var restoreSecret by remember { mutableStateOf("") }
+    var restoreError by remember { mutableStateOf<String?>(null) }
+    var showRestore by remember { mutableStateOf(false) }
+    var restoreBusy by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         hideWidgets = withContext(Dispatchers.IO) {
@@ -103,6 +115,24 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
         }
         // The private snapshot is a duplicate once copied (or abandoned).
         if (path != null) runCatching { File(path).delete() }
+    }
+
+    // Restoring is destructive and re-authenticates, so the picked file is
+    // only staged here; the confirmation dialog collects the secret.
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { readUri(context, uri) } }
+                .onSuccess {
+                    restoreBytes = it
+                    restoreSecret = ""
+                    restoreError = null
+                    showRestore = true
+                }
+                .onFailure { message = "Could not read the backup: ${it.message}" }
+        }
     }
 
     Scaffold(
@@ -202,6 +232,23 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
             item {
                 Text(
                     "The backup is the encrypted vault database — without your password or recovery phrase it stays unreadable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                SettingsRow(
+                    title = "Restore vault backup",
+                    value = if (restoreBusy) "Restoring…" else null,
+                ) {
+                    message = null
+                    runCatching { restoreLauncher.launch(arrayOf("application/octet-stream", "*/*")) }
+                        .onFailure { message = "Could not open the file picker: ${it.message}" }
+                }
+            }
+            item {
+                Text(
+                    "Restoring replaces this device's vault and locks it. Only a backup of this vault opens with your password or recovery phrase.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -360,6 +407,77 @@ fun SettingsScreen(onBack: () -> Unit, onLock: () -> Unit) {
             },
         )
     }
+
+    if (showRestore && restoreBytes != null) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!restoreBusy) {
+                    showRestore = false
+                    restoreBytes = null
+                }
+            },
+            title = { Text("Restore vault backup") },
+            text = {
+                Column {
+                    Text(
+                        "This replaces this device's vault with the backup and locks it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = restoreSecret,
+                        onValueChange = { restoreSecret = it; restoreError = null },
+                        label = { Text("Password or recovery phrase") },
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    restoreError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !restoreBusy && restoreSecret.isNotBlank(),
+                    onClick = {
+                        val bytes = restoreBytes ?: return@TextButton
+                        scope.launch {
+                            restoreBusy = true
+                            restoreError = null
+                            // Background sync must not run against a vault that
+                            // is being replaced.
+                            SyncController.pause(context)
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching { Core.ffi.restoreVault(restoreSecret, bytes) }
+                            }
+                            restoreBusy = false
+                            result
+                                .onSuccess {
+                                    showRestore = false
+                                    restoreBytes = null
+                                    restoreSecret = ""
+                                    WidgetCacheBridge.requestRefresh()
+                                    onRestored("Vault restored — unlock with its password or recovery phrase.")
+                                }
+                                .onFailure { restoreError = "Restore failed: ${it.message}" }
+                        }
+                    },
+                ) { Text(if (restoreBusy) "Restoring…" else "Restore") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !restoreBusy,
+                    onClick = { showRestore = false; restoreBytes = null },
+                ) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -421,6 +539,25 @@ private fun copyToUri(context: Context, path: String, uri: Uri): String = runCat
         ?: error("the chosen location could not be opened")
     "Backup saved (${bytes.size / 1024} KB)."
 }.getOrElse { "Could not save the backup: ${it.message}" }
+
+/** Reads a picked backup, refusing anything absurd before it reaches the core. */
+private fun readUri(context: Context, uri: Uri): ByteArray {
+    val maxBytes = 512L * 1024 * 1024
+    context.contentResolver.openInputStream(uri).use { input ->
+        requireNotNull(input) { "the chosen file could not be opened" }
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            total += read
+            require(total <= maxBytes) { "that file is too large to be a vault backup" }
+            out.write(buffer, 0, read)
+        }
+        return out.toByteArray()
+    }
+}
 
 /**
  * Hands a verified APK to the Android package installer. It over-installs the

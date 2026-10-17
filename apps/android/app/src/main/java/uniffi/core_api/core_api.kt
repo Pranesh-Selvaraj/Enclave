@@ -831,6 +831,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -913,6 +915,8 @@ fun uniffi_core_api_checksum_method_fficore_rename_folder(
 fun uniffi_core_api_checksum_method_fficore_reset_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_restore_document(
+): Short
+fun uniffi_core_api_checksum_method_fficore_restore_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_revision(
 ): Short
@@ -1079,6 +1083,8 @@ fun uniffi_core_api_fn_method_fficore_reset_vault(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_core_api_fn_method_fficore_restore_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_restore_vault(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`backup`: RustBuffer.ByValue,
+): Long
 fun uniffi_core_api_fn_method_fficore_revision(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 fun uniffi_core_api_fn_method_fficore_run_sync_loop(`ptr`: Pointer,
@@ -1345,6 +1351,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_restore_document() != 50388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_restore_vault() != 62251.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_revision() != 53406.toShort()) {
@@ -2002,6 +2011,14 @@ public interface FfiCoreInterface {
     fun `resetVault`()
     
     fun `restoreDocument`(`id`: kotlin.String): Document
+    
+    /**
+     * Replace the vault with a backup snapshot. `secret` is the vault's
+     * password or its 12-word recovery phrase — a restore re-authenticates
+     * the owner. Only a backup of this vault is accepted (it must open with
+     * the derived key); the vault ends locked.
+     */
+    suspend fun `restoreVault`(`secret`: kotlin.String, `backup`: kotlin.ByteArray)
     
     /**
      * Monotonic data-change counter. Shells poll it and refresh derived state
@@ -2664,6 +2681,34 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     )
     }
     
+
+    
+    /**
+     * Replace the vault with a backup snapshot. `secret` is the vault's
+     * password or its 12-word recovery phrase — a restore re-authenticates
+     * the owner. Only a backup of this vault is accepted (it must open with
+     * the derived key); the vault ends locked.
+     */
+    @Throws(EnclaveException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `restoreVault`(`secret`: kotlin.String, `backup`: kotlin.ByteArray) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_restore_vault(
+                thisPtr,
+                FfiConverterString.lower(`secret`),FfiConverterByteArray.lower(`backup`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        EnclaveException.ErrorHandler,
+    )
+    }
 
     
     /**

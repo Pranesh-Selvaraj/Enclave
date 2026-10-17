@@ -391,6 +391,14 @@ impl FfiCore {
         Ok(self.core.download_update(&dest_dir).await?)
     }
 
+    /// Replace the vault with a backup snapshot. `secret` is the vault's
+    /// password or its 12-word recovery phrase — a restore re-authenticates
+    /// the owner. Only a backup of this vault is accepted (it must open with
+    /// the derived key); the vault ends locked.
+    pub async fn restore_vault(&self, secret: String, backup: Vec<u8>) -> Result<(), EnclaveError> {
+        Ok(self.core.restore_vault(&secret, &backup).await?)
+    }
+
     /// Create a vault protected by `password`; returns the recovery mnemonic
     /// to show once. CPU-heavy (Argon2id) — call off the main thread.
     pub fn create_vault(&self, password: String) -> Result<String, EnclaveError> {

@@ -864,6 +864,77 @@ impl EnclaveCore {
         Ok(dest.to_string_lossy().to_string())
     }
 
+    /// Derive the vault key from a password or a 12-word recovery phrase.
+    /// Used by restore to re-authenticate a destructive operation.
+    fn key_from_secret(&self, secret: &str) -> CoreResult<[u8; 32]> {
+        let trimmed = secret.trim();
+        let lowered = trimmed.to_lowercase();
+        if crypto::validate_mnemonic(&lowered) {
+            return crypto::derive_master_key(&lowered);
+        }
+        let blob = self.load_vault_key()?;
+        let mnemonic = crypto::decrypt_with_password(&blob, secret)?;
+        if !crypto::validate_mnemonic(&mnemonic) {
+            return Err(CoreError::InvalidInput(
+                "Invalid password — check it, or use the recovery phrase".into(),
+            ));
+        }
+        crypto::derive_master_key(&mnemonic)
+    }
+
+    /// Replace the vault database with a backup snapshot.
+    ///
+    /// `secret` is the vault's password or its 12-word recovery phrase: a
+    /// restore is destructive, so it re-authenticates the owner instead of
+    /// reusing a session. The backup is validated on a temp copy *first*, with
+    /// the key that `secret` derives — only a backup of **this** vault opens
+    /// with it, which keeps a foreign vault (and its idle vault.key pairing)
+    /// out of scope. The live vault is then locked and its file replaced
+    /// atomically; the core ends locked.
+    pub async fn restore_vault(&self, secret: &str, backup: &[u8]) -> CoreResult<()> {
+        if backup.is_empty() {
+            return Err(CoreError::InvalidInput("The backup file is empty".into()));
+        }
+        let key = self.key_from_secret(secret)?;
+
+        let restore_dir = self.app_dir.join("restore");
+        std::fs::create_dir_all(&restore_dir).map_err(io_err)?;
+        let staged = restore_dir.join("restore.db");
+        std::fs::write(&staged, backup).map_err(io_err)?;
+
+        let check = match core_db::open_vault(&staged, &key) {
+            Ok(conn) => conn,
+            Err(_) => {
+                let _ = std::fs::remove_file(&staged);
+                return Err(CoreError::InvalidInput(
+                    "That backup does not open with that password or recovery phrase — it belongs to a different vault".into(),
+                ));
+            }
+        };
+        let version: i32 = check
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(db_err)?;
+        if version > core_db::SCHEMA_VERSION {
+            drop(check);
+            let _ = std::fs::remove_file(&staged);
+            return Err(CoreError::InvalidInput(format!(
+                "That backup is from a newer Enclave (vault schema v{version}) — update the app first"
+            )));
+        }
+        drop(check);
+
+        // Close the live vault (and its network) before swapping the file.
+        self.lock_vault().await?;
+        let dest = self.app_dir.join(DB_FILENAME);
+        std::fs::rename(&staged, &dest).map_err(io_err)?;
+        // The previous vault's write-ahead files must not sit next to the new
+        // database; SQLCipher would refuse the mismatched WAL.
+        let _ = std::fs::remove_file(self.app_dir.join(format!("{DB_FILENAME}-wal")));
+        let _ = std::fs::remove_file(self.app_dir.join(format!("{DB_FILENAME}-shm")));
+        let _ = std::fs::remove_dir(&restore_dir);
+        Ok(())
+    }
+
     // ── Vault key file (encrypted seed phrase for password-based login) ─────
 
     pub fn store_vault_key(&self, key_data: &[u8]) -> CoreResult<()> {
@@ -1474,5 +1545,42 @@ mod tests {
         let core = EnclaveCore::new(dir.path());
         assert!(matches!(core.widget_notes(), Err(CoreError::VaultLocked)));
         assert!(matches!(core.toggle_checklist_item("x", 0), Err(CoreError::VaultLocked)));
+    }
+
+    #[tokio::test]
+    async fn restore_replaces_the_vault_after_re_authentication() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        core.create_vault("correct horse").unwrap();
+        let kept = core.create_document("Kept").unwrap();
+
+        let backup = std::fs::read(core.backup_vault().unwrap()).unwrap();
+        core.create_document("Discarded").unwrap();
+
+        core.restore_vault("correct horse", &backup).await.unwrap();
+        assert!(!core.is_unlocked(), "a restore ends locked");
+
+        core.unlock_with_password("correct horse").unwrap();
+        let docs = core.list_documents().unwrap();
+        assert!(docs.iter().any(|d| d.id == kept.id), "the backed-up document is present");
+        assert!(!docs.iter().any(|d| d.title == "Discarded"), "post-backup data is gone");
+    }
+
+    #[tokio::test]
+    async fn restore_refuses_a_wrong_secret_or_empty_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        let mnemonic = core.create_vault("correct horse").unwrap();
+        let backup = std::fs::read(core.backup_vault().unwrap()).unwrap();
+
+        assert!(core.restore_vault("wrong secret", &backup).await.is_err());
+        assert!(core.restore_vault("correct horse", &[]).await.is_err());
+        // A refused restore must leave the live vault untouched and unlocked.
+        assert!(core.is_unlocked());
+        assert!(core.list_documents().is_ok());
+
+        // The recovery phrase is accepted in place of the password.
+        core.restore_vault(mnemonic.trim(), &backup).await.unwrap();
+        assert!(!core.is_unlocked());
     }
 }
