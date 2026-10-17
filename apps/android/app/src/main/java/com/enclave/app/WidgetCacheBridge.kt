@@ -46,13 +46,21 @@ internal object WidgetCacheBridge {
             }
         }
 
-        // Slow fallback tick: covers sync merges and anything that did not
-        // emit a change. Mutations made by this app request a refresh
-        // directly, so this only has to catch the long tail.
+        // Poll the core's mutation revision: sync merges change vault data
+        // inside the core, so they never reach this app as a call. The counter
+        // is a local atomic load and a refresh happens only when it moves.
         scope.launch {
+            var seen: ULong? = null
             while (isActive) {
-                delay(120_000)
-                signal.trySend(Unit)
+                delay(5_000)
+                val ctx = appContext ?: continue
+                val current = runCatching {
+                    FfiCore(ctx.applicationInfo.dataDir).revision()
+                }.getOrNull()
+                if (current != null && current != seen) {
+                    seen = current
+                    signal.trySend(Unit)
+                }
             }
         }
     }

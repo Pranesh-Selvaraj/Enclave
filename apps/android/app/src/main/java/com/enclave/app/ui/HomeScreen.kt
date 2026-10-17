@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,6 +86,7 @@ private enum class HomeSheet { LAYOUT, SORT }
 fun HomeScreen(
     onOpenNote: (String) -> Unit,
     onOpenSync: () -> Unit,
+    onOpenSettings: () -> Unit,
     onLock: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -167,6 +169,9 @@ fun HomeScreen(
                             )
                         }
                     }
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
                 }
                 IconButton(onClick = onLock) {
                     Icon(Icons.Filled.Lock, contentDescription = "Lock vault")
@@ -529,51 +534,6 @@ private fun CreateStack(open: Boolean, onToggle: () -> Unit, onCreate: (CreateKi
                 if (open) Icons.Filled.Close else Icons.Filled.Add,
                 contentDescription = if (open) "Close create menu" else "New",
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun <T> OptionSheet(
-    title: String,
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp),
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(8.dp))
-            options.forEach { (value, label) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(value) }
-                        .padding(vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (value == selected) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            }
         }
     }
 }

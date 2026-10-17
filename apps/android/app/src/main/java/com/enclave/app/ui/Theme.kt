@@ -6,23 +6,22 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
 /**
- * Matte, fully opaque surfaces with warm neutrals and the violet accent from
- * the Enclave mark — the same design language as the shipping app.
+ * Matte, fully opaque surfaces with warm neutrals — the Enclave design
+ * language. The accent is user-selectable, so the primary colours are derived
+ * from [Accent] and the rest of the palette stays fixed.
  */
-private val Violet = Color(0xFF6C5CE7)
-private val VioletLight = Color(0xFFA99BFF)
-private val Indigo = Color(0xFF4C6EF5)
 private val WarmWhite = Color(0xFFF6F5F2)
 private val WarmCharcoal = Color(0xFF121211)
 
 private val LightColors = lightColorScheme(
-    primary = Violet,
+    primary = Color(0xFF6C5CE7),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFE7E2FF),
     onPrimaryContainer = Color(0xFF1D1140),
-    secondary = Indigo,
+    secondary = Color(0xFF4C6EF5),
     onSecondary = Color.White,
     background = WarmWhite,
     onBackground = Color(0xFF1B1A18),
@@ -36,7 +35,7 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = VioletLight,
+    primary = Color(0xFFA99BFF),
     onPrimary = Color(0xFF1B1A18),
     primaryContainer = Color(0xFF332A63),
     onPrimaryContainer = Color(0xFFE7E2FF),
@@ -55,11 +54,27 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun EnclaveTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    mode: ThemeMode = ThemeMode.SYSTEM,
+    accent: Accent = Accent.VIOLET,
     content: @Composable () -> Unit,
 ) {
+    val dark = when (mode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+
+    val base = if (dark) DarkColors else LightColors
+    val primary = if (dark) accent.dark else accent.light
+    val opposite = if (dark) Color.White else Color.Black
+
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = base.copy(
+            primary = primary,
+            onPrimary = if (dark) Color(0xFF1B1A18) else Color.White,
+            primaryContainer = lerp(primary, opposite, if (dark) 0.55f else 0.85f),
+            onPrimaryContainer = lerp(primary, if (dark) Color.White else Color.Black, if (dark) 0.85f else 0.55f),
+        ),
         content = content,
     )
 }

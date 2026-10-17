@@ -823,6 +823,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -899,6 +901,8 @@ fun uniffi_core_api_checksum_method_fficore_rename_folder(
 fun uniffi_core_api_checksum_method_fficore_reset_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_restore_document(
+): Short
+fun uniffi_core_api_checksum_method_fficore_revision(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_run_sync_loop(
 ): Short
@@ -1057,6 +1061,8 @@ fun uniffi_core_api_fn_method_fficore_reset_vault(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_core_api_fn_method_fficore_restore_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_revision(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 fun uniffi_core_api_fn_method_fficore_run_sync_loop(`ptr`: Pointer,
 ): Long
 fun uniffi_core_api_fn_method_fficore_search_all(`ptr`: Pointer,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1312,6 +1318,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_restore_document() != 50388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_revision() != 53406.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_run_sync_loop() != 5280.toShort()) {
@@ -1947,6 +1956,13 @@ public interface FfiCoreInterface {
     fun `restoreDocument`(`id`: kotlin.String): Document
     
     /**
+     * Monotonic data-change counter. Shells poll it and refresh derived state
+     * (home-screen widgets) when it moves — sync merges happen inside the core
+     * and are otherwise unobservable from a shell.
+     */
+    fun `revision`(): kotlin.ULong
+    
+    /**
      * Consume peer sync messages for the process lifetime (merges snapshots
      * into the vault). Start once after unlocking; the call runs until the
      * process exits, so drive it from a background coroutine.
@@ -2525,6 +2541,23 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     uniffiRustCallWithError(EnclaveException) { _status ->
     UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_restore_document(
         it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Monotonic data-change counter. Shells poll it and refresh derived state
+     * (home-screen widgets) when it moves — sync merges happen inside the core
+     * and are otherwise unobservable from a shell.
+     */override fun `revision`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_revision(
+        it, _status)
 }
     }
     )

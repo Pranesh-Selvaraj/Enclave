@@ -304,6 +304,10 @@ pub struct EnclaveCore {
     sync_events: tokio::sync::broadcast::Sender<SyncEvent>,
     /// Cancels the active one-time pairing listener, if any.
     pairing_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// Monotonic counter bumped by data-changing operations, including sync
+    /// merges. Shells poll it to refresh derived state (home-screen widgets)
+    /// without an event bridge or a JNI hook (ADR 0006).
+    mutation_revision: std::sync::atomic::AtomicU64,
 }
 
 impl EnclaveCore {
@@ -316,7 +320,23 @@ impl EnclaveCore {
             network: Arc::new(NetworkState::new()),
             sync_events,
             pairing_cancel: Mutex::new(None),
+            mutation_revision: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Monotonic count of data-changing operations. A shell polls it and
+    /// refreshes derived state when it moves — the sync loop's merges happen
+    /// inside the core, so the shell cannot observe them any other way.
+    pub fn revision(&self) -> u64 {
+        self.mutation_revision
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Record a data change. Called from the mutation paths (and from sync
+    /// merges) so `revision` moves exactly when stored data did.
+    pub fn bump_revision(&self) {
+        self.mutation_revision
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Subscribe to sync events (sync-done / peer-connect-failed).
@@ -521,6 +541,7 @@ impl EnclaveCore {
                 updated_at: now,
             };
             core_db::insert_block(db, &block).map_err(db_err)?;
+            self.bump_revision();
             Ok(doc)
         })
     }
@@ -528,7 +549,9 @@ impl EnclaveCore {
     pub fn delete_document(&self, id: &str) -> CoreResult<()> {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
-            core_db::delete_document(db, id, &now).map_err(db_err)
+            core_db::delete_document(db, id, &now).map_err(db_err)?;
+            self.bump_revision();
+            Ok(())
         })
     }
 
@@ -536,6 +559,7 @@ impl EnclaveCore {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
             core_db::archive_document(db, id, &now).map_err(db_err)?;
+            self.bump_revision();
             core_db::query_document(db, id).map_err(db_err)
         })
     }
@@ -544,6 +568,7 @@ impl EnclaveCore {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
             core_db::restore_document(db, id, &now).map_err(db_err)?;
+            self.bump_revision();
             core_db::query_document(db, id).map_err(db_err)
         })
     }
@@ -556,6 +581,7 @@ impl EnclaveCore {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
             core_db::update_document_title(db, id, title, &now).map_err(db_err)?;
+            self.bump_revision();
             core_db::query_document(db, id).map_err(db_err)
         })
     }
@@ -643,12 +669,18 @@ impl EnclaveCore {
                 created_at: now.clone(),
                 updated_at: now,
             };
-            core_db::upsert_block(db, &block).map_err(db_err)
+            let saved = core_db::upsert_block(db, &block).map_err(db_err)?;
+            self.bump_revision();
+            Ok(saved)
         })
     }
 
     pub fn delete_block(&self, id: &str) -> CoreResult<()> {
-        self.with_db(|db| core_db::delete_block(db, id).map_err(db_err))
+        self.with_db(|db| {
+            core_db::delete_block(db, id).map_err(db_err)?;
+            self.bump_revision();
+            Ok(())
+        })
     }
 
     // ── Home-screen widgets ─────────────────────────────────────────────────
@@ -842,7 +874,13 @@ impl EnclaveCore {
     /// Merge a peer snapshot (doc-level LWW). Used by the built-in message
     /// handler and by shells that drive the sync loop themselves.
     pub fn merge_snapshot(&self, docs: &[Document], blocks: &[Block]) -> CoreResult<SyncStats> {
-        self.with_db(|db| core_db::sync_merge(db, docs, blocks).map_err(db_err))
+        self.with_db(|db| {
+            let stats = core_db::sync_merge(db, docs, blocks).map_err(db_err)?;
+            // Merges happen inside the core, so this bump is what lets a shell
+            // notice that widget-visible data changed.
+            self.bump_revision();
+            Ok(stats)
+        })
     }
 
     // ── Sync protocol (LAN v3 — incremental) ────────────────────────────────

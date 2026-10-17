@@ -15,9 +15,11 @@ import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
 import com.enclave.app.editor.NoteFactory
 import com.enclave.app.sync.SyncController
+import com.enclave.app.ui.AppPrefs
 import com.enclave.app.ui.EnclaveTheme
 import com.enclave.app.ui.HomeScreen
 import com.enclave.app.ui.NoteScreen
+import com.enclave.app.ui.SettingsScreen
 import com.enclave.app.ui.SyncScreen
 import com.enclave.app.ui.VaultScreen
 import kotlinx.coroutines.launch
@@ -28,6 +30,7 @@ sealed interface Screen {
     data object Home : Screen
     data class Note(val id: String) : Screen
     data object Sync : Screen
+    data object Settings : Screen
 }
 
 class MainActivity : ComponentActivity() {
@@ -38,13 +41,25 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Core.init(this)
         WidgetCacheBridge.install(this)
+        AppPrefs.load(this)
         SyncController.refresh(this)
         pendingEntryIntent = intent
 
         setContent {
-            EnclaveTheme {
+            EnclaveTheme(mode = AppPrefs.themeMode, accent = AppPrefs.accent) {
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Vault) }
+
+                val lock: () -> Unit = {
+                    scope.launch {
+                        // Stop background sync before the vault closes under it,
+                        // then let widgets switch to their lock placeholder.
+                        SyncController.pause(this@MainActivity)
+                        Core.ffi.lockVault()
+                        WidgetCacheBridge.requestRefresh()
+                        screen = Screen.Vault
+                    }
+                }
 
                 LaunchedEffect(Unit) {
                     if (Core.ffi.isUnlocked()) {
@@ -93,6 +108,8 @@ class MainActivity : ComponentActivity() {
                     Screen.Vault -> VaultScreen(
                         onUnlocked = {
                             SyncController.resumeIfEnabled(this@MainActivity)
+                            // Widgets render live again now that the vault is open.
+                            WidgetCacheBridge.requestRefresh()
                             screen = Screen.Home
                         },
                     )
@@ -100,15 +117,8 @@ class MainActivity : ComponentActivity() {
                     Screen.Home -> HomeScreen(
                         onOpenNote = { screen = Screen.Note(it) },
                         onOpenSync = { screen = Screen.Sync },
-                        onLock = {
-                            scope.launch {
-                                // Stop background sync first: the vault is about
-                                // to close under it.
-                                SyncController.pause(this@MainActivity)
-                                Core.ffi.lockVault()
-                                screen = Screen.Vault
-                            }
-                        },
+                        onOpenSettings = { screen = Screen.Settings },
+                        onLock = lock,
                     )
 
                     is Screen.Note -> {
@@ -119,6 +129,11 @@ class MainActivity : ComponentActivity() {
                     Screen.Sync -> {
                         BackHandler { screen = Screen.Home }
                         SyncScreen(onBack = { screen = Screen.Home })
+                    }
+
+                    Screen.Settings -> {
+                        BackHandler { screen = Screen.Home }
+                        SettingsScreen(onBack = { screen = Screen.Home }, onLock = lock)
                     }
                 }
             }

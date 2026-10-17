@@ -316,6 +316,13 @@ impl FfiCore {
         self.core.app_dir().to_string_lossy().into_owned()
     }
 
+    /// Monotonic data-change counter. Shells poll it and refresh derived state
+    /// (home-screen widgets) when it moves — sync merges happen inside the core
+    /// and are otherwise unobservable from a shell.
+    pub fn revision(&self) -> u64 {
+        self.core.revision()
+    }
+
     // ── Vault lifecycle ─────────────────────────────────────────────────────
 
     pub fn is_vault_initialized(&self) -> bool {
