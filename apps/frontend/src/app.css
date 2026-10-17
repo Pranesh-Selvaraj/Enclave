@@ -145,7 +145,7 @@ html[data-bg="glassy"] .main-pane {
    one in a block. Declaring the `-webkit-` fallback separately keeps both, so
    the blur works on WebKit (Linux/macOS) *and* Chromium (WebView2/Android). */
 html[data-bg="glassy"] :is(
-	.sidebar, .mobile-topbar, .bottom-nav, .command-palette, .context-menu,
+	.sidebar, .mobile-topbar, .command-palette, .context-menu,
 	.settings-panel, .sd-dialog, .sheet, .picker, .export-menu, .meta-popover,
 	.ai-panel, .confirm-dialog, .vault-card
 ) {
@@ -153,7 +153,6 @@ html[data-bg="glassy"] :is(
 }
 html[data-bg="glassy"] .sidebar,
 html[data-bg="glassy"] .mobile-topbar,
-html[data-bg="glassy"] .bottom-nav,
 html[data-bg="glassy"] .command-palette,
 html[data-bg="glassy"] .context-menu,
 html[data-bg="glassy"] .settings-panel,
@@ -179,7 +178,7 @@ html[data-true-black][data-theme="dark"][data-bg="glassy"] .main-pane {
 /* True black wins over Glass: make the chrome opaque and drop the blur (same
    two-block split as above so both prefixes survive minification). */
 html[data-true-black][data-theme="dark"][data-bg="glassy"] :is(
-	.sidebar, .mobile-topbar, .bottom-nav, .command-palette, .context-menu,
+	.sidebar, .mobile-topbar, .command-palette, .context-menu,
 	.settings-panel, .sd-dialog, .sheet, .picker, .export-menu, .meta-popover,
 	.ai-panel, .confirm-dialog, .vault-card
 ) {
@@ -187,7 +186,6 @@ html[data-true-black][data-theme="dark"][data-bg="glassy"] :is(
 }
 html[data-true-black][data-theme="dark"][data-bg="glassy"] .sidebar,
 html[data-true-black][data-theme="dark"][data-bg="glassy"] .mobile-topbar,
-html[data-true-black][data-theme="dark"][data-bg="glassy"] .bottom-nav,
 html[data-true-black][data-theme="dark"][data-bg="glassy"] .command-palette,
 html[data-true-black][data-theme="dark"][data-bg="glassy"] .context-menu,
 html[data-true-black][data-theme="dark"][data-bg="glassy"] .settings-panel,
