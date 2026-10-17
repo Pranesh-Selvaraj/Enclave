@@ -5,8 +5,8 @@
 
 # Crypto, storage, networking and key handling — the trust boundaries.
 packages/crypto/ @Pranesh-Selvaraj
-src-tauri/crates/core-db/ @Pranesh-Selvaraj
-src-tauri/crates/core-network/ @Pranesh-Selvaraj
+core/core-db/ @Pranesh-Selvaraj
+core/core-network/ @Pranesh-Selvaraj
 src-tauri/src/embed.rs @Pranesh-Selvaraj
 apps/frontend/src/lib/VaultGuard.svelte @Pranesh-Selvaraj
 apps/frontend/src/lib/ai.ts @Pranesh-Selvaraj
