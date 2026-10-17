@@ -47,7 +47,7 @@ import kotlinx.coroutines.withContext
  * shipping app.
  */
 @Composable
-fun VaultScreen(onUnlocked: () -> Unit) {
+fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
     val scope = rememberCoroutineScope()
     val initialized = remember { Core.ffi.isVaultInitialized() }
 
@@ -80,6 +80,15 @@ fun VaultScreen(onUnlocked: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            notice?.let {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Spacer(Modifier.height(32.dp))
 
             val words = mnemonic

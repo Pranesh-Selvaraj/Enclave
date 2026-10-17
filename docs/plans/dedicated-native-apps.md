@@ -2,6 +2,15 @@
 
 Companion to ADR 0002. This is the execution plan for moving Enclave from the shared-web-UI architecture (ADR 0001) to two dedicated native apps on one versioned Rust core.
 
+## Status
+
+Live tracker: [`docs/STATUS.md`](../STATUS.md).
+
+- **Phase 0** — the Android vertical slice is built; the desktop stack is parked (ADR 0004 *Proposed*, PR #177 unmerged) and Qt is unverified on the current machine.
+- **Phase 1** — vault schema versioning and the block golden fixture are in; sync-frame fixtures and the contract document remain.
+- **Phase 2** — the native Android app is feature-complete for a first release; the hardware pass is pending.
+- **Phase 3/4** — not started (desktop).
+
 ## Goal
 
 Ship a native Android app and a native desktop app that share no UI code, both built on the existing Rust core, with identical vaults and a wire-compatible sync protocol. Remove the webview from the shipping product.

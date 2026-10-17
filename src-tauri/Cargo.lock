@@ -797,12 +797,15 @@ dependencies = [
  "chrono",
  "core-db",
  "core-network",
+ "ed25519-dalek",
  "rand 0.9.5",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "uniffi",
+ "ureq",
  "uuid",
 ]
 

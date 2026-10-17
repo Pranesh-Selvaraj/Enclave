@@ -19,6 +19,7 @@ use rusqlite::Connection;
 
 pub mod crypto;
 pub mod pairing;
+pub mod updater;
 
 // Re-exported so shells never need to depend on core-db directly.
 pub use core_db::{
@@ -304,6 +305,13 @@ pub struct EnclaveCore {
     sync_events: tokio::sync::broadcast::Sender<SyncEvent>,
     /// Cancels the active one-time pairing listener, if any.
     pairing_cancel: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// The asset selected by the last update check; a download never takes a
+    /// URL from a caller.
+    updater_pending: std::sync::Mutex<Option<updater::UpdateAsset>>,
+    /// Monotonic counter bumped by data-changing operations, including sync
+    /// merges. Shells poll it to refresh derived state (home-screen widgets)
+    /// without an event bridge or a JNI hook (ADR 0006).
+    mutation_revision: std::sync::atomic::AtomicU64,
 }
 
 impl EnclaveCore {
@@ -316,7 +324,50 @@ impl EnclaveCore {
             network: Arc::new(NetworkState::new()),
             sync_events,
             pairing_cancel: Mutex::new(None),
+            updater_pending: std::sync::Mutex::new(None),
+            mutation_revision: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Look up the latest GitHub release for `current_version` and remember
+    /// its asset for a verified download. Returns what the shell should show.
+    pub async fn check_update(&self, current_version: &str) -> CoreResult<updater::UpdateInfo> {
+        let current = current_version.to_string();
+        let (info, asset) = tokio::task::spawn_blocking(move || updater::check_for_update(&current))
+            .await
+            .map_err(|e| CoreError::Network(e.to_string()))??;
+        *self.updater_pending.lock().map_err(|_| poisoned())? = asset;
+        Ok(info)
+    }
+
+    /// Download the asset from the last check into `dest_dir`, verifying its
+    /// SHA-256 digest, size and Ed25519 signature; returns the local path.
+    pub async fn download_update(&self, dest_dir: &str) -> CoreResult<String> {
+        let asset = self
+            .updater_pending
+            .lock()
+            .map_err(|_| poisoned())?
+            .clone()
+            .ok_or_else(|| CoreError::InvalidInput("Run an update check first".into()))?;
+        let dir = PathBuf::from(dest_dir);
+        tokio::task::spawn_blocking(move || updater::download_update(&asset, &dir))
+            .await
+            .map_err(|e| CoreError::Network(e.to_string()))?
+    }
+
+    /// Monotonic count of data-changing operations. A shell polls it and
+    /// refreshes derived state when it moves — the sync loop's merges happen
+    /// inside the core, so the shell cannot observe them any other way.
+    pub fn revision(&self) -> u64 {
+        self.mutation_revision
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Record a data change. Called from the mutation paths (and from sync
+    /// merges) so `revision` moves exactly when stored data did.
+    pub fn bump_revision(&self) {
+        self.mutation_revision
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Subscribe to sync events (sync-done / peer-connect-failed).
@@ -521,6 +572,7 @@ impl EnclaveCore {
                 updated_at: now,
             };
             core_db::insert_block(db, &block).map_err(db_err)?;
+            self.bump_revision();
             Ok(doc)
         })
     }
@@ -528,7 +580,9 @@ impl EnclaveCore {
     pub fn delete_document(&self, id: &str) -> CoreResult<()> {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
-            core_db::delete_document(db, id, &now).map_err(db_err)
+            core_db::delete_document(db, id, &now).map_err(db_err)?;
+            self.bump_revision();
+            Ok(())
         })
     }
 
@@ -536,6 +590,7 @@ impl EnclaveCore {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
             core_db::archive_document(db, id, &now).map_err(db_err)?;
+            self.bump_revision();
             core_db::query_document(db, id).map_err(db_err)
         })
     }
@@ -544,6 +599,7 @@ impl EnclaveCore {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
             core_db::restore_document(db, id, &now).map_err(db_err)?;
+            self.bump_revision();
             core_db::query_document(db, id).map_err(db_err)
         })
     }
@@ -556,6 +612,7 @@ impl EnclaveCore {
         self.with_db(|db| {
             let now = chrono::Utc::now().to_rfc3339();
             core_db::update_document_title(db, id, title, &now).map_err(db_err)?;
+            self.bump_revision();
             core_db::query_document(db, id).map_err(db_err)
         })
     }
@@ -643,12 +700,18 @@ impl EnclaveCore {
                 created_at: now.clone(),
                 updated_at: now,
             };
-            core_db::upsert_block(db, &block).map_err(db_err)
+            let saved = core_db::upsert_block(db, &block).map_err(db_err)?;
+            self.bump_revision();
+            Ok(saved)
         })
     }
 
     pub fn delete_block(&self, id: &str) -> CoreResult<()> {
-        self.with_db(|db| core_db::delete_block(db, id).map_err(db_err))
+        self.with_db(|db| {
+            core_db::delete_block(db, id).map_err(db_err)?;
+            self.bump_revision();
+            Ok(())
+        })
     }
 
     // ── Home-screen widgets ─────────────────────────────────────────────────
@@ -801,6 +864,77 @@ impl EnclaveCore {
         Ok(dest.to_string_lossy().to_string())
     }
 
+    /// Derive the vault key from a password or a 12-word recovery phrase.
+    /// Used by restore to re-authenticate a destructive operation.
+    fn key_from_secret(&self, secret: &str) -> CoreResult<[u8; 32]> {
+        let trimmed = secret.trim();
+        let lowered = trimmed.to_lowercase();
+        if crypto::validate_mnemonic(&lowered) {
+            return crypto::derive_master_key(&lowered);
+        }
+        let blob = self.load_vault_key()?;
+        let mnemonic = crypto::decrypt_with_password(&blob, secret)?;
+        if !crypto::validate_mnemonic(&mnemonic) {
+            return Err(CoreError::InvalidInput(
+                "Invalid password — check it, or use the recovery phrase".into(),
+            ));
+        }
+        crypto::derive_master_key(&mnemonic)
+    }
+
+    /// Replace the vault database with a backup snapshot.
+    ///
+    /// `secret` is the vault's password or its 12-word recovery phrase: a
+    /// restore is destructive, so it re-authenticates the owner instead of
+    /// reusing a session. The backup is validated on a temp copy *first*, with
+    /// the key that `secret` derives — only a backup of **this** vault opens
+    /// with it, which keeps a foreign vault (and its idle vault.key pairing)
+    /// out of scope. The live vault is then locked and its file replaced
+    /// atomically; the core ends locked.
+    pub async fn restore_vault(&self, secret: &str, backup: &[u8]) -> CoreResult<()> {
+        if backup.is_empty() {
+            return Err(CoreError::InvalidInput("The backup file is empty".into()));
+        }
+        let key = self.key_from_secret(secret)?;
+
+        let restore_dir = self.app_dir.join("restore");
+        std::fs::create_dir_all(&restore_dir).map_err(io_err)?;
+        let staged = restore_dir.join("restore.db");
+        std::fs::write(&staged, backup).map_err(io_err)?;
+
+        let check = match core_db::open_vault(&staged, &key) {
+            Ok(conn) => conn,
+            Err(_) => {
+                let _ = std::fs::remove_file(&staged);
+                return Err(CoreError::InvalidInput(
+                    "That backup does not open with that password or recovery phrase — it belongs to a different vault".into(),
+                ));
+            }
+        };
+        let version: i32 = check
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(db_err)?;
+        if version > core_db::SCHEMA_VERSION {
+            drop(check);
+            let _ = std::fs::remove_file(&staged);
+            return Err(CoreError::InvalidInput(format!(
+                "That backup is from a newer Enclave (vault schema v{version}) — update the app first"
+            )));
+        }
+        drop(check);
+
+        // Close the live vault (and its network) before swapping the file.
+        self.lock_vault().await?;
+        let dest = self.app_dir.join(DB_FILENAME);
+        std::fs::rename(&staged, &dest).map_err(io_err)?;
+        // The previous vault's write-ahead files must not sit next to the new
+        // database; SQLCipher would refuse the mismatched WAL.
+        let _ = std::fs::remove_file(self.app_dir.join(format!("{DB_FILENAME}-wal")));
+        let _ = std::fs::remove_file(self.app_dir.join(format!("{DB_FILENAME}-shm")));
+        let _ = std::fs::remove_dir(&restore_dir);
+        Ok(())
+    }
+
     // ── Vault key file (encrypted seed phrase for password-based login) ─────
 
     pub fn store_vault_key(&self, key_data: &[u8]) -> CoreResult<()> {
@@ -842,7 +976,13 @@ impl EnclaveCore {
     /// Merge a peer snapshot (doc-level LWW). Used by the built-in message
     /// handler and by shells that drive the sync loop themselves.
     pub fn merge_snapshot(&self, docs: &[Document], blocks: &[Block]) -> CoreResult<SyncStats> {
-        self.with_db(|db| core_db::sync_merge(db, docs, blocks).map_err(db_err))
+        self.with_db(|db| {
+            let stats = core_db::sync_merge(db, docs, blocks).map_err(db_err)?;
+            // Merges happen inside the core, so this bump is what lets a shell
+            // notice that widget-visible data changed.
+            self.bump_revision();
+            Ok(stats)
+        })
     }
 
     // ── Sync protocol (LAN v3 — incremental) ────────────────────────────────
@@ -1405,5 +1545,42 @@ mod tests {
         let core = EnclaveCore::new(dir.path());
         assert!(matches!(core.widget_notes(), Err(CoreError::VaultLocked)));
         assert!(matches!(core.toggle_checklist_item("x", 0), Err(CoreError::VaultLocked)));
+    }
+
+    #[tokio::test]
+    async fn restore_replaces_the_vault_after_re_authentication() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        core.create_vault("correct horse").unwrap();
+        let kept = core.create_document("Kept").unwrap();
+
+        let backup = std::fs::read(core.backup_vault().unwrap()).unwrap();
+        core.create_document("Discarded").unwrap();
+
+        core.restore_vault("correct horse", &backup).await.unwrap();
+        assert!(!core.is_unlocked(), "a restore ends locked");
+
+        core.unlock_with_password("correct horse").unwrap();
+        let docs = core.list_documents().unwrap();
+        assert!(docs.iter().any(|d| d.id == kept.id), "the backed-up document is present");
+        assert!(!docs.iter().any(|d| d.title == "Discarded"), "post-backup data is gone");
+    }
+
+    #[tokio::test]
+    async fn restore_refuses_a_wrong_secret_or_empty_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = EnclaveCore::new(dir.path());
+        let mnemonic = core.create_vault("correct horse").unwrap();
+        let backup = std::fs::read(core.backup_vault().unwrap()).unwrap();
+
+        assert!(core.restore_vault("wrong secret", &backup).await.is_err());
+        assert!(core.restore_vault("correct horse", &[]).await.is_err());
+        // A refused restore must leave the live vault untouched and unlocked.
+        assert!(core.is_unlocked());
+        assert!(core.list_documents().is_ok());
+
+        // The recovery phrase is accepted in place of the password.
+        core.restore_vault(mnemonic.trim(), &backup).await.unwrap();
+        assert!(!core.is_unlocked());
     }
 }

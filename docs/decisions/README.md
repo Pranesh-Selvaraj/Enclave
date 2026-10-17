@@ -23,6 +23,7 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 | [0004](0004-desktop-ui-stack.md) | Desktop UI stack: Qt 6 | Accepted | Stack |
 | [0005](0005-android-ui-stack.md) | Android UI stack: Kotlin + Jetpack Compose | Accepted | Stack |
 | [0006](0006-shared-contract-versioning.md) | Shared contract: vault, block schema, sync protocol, FFI | Accepted | Compatibility |
+| [0007](0007-vault-restore-semantics.md) | Vault restore semantics | Accepted | Security |
 
 ## Decision map
 
@@ -35,6 +36,7 @@ graph TD
     C --> F["0006 · Shared contract<br/>vault · blocks · sync · FFI"]
     D --> F
     E --> F
+    F --> G["0007 · Vault restore<br/>re-auth, same-vault only"]
 ```
 
 ## Adding a record

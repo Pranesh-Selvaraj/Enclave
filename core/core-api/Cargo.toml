@@ -26,6 +26,12 @@ rand = "0.9"
 # The core owns the sync message loop; shells just spawn it.
 tokio = { version = "1", features = ["rt", "sync", "net", "io-util", "time"] }
 
+# Self-update: GitHub Releases API and the integrity checks over its assets.
+# rustls/ring (pure Rust), so this cross-compiles to Android without OpenSSL.
+ureq = { version = "~3.2" }
+sha2 = "0.10"
+ed25519-dalek = "2"
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros"] }
