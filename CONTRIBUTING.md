@@ -87,7 +87,8 @@ npx tsx apps/frontend/tests/wbLayout.test.ts
 
 # Rust type-check + workspace tests
 cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --workspace --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path core/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 
 # Frontend type-check (svelte-check)
 npm run check -w @enclave/frontend
@@ -96,7 +97,7 @@ npm run check -w @enclave/frontend
 cd src-tauri/gen/android && ./gradlew :app:testUniversalDebugUnitTest && cd -
 
 # Android — regenerate the UniFFI Kotlin bindings and check for drift
-# (CI runs the same check; see docs in src-tauri/crates/core-api/src/ffi.rs)
+# (CI runs the same check; see docs in core/core-api/src/ffi.rs)
 cd src-tauri && cargo run -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
   generate --library target/debug/libcore_api.so --language kotlin \
   --out-dir gen/android/app/src/main/java && git diff --exit-code -- gen/android/app/src/main/java/uniffi/ && cd -
@@ -162,8 +163,8 @@ enclave/
 Changes to these files need extra scrutiny — tag them clearly in the PR description:
 
 - `packages/crypto/src/index.ts` — key derivation, encryption/decryption
-- `src-tauri/crates/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling, sync merge, FTS/embedding queries
-- `src-tauri/crates/core-network/` — peer discovery, plaintext WebSocket transport, redial
+- `core/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling, sync merge, FTS/embedding queries
+- `core/core-network/` — peer discovery, plaintext WebSocket transport, redial
 - `apps/frontend/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
 - `apps/frontend/src/lib/backend.ts` — the Tauri IPC bridge; the single place the frontend invokes Rust commands
 - `apps/frontend/src/lib/ai.ts` — sends page content to the configured LLM endpoint when AI is enabled; reads/writes vault settings incl. the API key
@@ -226,7 +227,8 @@ MIT. By contributing, you agree that your contributions will be licensed under t
    replace generated notes if the forge injected them. Write each paragraph
    and bullet on a single line (no manual hard wrapping) — GitHub renders
    single newlines as hard breaks, so wrapped text shows as ragged lines.
-3. **Verify** — `cargo test --workspace --manifest-path src-tauri/Cargo.toml`,
+3. **Verify** — `cargo test --manifest-path core/Cargo.toml` and
+   `cargo test --manifest-path src-tauri/Cargo.toml`,
    `npm run check -w @enclave/frontend`, and (for Android) a release build:
    `cd src-tauri && npx tauri android build --target aarch64` with
    `ANDROID_HOME`/`NDK_HOME`/`JAVA_HOME` set — confirms the Android config

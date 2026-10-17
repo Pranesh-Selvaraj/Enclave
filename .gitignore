@@ -9,6 +9,7 @@ build/
 
 # Tauri / Rust
 src-tauri/target/
+core/target/
 # Generated Android project — COMMITTED so native customizations persist
 # (cleartext config, adaptive icon, future MulticastLock). Only volatile or
 # machine-specific artifacts are ignored; the rest of gen/android is tracked.

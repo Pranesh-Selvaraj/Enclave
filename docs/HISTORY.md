@@ -39,12 +39,13 @@ This is the narrative record of **what Enclave was built with, why, what changed
 | 2026-10-17 | Desktop stack: Qt 6 (provisional) vs Avalonia, decided by the Phase 0 editor spike. | The editor is the deciding cost and risk. | ADR 0004 |
 | 2026-10-17 | Contract versioning formalised: vault schema, block schema, sync protocol, FFI. | Two independent apps must never drift. | ADR 0006 |
 | 2026-10-17 | Vault schema versioning implemented: `PRAGMA user_version`, ordered migrations, refusal of newer vaults, and a contract test that locks the v1 table/column set. The canonical editor document is now a checked-in golden fixture that the core must preserve verbatim. | First piece of ADR 0006 in code: every released build can tell how old a vault is, migrate it safely, and prove the document format it reads and writes. | ADR 0006 |
-| 2026-10-17 | Core verified for Android after the schema change: `core-api` cross-compiles to `aarch64-linux-android` with the UniFFI surface (105 exported symbols). | The Android app depends on this exact build path. | ADR 0005 |
+| 2026-10-17 | Repository restructured around the plan: the core moved to `core/` (its own Cargo workspace, the only shared code) and `apps/android` was created for the native app; the Tauri desktop shell consumes `core/` by path and keeps shipping. CI, CODEOWNERS and docs follow the new layout. | Implements ADR 0003 and makes the core an independently consumable artifact. | ADR 0003 |
+| 2026-10-17 | Native Android app started: a Kotlin + Jetpack Compose project that links the Rust core through the UniFFI/JNA bindings, with the matte theme, vault create/unlock, notes home (search pill, Cards grid, FAB) and a read-only ProseMirror block renderer. It builds a debug APK with `libcore_api.so` for arm64 and x86_64. | First Phase 2 slice: the app now owns its UI and consumes the same core, with no webview. The editable surface is next. | ADR 0005 |
 
 ## Open questions
 
 - **Desktop stack** — ADR 0004 is Proposed until the Phase 0 spike records measurements in an Accepted record.
-- **Vault schema versioning** — implemented (schema v1, `user_version`, ordered migrations, newer-vault refusal) and the block schema has a golden fixture. Remaining Phase 1 contract work: sync-frame golden fixtures and the cross-app interop harness.
+- **Android app** — the first slice (vault, notes home, read-only blocks) builds into an APK. Next: the editable Compose editor, the Create stack and the other three layouts, folders/tags/settings, sync UI, and porting the foreground sync service and Glance widgets from the Tauri Android project.
 - **iOS** — out of scope for the current plan, but the contract must not preclude it.
 
 ## Notable corrections

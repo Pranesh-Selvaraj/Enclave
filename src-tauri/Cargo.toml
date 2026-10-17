@@ -1,7 +1,3 @@
-[workspace]
-members = ["crates/core-db", "crates/core-network", "crates/core-api"]
-resolver = "2"
-
 [package]
 name = "enclave"
 version = "1.13.0"
@@ -18,10 +14,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# ── Internal Crates ──
-core-db = { path = "crates/core-db" }
-core-api = { path = "crates/core-api" }
-core-network = { path = "crates/core-network" }
+# ── Internal Crates (the shared core, ADR 0003) ──
+core-db = { path = "../core/core-db" }
+core-api = { path = "../core/core-api" }
+core-network = { path = "../core/core-network" }
 
 # ── Tauri v2 Core ──
 tauri = { version = "2", features = ["protocol-asset", "devtools", "tray-icon", "macos-private-api"] }
@@ -68,7 +64,7 @@ rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"]
 jni = "0.21"
 # UniFFI bindings live in this cdylib on Android so the Android app and the
 # Tauri web view share one core (one vault, one network, one loop).
-core-api = { path = "crates/core-api", features = ["uniffi"] }
+core-api = { path = "../core/core-api", features = ["uniffi"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

@@ -1,0 +1,16 @@
+# The Enclave core — the only code shared between the desktop and Android apps.
+#
+# It owns the vault, crypto, encrypted storage, search, embeddings and the P2P
+# sync protocol (ADR 0003, ADR 0006). Apps consume it through the FFI surface;
+# nothing in here may depend on a shell or a UI toolkit.
+[workspace]
+members = ["core-db", "core-network", "core-api"]
+resolver = "2"
+
+# Argon2id in debug builds is painfully slow (64 MiB, 3 passes) and vault tests
+# hit it repeatedly; optimize just this dependency.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.aes-gcm]
+opt-level = 3
