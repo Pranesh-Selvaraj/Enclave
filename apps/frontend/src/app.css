@@ -136,7 +136,21 @@ html[data-bg="glassy"] .main-pane {
 }
 
 /* Frosted chrome for the glassy style. Content panels stay solid (readable);
-   only bars, the sidebar, and floating chrome become translucent/blurred. */
+   only bars, the sidebar, and floating chrome become translucent/blurred.
+
+   The two prefixes are split across two rule blocks that use different
+   selector syntax (`:is(...)` vs. an explicit list). Vite 8 transforms CSS
+   with Lightning CSS, which treats `backdrop-filter` and
+   `-webkit-backdrop-filter` as the same declaration and keeps only the last
+   one in a block. Declaring the `-webkit-` fallback separately keeps both, so
+   the blur works on WebKit (Linux/macOS) *and* Chromium (WebView2/Android). */
+html[data-bg="glassy"] :is(
+	.sidebar, .mobile-topbar, .bottom-nav, .command-palette, .context-menu,
+	.settings-panel, .sd-dialog, .sheet, .picker, .export-menu, .meta-popover,
+	.ai-panel, .confirm-dialog, .vault-card
+) {
+	-webkit-backdrop-filter: blur(24px) saturate(160%);
+}
 html[data-bg="glassy"] .sidebar,
 html[data-bg="glassy"] .mobile-topbar,
 html[data-bg="glassy"] .bottom-nav,
@@ -153,7 +167,6 @@ html[data-bg="glassy"] .confirm-dialog,
 html[data-bg="glassy"] .vault-card {
 	background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
 	backdrop-filter: blur(24px) saturate(160%);
-	-webkit-backdrop-filter: blur(24px) saturate(160%);
 }
 
 [data-true-black][data-theme="dark"][data-bg="soft"] body,
@@ -163,14 +176,31 @@ html[data-true-black][data-theme="dark"][data-bg="glassy"] .main-pane {
 	background-image: none;
 }
 
+/* True black wins over Glass: make the chrome opaque and drop the blur (same
+   two-block split as above so both prefixes survive minification). */
 html[data-true-black][data-theme="dark"][data-bg="glassy"] :is(
 	.sidebar, .mobile-topbar, .bottom-nav, .command-palette, .context-menu,
 	.settings-panel, .sd-dialog, .sheet, .picker, .export-menu, .meta-popover,
 	.ai-panel, .confirm-dialog, .vault-card
 ) {
+	-webkit-backdrop-filter: none;
+}
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .sidebar,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .mobile-topbar,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .bottom-nav,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .command-palette,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .context-menu,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .settings-panel,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .sd-dialog,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .sheet,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .picker,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .export-menu,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .meta-popover,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .ai-panel,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .confirm-dialog,
+html[data-true-black][data-theme="dark"][data-bg="glassy"] .vault-card {
 	background-color: var(--color-surface);
 	backdrop-filter: none;
-	-webkit-backdrop-filter: none;
 }
 
 [data-font="system"] { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }

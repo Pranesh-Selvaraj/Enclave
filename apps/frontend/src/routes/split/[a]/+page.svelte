@@ -351,7 +351,7 @@
 		transform: translate(-50%, -50%);
 		width: 420px;
 		max-width: 92vw;
-		max-height: 60vh;
+		max-height: calc(60vh * var(--ui-fit));
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
@@ -418,7 +418,7 @@
 		.split-pane {
 			flex: none !important;
 			min-height: 55vh;
-			min-height: 55dvh;
+			min-height: calc(55dvh * var(--ui-fit));
 		}
 		.split-divider {
 			display: none;
@@ -443,8 +443,8 @@
 			width: auto;
 			max-width: none;
 			transform: none;
-			max-height: 70vh;
-			max-height: 70dvh;
+			max-height: calc(70vh * var(--ui-fit));
+			max-height: calc(70dvh * var(--ui-fit));
 			border-radius: 18px;
 			padding-bottom: var(--safe-bottom);
 		}

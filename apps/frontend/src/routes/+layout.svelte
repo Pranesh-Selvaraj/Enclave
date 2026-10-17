@@ -41,14 +41,25 @@
 		if (saved >= 200 && saved <= 560) sidebarWidth = saved;
 	} catch { /* ignore */ }
 
+	// UI size applies `zoom` to <html>. Layout px (offsetWidth, and the px we
+	// position with) are unscaled, while getBoundingClientRect()/clientX report
+	// *zoomed* values — mixing the two double-scales the resize handle (#166).
+	function uiZoom() {
+		if (typeof document === 'undefined') return 1;
+		const fit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-fit'));
+		return fit > 0 ? 1 / fit : 1;
+	}
+
 	function startSidebarResize(e: PointerEvent) {
 		e.preventDefault();
+		const zoom = uiZoom();
 		const startX = e.clientX;
-		const startW = sidebarEl?.getBoundingClientRect().width ?? sidebarRealWidth;
-		const max = Math.min(560, Math.max(260, window.innerWidth * 0.45));
+		const startW = sidebarEl?.offsetWidth ?? sidebarRealWidth;
+		// window.innerWidth is viewport px; a layout-px budget is 1/zoom of it.
+		const max = Math.min(560, Math.max(260, (window.innerWidth / zoom) * 0.45));
 		resizingSidebar = true;
 		const move = (ev: PointerEvent) => {
-			sidebarWidth = Math.round(Math.min(max, Math.max(200, startW + ev.clientX - startX)));
+			sidebarWidth = Math.round(Math.min(max, Math.max(200, startW + (ev.clientX - startX) / zoom)));
 		};
 		const up = () => {
 			resizingSidebar = false;
@@ -67,10 +78,11 @@
 
 	// Track the rendered width (density presets included) so the resize handle
 	// can sit exactly on the sidebar edge without living inside its scroll box.
+	// offsetWidth is layout px (zoom-independent), matching the handle's `left`.
 	$effect(() => {
 		if (!sidebarEl) return;
 		const ro = new ResizeObserver(() => {
-			sidebarRealWidth = sidebarEl!.getBoundingClientRect().width;
+			sidebarRealWidth = sidebarEl!.offsetWidth;
 		});
 		ro.observe(sidebarEl);
 		return () => ro.disconnect();
@@ -787,11 +799,12 @@
 	});
 
 	let favorites = $derived(filteredDocs.filter(d => d.is_favorite));
-	let regularPages = $derived(filteredDocs.filter(d => !d.is_favorite));
 	// Folder grouping: a doc whose folder_id is unknown (e.g. synced from a
-	// peer without that folder) falls back to the root list.
-	let rootPages = $derived(regularPages.filter((d) => !d.folder_id || !folders.some((f) => f.id === d.folder_id)));
-	let docsByFolder = $derived((folderId: string) => regularPages.filter((d) => d.folder_id === folderId));
+	// peer without that folder) falls back to the root list. Folders list *all*
+	// of their notes (favorites included) so folder membership is truthful;
+	// the Favorites section above is a cross-cutting shortcut, not a location.
+	let rootPages = $derived(filteredDocs.filter((d) => !d.folder_id || !folders.some((f) => f.id === d.folder_id)));
+	let docsByFolder = $derived((folderId: string) => filteredDocs.filter((d) => d.folder_id === folderId));
 	// Window the page tree: rendering thousands of rows at once is the
 	// slowest thing on a big vault. Cap it; one tap reveals the rest.
 	const PAGE_CAP = 120;
@@ -937,11 +950,9 @@
 	<!-- Left Sidebar (drawer on phones) -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen} class:resizing={resizingSidebar} bind:this={sidebarEl} style={sidebarOpen && sidebarWidth ? `width:${sidebarWidth}px;min-width:${sidebarWidth}px` : ''}>
 		{#if sidebarOpen}
-			{#if isMobile}
-				<div class="drawer-title">Enclave</div>
-			{/if}
 			<nav class="side-nav">
-				<a href="/" class="nav-item" class:active={currentPath === '/'}>
+				<a href="/" class="nav-item" class:active={currentPath === '/'}
+					onclick={() => (sidebarOpen = false)}>
 					<Icon name="home" size={16} />
 					<span>Home</span>
 				</a>
@@ -954,38 +965,44 @@
 			</nav>
 
 			{#if isMobile}
-				<!-- Phone drawer: app actions, not the note tree (issue #161). -->
-				<div class="drawer-actions">
-					<button class="drawer-action" onclick={() => (syncCardOpen = !syncCardOpen)} aria-expanded={syncCardOpen}>
-						<span class="drawer-action-icon" class:online={networkRunning}><Icon name="network" size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Sync</span>
-							<span class="drawer-action-sub">{syncLabel}</span>
-						</span>
-						<span class="drawer-action-chevron"><Icon name={syncCardOpen ? 'chevronDown' : 'chevronRight'} size={15} /></span>
-					</button>
-					<button class="drawer-action" onclick={() => theme.toggle()}>
-						<span class="drawer-action-icon"><Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Theme</span>
-							<span class="drawer-action-sub">{theme.mode === 'auto' ? 'Auto (system)' : theme.value === 'dark' ? 'Dark' : 'Light'}</span>
-						</span>
-					</button>
-					<button class="drawer-action" onclick={() => { sidebarOpen = false; openUI('settings'); }}>
-						<span class="drawer-action-icon"><Icon name="settings" size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Settings</span>
-							<span class="drawer-action-sub">Appearance, AI, backup, shortcuts</span>
-						</span>
-						<span class="drawer-action-chevron"><Icon name="chevronRight" size={15} /></span>
-					</button>
-					<button class="drawer-action" onclick={lockNow}>
-						<span class="drawer-action-icon"><Icon name="lock" size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Lock vault</span>
-							<span class="drawer-action-sub">Close the vault on this device</span>
-						</span>
-					</button>
+				<!-- Phone drawer: Home + a plain folder list; tapping a folder filters
+				     the home screen to that folder's notes. -->
+				<div class="drawer-folders">
+					<div class="drawer-section-head">
+						<span class="section-title">Folders</span>
+						<button class="row-btn" onclick={startCreateFolder} title="New folder" aria-label="New folder">
+							<Icon name="plus" size={14} />
+						</button>
+					</div>
+					{#if editingFolder?.id === null}
+						<input
+							class="folder-input drawer-folder-input"
+							bind:value={editingFolder.name}
+							placeholder="Folder name"
+							aria-label="Folder name"
+							bind:this={editingInput}
+							onkeydown={(e: KeyboardEvent) => {
+								if (e.key === 'Enter') { e.preventDefault(); commitFolderName(); }
+								else if (e.key === 'Escape') editingFolder = null;
+							}}
+							onblur={commitFolderName}
+						/>
+					{/if}
+					{#each folders as folder (folder.id)}
+						<a
+							href="/?folder={folder.id}"
+							class="drawer-folder"
+							class:active={$page.url.searchParams.get('folder') === folder.id}
+							onclick={() => (sidebarOpen = false)}
+						>
+							<span class="drawer-folder-icon"><Icon name="folder" size={17} /></span>
+							<span class="drawer-folder-name">{folder.name}</span>
+							<span class="drawer-folder-count">{documents.filter((d) => d.folder_id === folder.id).length}</span>
+						</a>
+					{/each}
+					{#if folders.length === 0}
+						<div class="drawer-empty">No folders yet</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -1066,24 +1083,28 @@
 								{/if}
 							</div>
 							{#if !collapsedFolders.has(folder.id)}
-								{#each fdocs as doc (doc.id)}
-									<a href="/{doc.id}" class="tree-item folder-doc" class:active={currentDocId === doc.id}
-										oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
-										onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
-										<span class="tree-item-icon">
-											<Icon name="page" size={14} />
-										</span>
-										<span class="tree-item-label">{doc.title || 'Untitled'}</span>
-										<span class="tree-item-actions">
-											<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
-												<Icon name="star" size={13} />
-											</button>
-											<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
-												<Icon name="more" size={13} />
-											</button>
-										</span>
-									</a>
-								{/each}
+								{#if fdocs.length > 0}
+									<div class="folder-children">
+										{#each fdocs as doc (doc.id)}
+											<a href="/{doc.id}" class="tree-item folder-doc" class:active={currentDocId === doc.id}
+												oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
+												onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
+												<span class="tree-item-icon">
+													<Icon name="page" size={14} />
+												</span>
+												<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+												<span class="tree-item-actions">
+													<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
+														<Icon name="star" size={13} />
+													</button>
+													<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
+														<Icon name="more" size={13} />
+													</button>
+												</span>
+											</a>
+										{/each}
+									</div>
+								{/if}
 							{/if}
 						{/each}
 						{#if editingFolder?.id === null}
@@ -1104,6 +1125,10 @@
 						{/if}
 					{/if}
 
+
+					{#if folders.length > 0 && visiblePages.length > 0}
+						<div class="tree-section-title">Notes <span class="section-hint">no folder</span></div>
+					{/if}
 
 					{#each visiblePages as doc (doc.id)}
 						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
@@ -1195,6 +1220,26 @@
 			{/if}
 
 			<div class="sidebar-footer">
+				{#if isMobile}
+					<!-- App actions: a simple list pinned to the bottom of the drawer. -->
+					<div class="drawer-actions">
+						<button class="drawer-action" onclick={() => (syncCardOpen = !syncCardOpen)} aria-expanded={syncCardOpen}>
+							<span class="drawer-action-icon"><Icon name="network" size={18} /></span>
+							<span class="drawer-action-label">Sync</span>
+							<span class="drawer-action-state">{syncState === 'connected' ? 'Connected' : syncState === 'searching' ? 'Searching' : 'Off'}</span>
+							<Icon name={syncCardOpen ? 'chevronDown' : 'chevronRight'} size={14} />
+						</button>
+						<button class="drawer-action" onclick={() => openUI('settings')}>
+							<span class="drawer-action-icon"><Icon name="settings" size={18} /></span>
+							<span class="drawer-action-label">Settings</span>
+							<Icon name="chevronRight" size={14} />
+						</button>
+						<button class="drawer-action" onclick={lockNow}>
+							<span class="drawer-action-icon"><Icon name="lock" size={18} /></span>
+							<span class="drawer-action-label">Lock vault</span>
+						</button>
+					</div>
+				{/if}
 				<button class="new-page-btn" onclick={createDocument} title="New page (Ctrl+N)">
 					<Icon name="plus" size={15} />
 					<span>New page</span>
@@ -1308,13 +1353,6 @@
 					</div>
 				</div>
 			</div>
-			{#if isMobile}
-				<!-- Anchors the bottom of the phone drawer instead of a dead gap. -->
-				<div class="drawer-foot">
-					<div class="drawer-foot-title">Enclave</div>
-					<div class="drawer-foot-sub">Local-first · encrypted vault · no cloud</div>
-				</div>
-			{/if}
 		{:else}
 			<!-- Collapsed sidebar: icon rail with the essentials. -->
 			<nav class="mini-nav" aria-label="Main">
@@ -1761,7 +1799,6 @@
 		justify-content: center;
 	}
 
-	.drawer-title { display: none; }
 
 	/* ── Sidebar ──
 	   One scroll context for the whole sidebar: pages, tags and trash scroll
@@ -1988,7 +2025,34 @@
 		padding: 0 7px;
 		flex-shrink: 0;
 	}
-	.folder-doc { padding-left: 24px; }
+	/* Folder children hang off a guide line so the hierarchy reads as a tree:
+	   notes inside a folder vs. unfiled notes at the root. */
+	.folder-children {
+		position: relative;
+		margin: 0 0 3px 15px;
+		padding-left: 12px;
+		border-left: 1px solid var(--color-border);
+	}
+	.folder-doc { position: relative; min-height: 27px; padding-left: 8px; }
+	.folder-children .folder-doc::before {
+		content: '';
+		position: absolute;
+		left: -12px;
+		top: 50%;
+		width: 9px;
+		height: 1px;
+		background: var(--color-border);
+	}
+	.folder-children .folder-doc:hover::before,
+	.folder-children .folder-doc.active::before { background: var(--color-accent); }
+	.section-hint {
+		margin-left: 4px;
+		font-weight: 500;
+		letter-spacing: 0;
+		text-transform: none;
+		color: var(--color-text-faint);
+		opacity: 0.75;
+	}
 	.folder-input {
 		flex: 1;
 		min-width: 0;
@@ -2518,7 +2582,7 @@
 		background: var(--color-overlay);
 		display: flex;
 		justify-content: center;
-		padding-top: 14vh;
+		padding-top: calc(14vh * var(--ui-fit));
 	}
 	.command-palette {
 		width: 560px;
@@ -2716,72 +2780,64 @@
 			border-right: 1px solid var(--color-border);
 		}
 		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
-		/* Keep-style drawer heading. */
-		.drawer-title {
-			display: block;
-			padding: calc(14px + var(--safe-top)) 20px 6px;
-			font-size: 26px;
-			font-weight: 700;
-			letter-spacing: -0.02em;
-			color: var(--color-text);
-		}
-		/* App-actions panel — the phone drawer is settings/actions, not the
-		   note tree (issue #161). */
-		.drawer-actions { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; }
+		/* Simple action list pinned to the bottom of the drawer. */
+		.drawer-actions { display: flex; flex-direction: column; gap: 2px; padding: 2px 8px 4px; }
 		.drawer-action {
 			display: flex;
 			align-items: center;
 			gap: 12px;
-			width: 100%;
-			min-height: 52px;
-			padding: 8px 12px;
+			min-height: 48px;
+			padding: 0 12px;
 			border: none;
-			background: transparent;
+			background: none;
 			color: var(--color-text);
 			border-radius: var(--radius-lg);
-			text-align: left;
 			font: inherit;
+			font-size: 15px;
 			cursor: pointer;
+			text-align: left;
 		}
 		.drawer-action:hover { background: var(--color-surface-hover); }
 		.drawer-action:active { background: var(--color-surface-active); }
-		.drawer-action-icon {
+		.drawer-action-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+		.drawer-action-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.drawer-action-state { font-size: 12px; color: var(--color-text-muted); }
+		.new-page-btn, .footer-row { display: none; }
+		/* App actions + sync card pin straight to the bottom (no filler below). */
+		.sidebar-footer { margin-top: auto; }
+		.drawer-folders { padding: 2px 8px 8px; }
+		.drawer-section-head {
 			display: flex;
 			align-items: center;
-			justify-content: center;
-			width: 34px;
-			height: 34px;
-			border-radius: 10px;
-			background: var(--color-surface-hover);
-			color: var(--color-accent);
-			flex-shrink: 0;
+			justify-content: space-between;
+			padding: 8px 6px 2px;
 		}
-		.drawer-action-icon.online { color: var(--color-success); }
-		.drawer-action-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-		.drawer-action-title { font-size: 15px; font-weight: 600; }
-		.drawer-action-sub {
-			font-size: 12px;
-			color: var(--color-text-muted);
+		.drawer-empty { padding: 10px 12px; font-size: 13px; color: var(--color-text-faint); }
+		.drawer-folder {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			min-height: 48px;
+			padding: 0 12px;
+			border-radius: var(--radius-lg);
+			color: var(--color-text);
+			text-decoration: none;
+			font-size: 15px;
+		}
+		.drawer-folder:hover { background: var(--color-surface-hover); }
+		.drawer-folder:active { background: var(--color-surface-active); }
+		.drawer-folder.active { background: var(--color-accent-subtle); color: var(--color-accent); }
+		.drawer-folder-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+		.drawer-folder-name {
+			flex: 1;
+			min-width: 0;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
 		}
-		.drawer-action-chevron { color: var(--color-text-muted); flex-shrink: 0; }
-		/* Creation is the FAB and the app actions moved into the body above, so
-		   the duplicated footer chips and New page row are gone on phones. */
-		.new-page-btn, .footer-row { display: none; }
-		/* No page tree on phones, so the sync card follows the actions instead of
-		   being pinned to the bottom (which left a dead gap in the middle). */
-		.sidebar-footer { position: static; margin-top: 0; }
-		/* Small brand/privacy footer anchors the bottom of the drawer. */
-		.drawer-foot {
-			margin-top: auto;
-			padding: 18px 16px calc(14px + var(--safe-bottom));
-			border-top: 1px solid var(--color-border);
-		}
-		.drawer-foot-title { font-size: 13px; font-weight: 600; color: var(--color-text-muted); }
-		.drawer-foot-sub { font-size: 12px; color: var(--color-text-faint); margin-top: 2px; }
-		.side-nav { gap: 4px; padding: 4px 10px 10px; }
+		.drawer-folder-count { font-size: 12px; color: var(--color-text-muted); }
+		.drawer-folder-input { margin: 4px 6px 6px; }
+		.side-nav { gap: 4px; padding: calc(12px + var(--safe-top)) 10px 10px; }
 		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
 		.section-head { padding: 14px 16px 6px; }
 		.section-title { font-size: 12px; }

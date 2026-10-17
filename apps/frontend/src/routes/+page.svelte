@@ -4,9 +4,11 @@
 	import { theme, Icon, Logo } from '@enclave/ui';
 	import { templates } from '@enclave/editor';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { haptic } from '$lib/haptics.js';
 
 	let documents = $state<Document[]>([]);
+	let folders = $state<{ id: string; name: string }[]>([]);
 
 	// Mobile notes layouts: list, gallery, thumbnails or icon tiles.
 	let isMobile = $state(false);
@@ -26,6 +28,14 @@
 			documents = await invoke<Document[]>('get_document_list');
 		} catch (e) {
 			console.error('Failed to load documents:', e);
+		}
+	}
+
+	async function loadFolders() {
+		try {
+			folders = await invoke<{ id: string; name: string }[]>('get_folders');
+		} catch (e) {
+			console.error('Failed to load folders:', e);
 		}
 	}
 
@@ -62,7 +72,7 @@
 		}
 	}
 
-	$effect(() => { loadDocuments(); });
+	$effect(() => { loadDocuments(); loadFolders(); });
 
 	const favorites = $derived(documents.filter(d => d.is_favorite));
 	const hasRail = $derived(documents.length === 0 || !isMobile || favorites.length > 0);
@@ -75,6 +85,10 @@
 			})
 			.slice(0, 8)
 	);
+	// `/?folder=<id>` filters the home screen to one folder (phone drawer).
+	const folderId = $derived($page.url.searchParams.get('folder'));
+	const folderName = $derived(folders.find((f) => f.id === folderId)?.name ?? '');
+	const folderDocs = $derived(folderId ? documents.filter((d) => d.folder_id === folderId) : []);
 	const greeting = $derived(
 		new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'
 	);
@@ -148,8 +162,8 @@
 	{/snippet}
 	<div class="home-head">
 		<div class="home-heading">
-			<h1 class="home-title">{greeting}</h1>
-			{#if documents.length === 0 || !isMobile}
+			<h1 class="home-title">{folderId ? folderName || 'Folder' : greeting}</h1>
+			{#if !folderId && (documents.length === 0 || !isMobile)}
 				<p class="home-subtitle">Your encrypted workspace — everything stays on this device.</p>
 			{/if}
 		</div>
@@ -174,11 +188,23 @@
 	{:else}
 		<div class="home-grid">
 			<section class="home-main">
-				<div class="sec-head">
-					<h2 class="sec-title">Recent pages</h2>
-					<span class="sec-count">{recent.length}</span>
-				</div>
-				{@render docList(recent)}
+				{#if folderId}
+					<div class="sec-head">
+						<h2 class="sec-title">{folderName || 'Folder'}</h2>
+						<span class="sec-count">{folderDocs.length}</span>
+						<a class="folder-clear" href="/">Show all</a>
+					</div>
+					{@render docList(folderDocs)}
+					{#if folderDocs.length === 0}
+						<div class="folder-empty">No notes in this folder yet.</div>
+					{/if}
+				{:else}
+					<div class="sec-head">
+						<h2 class="sec-title">Recent pages</h2>
+						<span class="sec-count">{recent.length}</span>
+					</div>
+					{@render docList(recent)}
+				{/if}
 			</section>
 
 			{#if hasRail}

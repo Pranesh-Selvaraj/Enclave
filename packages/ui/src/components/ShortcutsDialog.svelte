@@ -67,7 +67,7 @@
 		display: flex;
 		justify-content: center;
 		align-items: flex-start;
-		padding-top: 12vh;
+		padding-top: calc(12vh * var(--ui-fit));
 	}
 
 	.sd-dialog {

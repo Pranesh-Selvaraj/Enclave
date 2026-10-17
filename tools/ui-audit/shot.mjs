@@ -304,9 +304,9 @@ async function openSettings(s) {
 	}
 	let opened = await s.eval(`document.querySelector('.settings-panel') !== null`);
 	if (!opened) {
-		// Expanded drawer → labeled footer button; collapsed rail → mini button.
+		// Drawer app-action tile, expanded footer button, or collapsed rail.
 		await s.eval(
-			`(() => { const b = [...document.querySelectorAll('.sidebar .icon-btn, .mini-nav .mini-btn')].find((x) => (x.title || '').includes('Settings')); if (b) b.click(); return !!b; })()`,
+			`(() => { const cands = [...document.querySelectorAll('.drawer-tiles .drawer-tile, .sidebar .icon-btn, .mini-nav .mini-btn')]; const b = cands.find((x) => ((x.title || '') + ' ' + x.textContent).includes('Settings')); if (b) b.click(); return !!b; })()`,
 		);
 	}
 	await s.waitFor(() => document.querySelector('.settings-panel'), 10000, 'settings panel');
@@ -502,7 +502,12 @@ const SCENARIOS = {
 	async sidebar(s) {
 		await s.unlock();
 		await s.shot('sidebar');
-		const before = await s.eval(`document.querySelector('.sidebar').getBoundingClientRect().width`);
+		// Layout px (offsetWidth) is zoom-independent; getBoundingClientRect is not.
+		const before = await s.eval(`document.querySelector('.sidebar').offsetWidth`);
+		const align0 = await s.eval(
+			`(() => { const sb = document.querySelector('.sidebar').getBoundingClientRect(); const rz = document.querySelector('.sidebar-resizer').getBoundingClientRect(); return Math.abs((rz.left + rz.width / 2) - sb.right); })()`,
+		);
+		s.check('sidebar-resizer-aligned', align0 <= 2, `handle is ${align0}px off the sidebar edge`);
 		const pt = await s.eval(
 			`(() => { const r = document.querySelector('.sidebar-resizer').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
 		);
@@ -513,11 +518,15 @@ const SCENARIOS = {
 		}
 		await s.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x + 80, y: pt.y, button: 'left', clickCount: 1 });
 		await sleep(250);
-		const after = await s.eval(`document.querySelector('.sidebar').getBoundingClientRect().width`);
+		const after = await s.eval(`document.querySelector('.sidebar').offsetWidth`);
 		const saved = Number(await s.eval(`localStorage.getItem('enclave-sidebar-width')`));
 		if (!(after > before + 40) || Math.abs(saved - after) > 1.5) {
 			throw new Error(`resize failed: before=${before} after=${after} saved=${saved}`);
 		}
+		const align1 = await s.eval(
+			`(() => { const sb = document.querySelector('.sidebar').getBoundingClientRect(); const rz = document.querySelector('.sidebar-resizer').getBoundingClientRect(); return Math.abs((rz.left + rz.width / 2) - sb.right); })()`,
+		);
+		s.check('sidebar-resizer-aligned-after-drag', align1 <= 2, `handle is ${align1}px off after drag`);
 		console.log(`  sidebar resized ${Math.round(before)} → ${Math.round(after)}px (persisted)`);
 		await s.shot('sidebar-resized');
 		// Double-click resets to the density preset and clears the saved width.
@@ -525,7 +534,7 @@ const SCENARIOS = {
 		await s.cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt2.x, y: pt2.y, button: 'left', clickCount: 2 });
 		await s.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt2.x, y: pt2.y, button: 'left', clickCount: 2 });
 		await sleep(250);
-		const reset = await s.eval(`document.querySelector('.sidebar').getBoundingClientRect().width`);
+		const reset = await s.eval(`document.querySelector('.sidebar').offsetWidth`);
 		const cleared = await s.eval(`localStorage.getItem('enclave-sidebar-width')`);
 		if (Math.abs(reset - before) > 2 || cleared !== null) {
 			throw new Error(`reset failed: width=${reset} (expected ${before}), saved=${cleared}`);
