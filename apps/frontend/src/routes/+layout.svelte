@@ -2582,7 +2582,7 @@
 		background: var(--color-overlay);
 		display: flex;
 		justify-content: center;
-		padding-top: 14vh;
+		padding-top: calc(14vh * var(--ui-fit));
 	}
 	.command-palette {
 		width: 560px;
