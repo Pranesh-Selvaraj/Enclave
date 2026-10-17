@@ -176,6 +176,14 @@ Notes on trust boundaries:
 
 Rules for crypto/non-trivial changes: leave one runnable check behind. For security code, show the test passing in the PR description.
 
+## Decision Records
+
+Significant technical decisions are recorded in the repository, not only in chat or PR discussion. `docs/HISTORY.md` is the project timeline, `docs/decisions/` holds the Architecture Decision Records (ADRs), and `docs/decisions/README.md` is the index and decision map.
+
+Record a decision when it changes any of: the UI stack, shell or architecture, storage engine, crypto, sync protocol, vault or block schema, FFI/contract, repository layout, platform support, or distribution/update mechanism. An ADR states what was chosen, why, the alternatives, the consequences, and — when it replaces an earlier choice — what was wrong before.
+
+Do it in the same change that makes the decision. Never delete an old ADR: mark it `Superseded by NNNN` and add the new record. A change that only implements an already-recorded decision does not need a new ADR, but it must update `docs/HISTORY.md` if it changes an era or a contract version.
+
 ## Issue Labels
 
 - `bug` — something's broken
