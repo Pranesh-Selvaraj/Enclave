@@ -189,8 +189,23 @@ jobs:
           fi
           mapfile -t files < <(find artifacts -type f ! -name '*.sig' ! -name 'SHA256SUMS*' | sort)
           node scripts/sign-release.mjs --sums artifacts/SHA256SUMS "${files[@]}"
+      # Publish the detailed CHANGELOG entry, not a forge-generated PR list:
+      # the release page and CHANGELOG.md must carry the same self-contained
+      # prose. Fail rather than ship a release with no matching entry.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md | sed '/./,$!d' > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::no CHANGELOG.md entry found for $version (tag $GITHUB_REF_NAME)"
+            exit 1
+          fi
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
-          generate_release_notes: true
+          body_path: release-notes.md
