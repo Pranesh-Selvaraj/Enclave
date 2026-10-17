@@ -1,4 +1,12 @@
-# Enclave
+<p align="center">
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.svg">
+    <img src="docs/brand/lockup.svg" width="470" alt="Enclave">
+  </picture>
+  <br>
+  <br>
+</p>
 
 > **Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi.**
 >
@@ -448,6 +456,7 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 - [docs/HISTORY.md](docs/HISTORY.md) — what the project was built with, why, and what changed
 - [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
 - [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
+- [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules
 
 ## License
 
