@@ -61,6 +61,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // The canonical block-schema fixture is owned by the core; the editor test
+    // reads it directly from there so the contract has a single source.
+    sourceSets {
+        getByName("test") {
+            resources.srcDir("../../../core/core-db/tests/fixtures")
+        }
+    }
 }
 
 dependencies {
@@ -79,4 +87,9 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
+    // The mockable android.jar ships org.json stubs that throw "Stub!"; the
+    // real implementation is used so the editor model can be tested on the JVM.
+    testImplementation("org.json:json:20250107")
 }

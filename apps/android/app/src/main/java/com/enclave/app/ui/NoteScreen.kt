@@ -21,6 +21,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,35 +31,71 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enclave.app.core.Core
+import com.enclave.app.editor.EditableDocument
+import com.enclave.app.editor.EditorDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import uniffi.core_api.Block
+import java.util.UUID
 
 /**
- * A note: editable title, read-only rendering of the document blocks. The
- * editor surface replaces [BlockView] with an editable one in the next step.
+ * A note: editable title and a block editor over the core's document contract.
+ *
+ * Edits write through `upsertBlock` on the canonical `doc` block after a short
+ * debounce, so rev bumps and sync treat them like any other save. A note
+ * created by the core still holds its placeholder block; the first edit
+ * promotes that block id to `doc` instead of leaving a second block behind.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteScreen(documentId: String, onBack: () -> Unit) {
     var title by remember { mutableStateOf("") }
-    var blocks by remember { mutableStateOf<List<Block>>(emptyList()) }
+    var savedTitle by remember { mutableStateOf<String?>(null) }
+    var editor by remember { mutableStateOf<EditorDocument?>(null) }
+    var docBlockId by remember { mutableStateOf<String?>(null) }
+    var sortOrder by remember { mutableStateOf(1.0) }
     var loaded by remember { mutableStateOf(false) }
+    var revision by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(documentId) {
         withContext(Dispatchers.IO) {
-            title = Core.ffi.getDocument(documentId).title
-            blocks = Core.ffi.getBlocks(documentId)
+            val document = Core.ffi.getDocument(documentId)
+            val blocks = Core.ffi.getBlocks(documentId)
+            val docBlock = blocks.firstOrNull { it.blockType == "doc" }
+            if (docBlock != null) {
+                docBlockId = docBlock.id
+                sortOrder = docBlock.sortOrder
+                editor = EditorDocument.parse(docBlock.contentJson)
+            } else {
+                val seed = blocks.firstOrNull()
+                docBlockId = seed?.id ?: UUID.randomUUID().toString()
+                sortOrder = seed?.sortOrder ?: 1.0
+                editor = EditorDocument.empty()
+            }
+            title = document.title
+            savedTitle = document.title
         }
         loaded = true
     }
 
-    // Debounced title save; the title is the document's sync-visible name.
+    // Debounced title save.
     LaunchedEffect(title) {
-        if (!loaded) return@LaunchedEffect
+        val baseline = savedTitle ?: return@LaunchedEffect
+        if (title == baseline) return@LaunchedEffect
         delay(500)
         withContext(Dispatchers.IO) { Core.ffi.updateDocumentTitle(documentId, title) }
+        savedTitle = title
+    }
+
+    // Debounced document save.
+    LaunchedEffect(revision) {
+        if (revision == 0) return@LaunchedEffect
+        delay(800)
+        val document = editor ?: return@LaunchedEffect
+        val blockId = docBlockId ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            Core.ffi.upsertBlock(blockId, documentId, "doc", document.toJson(), sortOrder)
+        }
     }
 
     Scaffold(
@@ -77,7 +114,8 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        if (!loaded) {
+        val document = editor
+        if (!loaded || document == null) {
             Box(
                 Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
@@ -113,17 +151,12 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 )
             }
 
-            if (blocks.isEmpty()) {
-                item {
-                    Text(
-                        "This note is empty. The core is wired and the read-only view renders the block contract; the editable surface lands next.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    )
-                }
-            } else {
-                items(blocks.size) { index -> BlockView(blocks[index]) }
+            item {
+                EditableDocument(
+                    doc = document,
+                    onChanged = { revision++ },
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
             }
         }
     }
