@@ -9,7 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@enclave/crypto": "*",
     "yjs": "^13.6.30"
   }
 }
