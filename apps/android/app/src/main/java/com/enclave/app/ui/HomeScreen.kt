@@ -1,5 +1,6 @@
 package com.enclave.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,20 +56,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
-import com.enclave.app.editor.Templates
+import com.enclave.app.editor.NoteFactory
+import com.enclave.app.sync.SyncController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.core_api.Document
 import uniffi.core_api.Folder
-import java.util.UUID
 
 private enum class HomeSheet { LAYOUT, SORT }
 
@@ -77,7 +82,11 @@ private enum class HomeSheet { LAYOUT, SORT }
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpenNote: (String) -> Unit, onLock: () -> Unit) {
+fun HomeScreen(
+    onOpenNote: (String) -> Unit,
+    onOpenSync: () -> Unit,
+    onLock: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var documents by remember { mutableStateOf<List<Document>>(emptyList()) }
     var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
@@ -109,23 +118,8 @@ fun HomeScreen(onOpenNote: (String) -> Unit, onLock: () -> Unit) {
                 return@launch
             }
 
-            val template = Templates.forKind(kind)
-            val document = withContext(Dispatchers.IO) {
-                var doc = Core.ffi.createDocument(template.title)
-                // Promote the placeholder block into the canonical doc block.
-                val seed = Core.ffi.getBlocks(doc.id).firstOrNull()
-                val blockId = seed?.id ?: UUID.randomUUID().toString()
-                Core.ffi.upsertBlock(
-                    blockId,
-                    doc.id,
-                    "doc",
-                    template.doc.toString(),
-                    seed?.sortOrder ?: 1.0,
-                )
-                val folderId = folderFilter
-                if (folderId != null) doc = Core.ffi.moveDocument(doc.id, folderId)
-                doc
-            }
+            val document = NoteFactory.create(kind, folderId = folderFilter)
+            WidgetCacheBridge.requestRefresh()
             documents = listOf(document) + documents.filterNot { it.id == document.id }
             onOpenNote(document.id)
         }
@@ -161,6 +155,19 @@ fun HomeScreen(onOpenNote: (String) -> Unit, onLock: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(onClick = onOpenSync) {
+                    Box(contentAlignment = Alignment.TopEnd) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Sync")
+                        if (SyncController.enabled) {
+                            Box(
+                                Modifier
+                                    .padding(top = 3.dp, end = 3.dp)
+                                    .size(8.dp)
+                                    .background(Color(0xFF2E7D32), CircleShape),
+                            )
+                        }
+                    }
+                }
                 IconButton(onClick = onLock) {
                     Icon(Icons.Filled.Lock, contentDescription = "Lock vault")
                 }

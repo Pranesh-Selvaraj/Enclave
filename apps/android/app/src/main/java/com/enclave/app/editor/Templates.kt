@@ -56,6 +56,9 @@ object Templates {
         CreateKind.TEXT, CreateKind.FOLDER -> Template("", doc(p()))
     }
 
+    /** A document holding one paragraph with [text] (share target, capture). */
+    fun prefilled(text: String): JSONObject = doc(p(text))
+
     private fun doc(vararg nodes: JSONObject): JSONObject = JSONObject()
         .put("type", "doc")
         .put("content", JSONArray().apply { nodes.forEach { put(it) } })

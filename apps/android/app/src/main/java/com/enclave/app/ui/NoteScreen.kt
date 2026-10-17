@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.editor.EditableDocument
 import com.enclave.app.editor.EditorDocument
@@ -84,6 +85,7 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
         if (title == baseline) return@LaunchedEffect
         delay(500)
         withContext(Dispatchers.IO) { Core.ffi.updateDocumentTitle(documentId, title) }
+        WidgetCacheBridge.requestRefresh()
         savedTitle = title
     }
 
@@ -96,6 +98,7 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
         withContext(Dispatchers.IO) {
             Core.ffi.upsertBlock(blockId, documentId, "doc", document.toJson(), sortOrder)
         }
+        WidgetCacheBridge.requestRefresh()
     }
 
     Scaffold(

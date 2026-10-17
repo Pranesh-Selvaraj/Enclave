@@ -86,6 +86,9 @@ dependencies {
     // UniFFI Kotlin bindings load libcore_api.so through JNA.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 
+    // Home-screen widgets (Glance) over the Keystore-wrapped cache.
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
