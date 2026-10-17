@@ -4,31 +4,34 @@ All notable changes to Enclave are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.13.0]
 
-A backlog sweep: the remaining open bugs were fixed, the auto-updater now fails closed without a signed release, and Android gets event-driven widgets, a working SAF file flow and JVM tests. Anything that cannot be verified without hardware (real-phone RAG, a Windows pass) is called out in the issues rather than silently listed as done.
+A backlog sweep: the remaining open bugs were fixed, the auto-updater now fails closed without a signed release, and Android gets event-driven widgets, a working SAF file flow and JVM tests. On top of that, this release reworks the phone shell and settings for readability, makes the desktop folder tree show its structure, and fixes a batch of UI-size (zoom) layout bugs and a Glass-rendering bug found while sweeping the appearance settings. Anything that cannot be verified without hardware (real-phone RAG, a Windows pass) is called out in the issues rather than silently listed as done.
 
-### Security
+### 🔒 Security
 
 - **Update downloads are signed and verified before installation (#83).** Until now the updater trusted the GitHub API: it checked the SHA-256 digest GitHub advertised and only installed a file it had downloaded, but a compromised GitHub account, a malicious release or a TLS-terminating proxy could serve arbitrary code with a matching digest. Every release asset now ships with a detached Ed25519 signature (`<asset>.sig`) over its SHA-256 digest, verified against a public key pinned in the app binary. A missing or invalid signature deletes the download and refuses installation, and the CI release jobs (desktop and Android) fail rather than publish unsigned assets. The private key lives in the `UPDATE_SIGNING_KEY` CI secret, never in the repository; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS`/`SHA256SUMS.sig` for manual installs. This is documented in SECURITY.md, and CONTRIBUTING now covers key generation, backup and rotation.
 - **`source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, #133).** A high-severity event-loop denial of service through indexed source-map section offsets, reached build-time through Vite → PostCSS. `npm audit` is back to 0 vulnerabilities; the dependency never ships in the runtime.
 
-### Added
+### ✨ Added
 
 - **Android JVM unit tests (#124).** The Android project had no test sources; `src/test/kotlin` now covers the widget cache codec, the note-parsing (later moved to Rust), and the hide-when-locked decision. CI runs `:app:testUniversalDebugUnitTest` before the APK build, so parser/codec regressions fail fast. Unit tests need a real `org.json`, since the mockable `android.jar` ships stubs that throw.
 - **A UniFFI binding drift check (#120).** The committed Kotlin bindings are now regenerated in CI and `git diff --exit-code` fails the Android job if the Rust FFI surface changed without regenerating — previously a stale binding compiled fine and failed at runtime on a device.
 - **A locked-capture UI-audit scenario (#22).** The tour now stubs a locked password vault and asserts the Quick Capture window renders the inline unlock guard instead of an auto-unlocked composer, on desktop and phone.
 - **The UI audit runs on Windows now, including display scaling (#126).** `windows-125` and `windows-150` profiles (1440×900 at dpr 1.25/1.5) exercise fractional DPI, `--scrollbars` leaves the platform's scrollbars visible for inspection, and the harness discovers Chrome/Edge under `ProgramFiles` and the macOS/Windows Playwright caches. A scheduled `ui-audit-windows` CI job runs the same tour on windows-latest and uploads its screenshots as a separate artifact; the first full run passed 71/71 scenarios with zero audit issues.
+- **Folder filtering and a visual folder tree.** Choosing a folder — from the phone drawer or the desktop tree — filters the home screen to that folder's notes (`/?folder=<id>`), shows the folder name as the heading, and offers a "Show all" reset. The desktop tree draws a guide line from each folder into its notes and labels the root list "Notes · no folder", so it is obvious which notes live inside a folder and which do not; folders list all of their notes (favorites included), with the Favorites section kept as a cross-cutting shortcut rather than a location. (#168)
 
-### Changed
+### 🔄 Changed
 
 - **Widget note projection moved from Kotlin to Rust (#122).** Widgets used to loop `listDocuments()` + `getBlocks(id)` per note and walk ProseMirror JSON in `NoteJson.kt`; `core-db` now fetches every document plus its widget/tags/doc payloads in one query and `core-api` projects typed `WidgetNote`/`ChecklistRow` records, which Kotlin stores in its unchanged Keystore-wrapped cache. Ticking a checklist row is a Rust call that writes through the same block-upsert path as the editor, so rev, FTS and sync react like a normal save. `NoteJson.kt` is deleted; the parsing tests moved to the Rust suite.
 - **Android widget cache refresh is event-driven (#127).** The Rust shell calls a new Kotlin JNI bridge after the mutations that change what widgets show (block saves, title changes, delete/archive/restore, lock, completed sync merges), and the Kotlin side conflates bursts. The old 20-second vault poll is replaced by a two-minute fallback.
 - **The Android sync notification only redraws when its text changes**, and idle discovery backs off from 10 to 60 seconds (10 seconds still applies while peers are found or connecting).
 - **Phones force the matte background.** Glass `backdrop-filter` chrome is desktop-only: the theme store clamps a stored Glass choice to matte at ≤768px and self-heals the setting, and Settings hides the Glass option on phones (tablets and desktop keep it).
 - **Android settings no longer hold the mDNS multicast lock while sync is off (#123).** The lock moved from `MainActivity` (where it lived for the whole app lifetime) into `SyncService`, which starts exactly when sync is enabled and stops when it is disabled or the vault locks.
+- **The phone drawer is a folder list with bottom app actions.** It drops the "Enclave" heading, the Theme row and the note tree: Home and a plain folder list lead the drawer (tap a folder to filter home; **+** creates one inline), and Sync / Settings / Lock vault are a simple list pinned to the bottom. The redundant brand/privacy footer is gone, so the actions sit flush with the bottom edge instead of floating above a dead gap, and opening Settings no longer force-closes the drawer first — the sheet covers it, and the stale-overlay history cleanup could otherwise pop the just-pushed entry and close Settings immediately. (#168)
+- **The phone settings sheet is reworked for readability and touch.** Labels sit on their own line with wide controls (segmented choices, colour swatches, text fields) full-width beneath them rather than squeezed to the right and wrapped; choice buttons share the row evenly at thumb height, and compact controls (switches, small buttons, the colour well) stay beside their label. It gains a sheet grab handle, a larger title and close target, roomier section spacing, and a full-width centred Close button. (#168)
 
-### Fixed
+### 🐛 Fixed
 
 - **The Android widget lock placeholder could stay stale (#132).** The old cache tick read `widget_hide_locked` even while locked, and that call throws `VaultLocked`; the exception aborted the tick after mirroring the lock state but before re-rendering, so with “hide widgets while locked” on the last-rendered note content could remain on the home screen until an unrelated update. The dial is now read only while unlocked (falling back to the last value), the placeholder always renders when the lock state changes, and locking triggers it directly from Rust.
 - **Android widget updates can no longer take the process down (#121).** `NoteListWidget` had no exception guard, so a failure in `provideGlance` or an update broadcast could surface as “Problem loading widget” and crash the process. A shared helper now catches `Throwable` around every widget's render and each widget's `updateAll`, logs the widget name/id and cause, and renders the failure placeholder. `WidgetStore` also catches `Throwable`, not just `Exception`, on the JNA boundary.
@@ -37,11 +40,15 @@ A backlog sweep: the remaining open bugs were fixed, the auto-updater now fails 
 - **`SHA256SUMS` was written outside the released artifact set** in the new signing step (follow-up to #83); it now takes an explicit output path and CI writes it into the release artifacts directory so the checksums actually ship.
 - **The scheduled UI audit had been red on `main` since v1.12.0 without anyone noticing (#135).** All 33 scenarios ran, but four assertions still clicked controls that v1.12.0 made platform-specific (page width on phones, vibration feedback on desktop). The audit matrix now skips hidden-by-design controls and opens the mobile settings panel through the drawer; the Linux job is green on the branch, so the weekly run recovers on merge.
 - **The UI audit leaked appearance state between device profiles (#134).** `settingsMatrix` intentionally ends on UI size Xlarge, so the next profile in the same browser session measured everything under `zoom: 1.18` and failed the sidebar scenario with `after = saved × 1.18` — a harness artifact, not an app bug. Each profile now clears localStorage before its scenarios; the Windows DPI run went from 52/54 to 54/54.
+- **The sidebar resize handle drifted off the edge at Large/Xlarge UI size (#169).** UI size applies CSS `zoom`, which scales rendered boxes but leaves layout px unscaled; the handle is positioned in layout px, yet its width was read from `getBoundingClientRect()` (zoomed px) and drags used raw viewport px, so it floated further from the edge the larger the zoom and dragged by the wrong distance. It now measures with `offsetWidth`, converts pointer deltas with the `--ui-fit` token, and caps the width in layout px.
+- **Glass had no blur on Chromium shells (#170).** Vite 8 transforms CSS with Lightning CSS, which treats `backdrop-filter` and `-webkit-backdrop-filter` as the same declaration and keeps only the last, so the shipped stylesheet kept only the prefixed form — unsupported in Chromium — and Glass rendered as flat translucency on WebView2/Android while still blurring on WebKit and in dev. The two prefixes now live in rule blocks that differ in selector syntax (`:is(...)` vs an explicit list), which Lightning CSS does not collapse; the same split keeps the True-black override's `backdrop-filter: none` on both engines.
+- **Overlay viewport caps ignored UI size (#171).** `zoom` does not scale `vh`/`dvh`, so raw caps rendered `zoom ×` taller and drifted or clipped at Large/Xlarge. The command-palette padding, the shortcuts-dialog padding and the split-view pane/picker heights now multiply by `--ui-fit`, matching the app frame.
+- **Settings → About showed a hardcoded vault path (#172).** The row printed a fixed `~/.local/share/com.enclave.app/enclave.db` that was never fetched from the backend, so it was wrong on macOS, Windows and Android. The row is removed; only Version remains.
 
-### Notes
+### 📝 Notes
 
 - **Still open for hardware (tracked in issues, not claimed as done):** #37 (arm64 offline embeddings) now compiles for arm64 and the ignored round-trip test passes on x86_64 Linux — the model loads, produces 384-dim deterministic vectors — but real-phone ONNX inference and RAG against a local Ollama are unverified; #126 now has continuous Windows CI coverage (71/71 scenarios at 100%/125%/150% scaling) with only an interactive window-resize and real NSIS/MSI install pass left, which needs a Windows machine with the Rust toolchain; #38 needs on-device confirmation of the new SAF read/write paths; #127 still needs the icon-flicker screen recording and idle battery stats.
-- The version is not bumped by this sweep; the Android `versionCode` counter keeps its usual release-time bump.
+- **UI-audit hardening.** The `sidebar` scenario now asserts the resize handle centre aligns with the sidebar edge before and after a drag, and that a dragged width persists, so a UI-size regression of that kind fails CI instead of being caught by eye.
 
 ## [1.12.0] — 2026-10-01
 
@@ -756,7 +763,8 @@ Database v2, edgeless, LAN sync, comments, local AI.
 
 Initial app release.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.1...v1.11.0
 [1.5.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...v1.5.0
