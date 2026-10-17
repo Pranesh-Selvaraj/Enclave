@@ -41,14 +41,25 @@
 		if (saved >= 200 && saved <= 560) sidebarWidth = saved;
 	} catch { /* ignore */ }
 
+	// UI size applies `zoom` to <html>. Layout px (offsetWidth, and the px we
+	// position with) are unscaled, while getBoundingClientRect()/clientX report
+	// *zoomed* values — mixing the two double-scales the resize handle (#166).
+	function uiZoom() {
+		if (typeof document === 'undefined') return 1;
+		const fit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-fit'));
+		return fit > 0 ? 1 / fit : 1;
+	}
+
 	function startSidebarResize(e: PointerEvent) {
 		e.preventDefault();
+		const zoom = uiZoom();
 		const startX = e.clientX;
-		const startW = sidebarEl?.getBoundingClientRect().width ?? sidebarRealWidth;
-		const max = Math.min(560, Math.max(260, window.innerWidth * 0.45));
+		const startW = sidebarEl?.offsetWidth ?? sidebarRealWidth;
+		// window.innerWidth is viewport px; a layout-px budget is 1/zoom of it.
+		const max = Math.min(560, Math.max(260, (window.innerWidth / zoom) * 0.45));
 		resizingSidebar = true;
 		const move = (ev: PointerEvent) => {
-			sidebarWidth = Math.round(Math.min(max, Math.max(200, startW + ev.clientX - startX)));
+			sidebarWidth = Math.round(Math.min(max, Math.max(200, startW + (ev.clientX - startX) / zoom)));
 		};
 		const up = () => {
 			resizingSidebar = false;
@@ -67,10 +78,11 @@
 
 	// Track the rendered width (density presets included) so the resize handle
 	// can sit exactly on the sidebar edge without living inside its scroll box.
+	// offsetWidth is layout px (zoom-independent), matching the handle's `left`.
 	$effect(() => {
 		if (!sidebarEl) return;
 		const ro = new ResizeObserver(() => {
-			sidebarRealWidth = sidebarEl!.getBoundingClientRect().width;
+			sidebarRealWidth = sidebarEl!.offsetWidth;
 		});
 		ro.observe(sidebarEl);
 		return () => ro.disconnect();
