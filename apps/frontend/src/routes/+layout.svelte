@@ -787,11 +787,12 @@
 	});
 
 	let favorites = $derived(filteredDocs.filter(d => d.is_favorite));
-	let regularPages = $derived(filteredDocs.filter(d => !d.is_favorite));
 	// Folder grouping: a doc whose folder_id is unknown (e.g. synced from a
-	// peer without that folder) falls back to the root list.
-	let rootPages = $derived(regularPages.filter((d) => !d.folder_id || !folders.some((f) => f.id === d.folder_id)));
-	let docsByFolder = $derived((folderId: string) => regularPages.filter((d) => d.folder_id === folderId));
+	// peer without that folder) falls back to the root list. Folders list *all*
+	// of their notes (favorites included) so folder membership is truthful;
+	// the Favorites section above is a cross-cutting shortcut, not a location.
+	let rootPages = $derived(filteredDocs.filter((d) => !d.folder_id || !folders.some((f) => f.id === d.folder_id)));
+	let docsByFolder = $derived((folderId: string) => filteredDocs.filter((d) => d.folder_id === folderId));
 	// Window the page tree: rendering thousands of rows at once is the
 	// slowest thing on a big vault. Cap it; one tap reveals the rest.
 	const PAGE_CAP = 120;
@@ -1066,24 +1067,28 @@
 								{/if}
 							</div>
 							{#if !collapsedFolders.has(folder.id)}
-								{#each fdocs as doc (doc.id)}
-									<a href="/{doc.id}" class="tree-item folder-doc" class:active={currentDocId === doc.id}
-										oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
-										onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
-										<span class="tree-item-icon">
-											<Icon name="page" size={14} />
-										</span>
-										<span class="tree-item-label">{doc.title || 'Untitled'}</span>
-										<span class="tree-item-actions">
-											<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
-												<Icon name="star" size={13} />
-											</button>
-											<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
-												<Icon name="more" size={13} />
-											</button>
-										</span>
-									</a>
-								{/each}
+								{#if fdocs.length > 0}
+									<div class="folder-children">
+										{#each fdocs as doc (doc.id)}
+											<a href="/{doc.id}" class="tree-item folder-doc" class:active={currentDocId === doc.id}
+												oncontextmenu={(e: MouseEvent) => showContextMenu(e, doc)}
+												onclick={(e: MouseEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); goto(`/split/${doc.id}`); } }}>
+												<span class="tree-item-icon">
+													<Icon name="page" size={14} />
+												</span>
+												<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+												<span class="tree-item-actions">
+													<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
+														<Icon name="star" size={13} />
+													</button>
+													<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, doc); }} title="More">
+														<Icon name="more" size={13} />
+													</button>
+												</span>
+											</a>
+										{/each}
+									</div>
+								{/if}
 							{/if}
 						{/each}
 						{#if editingFolder?.id === null}
@@ -1104,6 +1109,10 @@
 						{/if}
 					{/if}
 
+
+					{#if folders.length > 0 && visiblePages.length > 0}
+						<div class="tree-section-title">Notes <span class="section-hint">no folder</span></div>
+					{/if}
 
 					{#each visiblePages as doc (doc.id)}
 						<a href="/{doc.id}" class="tree-item" class:active={currentDocId === doc.id}
@@ -1988,7 +1997,34 @@
 		padding: 0 7px;
 		flex-shrink: 0;
 	}
-	.folder-doc { padding-left: 24px; }
+	/* Folder children hang off a guide line so the hierarchy reads as a tree:
+	   notes inside a folder vs. unfiled notes at the root. */
+	.folder-children {
+		position: relative;
+		margin: 0 0 3px 15px;
+		padding-left: 12px;
+		border-left: 1px solid var(--color-border);
+	}
+	.folder-doc { position: relative; min-height: 27px; padding-left: 8px; }
+	.folder-children .folder-doc::before {
+		content: '';
+		position: absolute;
+		left: -12px;
+		top: 50%;
+		width: 9px;
+		height: 1px;
+		background: var(--color-border);
+	}
+	.folder-children .folder-doc:hover::before,
+	.folder-children .folder-doc.active::before { background: var(--color-accent); }
+	.section-hint {
+		margin-left: 4px;
+		font-weight: 500;
+		letter-spacing: 0;
+		text-transform: none;
+		color: var(--color-text-faint);
+		opacity: 0.75;
+	}
 	.folder-input {
 		flex: 1;
 		min-width: 0;
