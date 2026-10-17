@@ -1,35 +1,33 @@
 <script lang="ts">
-	// Enclave brand mark — "the keyhole vault": a violet→indigo gradient tile
-	// with a white keyhole cut out. Reads as locked/private at any size.
-	// Matches the app-icon design in scripts/generate-icons.py.
+	// Enclave brand mark — a keyhole on a 24-unit grid.
+	//
+	// Geometry is the same as docs/brand/logo.svg: head radius 7.2 at (12, 9), the pin
+	// punched through it at radius 2.5, and a stem tapering 7.0 → 5.2. Keep the two in step.
+	//
+	// The tile follows the theme rather than being fixed to the brand ink, because the brand
+	// ink is the dark theme's own background and an ink tile would vanish into it. So the light
+	// theme gets an ink tile with a paper keyhole and the dark theme gets the inverse — the same
+	// rule the light/dark lockups follow.
 	let {
 		size = 28,
 	}: {
 		size?: number;
 	} = $props();
-
-	// Unique gradient id per instance (the same SVG can appear many times).
-	const gid = `lg${Math.random().toString(36).slice(2, 8)}`;
 </script>
 
 <svg
 	width={size}
 	height={size}
-	viewBox="0 0 48 48"
+	viewBox="0 0 24 24"
 	fill="none"
 	role="img"
 	aria-label="Enclave"
 >
-	<defs>
-		<linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-			<stop offset="0" stop-color="#8a7bff" />
-			<stop offset="1" stop-color="#4f46e5" />
-		</linearGradient>
-	</defs>
-	<rect x="1" y="1" width="46" height="46" rx="12" fill={`url(#${gid})`} />
-	<path
-		d="M24 8a11 11 0 0 0-7.4 19.3V36a3 3 0 0 0 3 3h8.8a3 3 0 0 0 3-3v-8.7A11 11 0 0 0 24 8z"
-		fill="#ffffff"
-	/>
-	<circle cx="24" cy="17.5" r="4.2" fill="none" stroke={`url(#${gid})`} stroke-width="2.4" />
+	<rect width="24" height="24" rx="5.4" fill="var(--color-text, #16130f)" />
+	<g fill="var(--color-bg, #ffffff)">
+		<circle cx="12" cy="9" r="7.2" />
+		<path d="M8.5 13.6L15.5 13.6L14.6 20Q14.6 21.6 13 21.6L11 21.6Q9.4 21.6 9.4 20Z" />
+	</g>
+	<!-- the pin: filled with the tile colour, which reads as a hole at any size -->
+	<circle cx="12" cy="9" r="2.5" fill="var(--color-text, #16130f)" />
 </svg>
