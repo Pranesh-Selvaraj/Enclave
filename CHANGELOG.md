@@ -1,779 +1,538 @@
 # Changelog
 
-All notable changes to Enclave are documented here. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows
-[Semantic Versioning](https://semver.org/).
+All notable changes to Enclave are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows [Semantic Versioning](https://semver.org/).
 
-## [1.13.0]
+Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change.
+
+## [1.13.0] - 2026-10-17
 
 A backlog sweep: the remaining open bugs were fixed, the auto-updater now fails closed without a signed release, and Android gets event-driven widgets, a working SAF file flow and JVM tests. On top of that, this release reworks the phone shell and settings for readability, makes the desktop folder tree show its structure, and fixes a batch of UI-size (zoom) layout bugs and a Glass-rendering bug found while sweeping the appearance settings. Anything that cannot be verified without hardware (real-phone RAG, a Windows pass) is called out in the issues rather than silently listed as done.
 
-### 🔒 Security
-
-- **Update downloads are signed and verified before installation (#83).** Until now the updater trusted the GitHub API: it checked the SHA-256 digest GitHub advertised and only installed a file it had downloaded, but a compromised GitHub account, a malicious release or a TLS-terminating proxy could serve arbitrary code with a matching digest. Every release asset now ships with a detached Ed25519 signature (`<asset>.sig`) over its SHA-256 digest, verified against a public key pinned in the app binary. A missing or invalid signature deletes the download and refuses installation, and the CI release jobs (desktop and Android) fail rather than publish unsigned assets. The private key lives in the `UPDATE_SIGNING_KEY` CI secret, never in the repository; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS`/`SHA256SUMS.sig` for manual installs. This is documented in SECURITY.md, and CONTRIBUTING now covers key generation, backup and rotation.
-- **`source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, #133).** A high-severity event-loop denial of service through indexed source-map section offsets, reached build-time through Vite → PostCSS. `npm audit` is back to 0 vulnerabilities; the dependency never ships in the runtime.
-
 ### ✨ Added
 
-- **Android JVM unit tests (#124).** The Android project had no test sources; `src/test/kotlin` now covers the widget cache codec, the note-parsing (later moved to Rust), and the hide-when-locked decision. CI runs `:app:testUniversalDebugUnitTest` before the APK build, so parser/codec regressions fail fast. Unit tests need a real `org.json`, since the mockable `android.jar` ships stubs that throw.
-- **A UniFFI binding drift check (#120).** The committed Kotlin bindings are now regenerated in CI and `git diff --exit-code` fails the Android job if the Rust FFI surface changed without regenerating — previously a stale binding compiled fine and failed at runtime on a device.
-- **A locked-capture UI-audit scenario (#22).** The tour now stubs a locked password vault and asserts the Quick Capture window renders the inline unlock guard instead of an auto-unlocked composer, on desktop and phone.
-- **The UI audit runs on Windows now, including display scaling (#126).** `windows-125` and `windows-150` profiles (1440×900 at dpr 1.25/1.5) exercise fractional DPI, `--scrollbars` leaves the platform's scrollbars visible for inspection, and the harness discovers Chrome/Edge under `ProgramFiles` and the macOS/Windows Playwright caches. A scheduled `ui-audit-windows` CI job runs the same tour on windows-latest and uploads its screenshots as a separate artifact; the first full run passed 71/71 scenarios with zero audit issues.
-- **Folder filtering and a visual folder tree.** Choosing a folder — from the phone drawer or the desktop tree — filters the home screen to that folder's notes (`/?folder=<id>`), shows the folder name as the heading, and offers a "Show all" reset. The desktop tree draws a guide line from each folder into its notes and labels the root list "Notes · no folder", so it is obvious which notes live inside a folder and which do not; folders list all of their notes (favorites included), with the Favorites section kept as a cross-cutting shortcut rather than a location. (#168)
+- 🧪 **Android JVM unit tests (#124).** The Android project had no test sources; `src/test/kotlin` now covers the widget cache codec, the note-parsing (later moved to Rust), and the hide-when-locked decision. CI runs `:app:testUniversalDebugUnitTest` before the APK build, so parser/codec regressions fail fast. Unit tests need a real `org.json`, since the mockable `android.jar` ships stubs that throw.
+- 🧪 **A UniFFI binding drift check (#120).** The committed Kotlin bindings are now regenerated in CI and `git diff --exit-code` fails the Android job if the Rust FFI surface changed without regenerating — previously a stale binding compiled fine and failed at runtime on a device.
+- 🧪 **A locked-capture UI-audit scenario (#22).** The tour now stubs a locked password vault and asserts the Quick Capture window renders the inline unlock guard instead of an auto-unlocked composer, on desktop and phone.
+- 🖥️ **The UI audit runs on Windows now, including display scaling (#126).** `windows-125` and `windows-150` profiles (1440×900 at dpr 1.25/1.5) exercise fractional DPI, `--scrollbars` leaves the platform's scrollbars visible for inspection, and the harness discovers Chrome/Edge under `ProgramFiles` and the macOS/Windows Playwright caches. A scheduled `ui-audit-windows` CI job runs the same tour on windows-latest and uploads its screenshots as a separate artifact; the first full run passed 71/71 scenarios with zero audit issues.
+- 📁 **Folder filtering and a visual folder tree.** Choosing a folder — from the phone drawer or the desktop tree — filters the home screen to that folder's notes (`/?folder=<id>`), shows the folder name as the heading, and offers a "Show all" reset. The desktop tree draws a guide line from each folder into its notes and labels the root list "Notes · no folder", so it is obvious which notes live inside a folder and which do not; folders list all of their notes (favorites included), with the Favorites section kept as a cross-cutting shortcut rather than a location. (#168)
 
-### 🔄 Changed
+### 🔧 Changed
 
-- **Widget note projection moved from Kotlin to Rust (#122).** Widgets used to loop `listDocuments()` + `getBlocks(id)` per note and walk ProseMirror JSON in `NoteJson.kt`; `core-db` now fetches every document plus its widget/tags/doc payloads in one query and `core-api` projects typed `WidgetNote`/`ChecklistRow` records, which Kotlin stores in its unchanged Keystore-wrapped cache. Ticking a checklist row is a Rust call that writes through the same block-upsert path as the editor, so rev, FTS and sync react like a normal save. `NoteJson.kt` is deleted; the parsing tests moved to the Rust suite.
-- **Android widget cache refresh is event-driven (#127).** The Rust shell calls a new Kotlin JNI bridge after the mutations that change what widgets show (block saves, title changes, delete/archive/restore, lock, completed sync merges), and the Kotlin side conflates bursts. The old 20-second vault poll is replaced by a two-minute fallback.
-- **The Android sync notification only redraws when its text changes**, and idle discovery backs off from 10 to 60 seconds (10 seconds still applies while peers are found or connecting).
-- **Phones force the matte background.** Glass `backdrop-filter` chrome is desktop-only: the theme store clamps a stored Glass choice to matte at ≤768px and self-heals the setting, and Settings hides the Glass option on phones (tablets and desktop keep it).
-- **Android settings no longer hold the mDNS multicast lock while sync is off (#123).** The lock moved from `MainActivity` (where it lived for the whole app lifetime) into `SyncService`, which starts exactly when sync is enabled and stops when it is disabled or the vault locks.
-- **The phone drawer is a folder list with bottom app actions.** It drops the "Enclave" heading, the Theme row and the note tree: Home and a plain folder list lead the drawer (tap a folder to filter home; **+** creates one inline), and Sync / Settings / Lock vault are a simple list pinned to the bottom. The redundant brand/privacy footer is gone, so the actions sit flush with the bottom edge instead of floating above a dead gap, and opening Settings no longer force-closes the drawer first — the sheet covers it, and the stale-overlay history cleanup could otherwise pop the just-pushed entry and close Settings immediately. (#168)
-- **The phone settings sheet is reworked for readability and touch.** Labels sit on their own line with wide controls (segmented choices, colour swatches, text fields) full-width beneath them rather than squeezed to the right and wrapped; choice buttons share the row evenly at thumb height, and compact controls (switches, small buttons, the colour well) stay beside their label. It gains a sheet grab handle, a larger title and close target, roomier section spacing, and a full-width centred Close button. (#168)
+- 🔄 **Widget note projection moved from Kotlin to Rust (#122).** Widgets used to loop `listDocuments()` + `getBlocks(id)` per note and walk ProseMirror JSON in `NoteJson.kt`; `core-db` now fetches every document plus its widget/tags/doc payloads in one query and `core-api` projects typed `WidgetNote`/`ChecklistRow` records, which Kotlin stores in its unchanged Keystore-wrapped cache. Ticking a checklist row is a Rust call that writes through the same block-upsert path as the editor, so rev, FTS and sync react like a normal save. `NoteJson.kt` is deleted; the parsing tests moved to the Rust suite.
+- 🧩 **Android widget cache refresh is event-driven (#127).** The Rust shell calls a new Kotlin JNI bridge after the mutations that change what widgets show (block saves, title changes, delete/archive/restore, lock, completed sync merges), and the Kotlin side conflates bursts. The old 20-second vault poll is replaced by a two-minute fallback.
+- 🔔 **The Android sync notification only redraws when its text changes**, and idle discovery backs off from 10 to 60 seconds (10 seconds still applies while peers are found or connecting).
+- 🎨 **Phones force the matte background.** Glass `backdrop-filter` chrome is desktop-only: the theme store clamps a stored Glass choice to matte at ≤768px and self-heals the setting, and Settings hides the Glass option on phones (tablets and desktop keep it).
+- 📡 **Android settings no longer hold the mDNS multicast lock while sync is off (#123).** The lock moved from `MainActivity` (where it lived for the whole app lifetime) into `SyncService`, which starts exactly when sync is enabled and stops when it is disabled or the vault locks.
+- 📱 **The phone drawer is a folder list with bottom app actions.** It drops the "Enclave" heading, the Theme row and the note tree: Home and a plain folder list lead the drawer (tap a folder to filter home; **+** creates one inline), and Sync / Settings / Lock vault are a simple list pinned to the bottom. The redundant brand/privacy footer is gone, so the actions sit flush with the bottom edge instead of floating above a dead gap, and opening Settings no longer force-closes the drawer first — the sheet covers it, and the stale-overlay history cleanup could otherwise pop the just-pushed entry and close Settings immediately. (#168)
+- ⚙️ **The phone settings sheet is reworked for readability and touch.** Labels sit on their own line with wide controls (segmented choices, colour swatches, text fields) full-width beneath them rather than squeezed to the right and wrapped; choice buttons share the row evenly at thumb height, and compact controls (switches, small buttons, the colour well) stay beside their label. It gains a sheet grab handle, a larger title and close target, roomier section spacing, and a full-width centred Close button. (#168)
 
 ### 🐛 Fixed
 
-- **The Android widget lock placeholder could stay stale (#132).** The old cache tick read `widget_hide_locked` even while locked, and that call throws `VaultLocked`; the exception aborted the tick after mirroring the lock state but before re-rendering, so with “hide widgets while locked” on the last-rendered note content could remain on the home screen until an unrelated update. The dial is now read only while unlocked (falling back to the last value), the placeholder always renders when the lock state changes, and locking triggers it directly from Rust.
-- **Android widget updates can no longer take the process down (#121).** `NoteListWidget` had no exception guard, so a failure in `provideGlance` or an update broadcast could surface as “Problem loading widget” and crash the process. A shared helper now catches `Throwable` around every widget's render and each widget's `updateAll`, logs the widget name/id and cause, and renders the failure placeholder. `WidgetStore` also catches `Throwable`, not just `Exception`, on the JNA boundary.
-- **Android Markdown import, page export and backup now work (#38).** The dialog plugin returns `content://` URIs from both Android pickers, but the shell fed them to `std::fs`; a new `AndroidDocuments` ContentResolver bridge reads and writes SAF URIs over JNI, `import_markdown`/`write_file` route them there, and Settings → Backup offers a SAF location so a phone backup can leave app-private storage. Vault-wide folder export is now explicitly desktop-only on Android (the picker cannot choose a directory), with a clear message instead of a bogus path. Restoring a backup on Android remains desktop-only and is tracked in #38.
-- **The Quick Capture window was already fixed for password vaults and is now regression-tested (#22).** The capture route checks the shared core's unlocked state and renders the inline guard when locked, which prompts for the password/PIN and derives the master key; the old path that handed the password-encrypted `vault.key` blob to `unlock_vault` is gone.
-- **`SHA256SUMS` was written outside the released artifact set** in the new signing step (follow-up to #83); it now takes an explicit output path and CI writes it into the release artifacts directory so the checksums actually ship.
-- **The scheduled UI audit had been red on `main` since v1.12.0 without anyone noticing (#135).** All 33 scenarios ran, but four assertions still clicked controls that v1.12.0 made platform-specific (page width on phones, vibration feedback on desktop). The audit matrix now skips hidden-by-design controls and opens the mobile settings panel through the drawer; the Linux job is green on the branch, so the weekly run recovers on merge.
-- **The UI audit leaked appearance state between device profiles (#134).** `settingsMatrix` intentionally ends on UI size Xlarge, so the next profile in the same browser session measured everything under `zoom: 1.18` and failed the sidebar scenario with `after = saved × 1.18` — a harness artifact, not an app bug. Each profile now clears localStorage before its scenarios; the Windows DPI run went from 52/54 to 54/54.
-- **The sidebar resize handle drifted off the edge at Large/Xlarge UI size (#169).** UI size applies CSS `zoom`, which scales rendered boxes but leaves layout px unscaled; the handle is positioned in layout px, yet its width was read from `getBoundingClientRect()` (zoomed px) and drags used raw viewport px, so it floated further from the edge the larger the zoom and dragged by the wrong distance. It now measures with `offsetWidth`, converts pointer deltas with the `--ui-fit` token, and caps the width in layout px.
-- **Glass had no blur on Chromium shells (#170).** Vite 8 transforms CSS with Lightning CSS, which treats `backdrop-filter` and `-webkit-backdrop-filter` as the same declaration and keeps only the last, so the shipped stylesheet kept only the prefixed form — unsupported in Chromium — and Glass rendered as flat translucency on WebView2/Android while still blurring on WebKit and in dev. The two prefixes now live in rule blocks that differ in selector syntax (`:is(...)` vs an explicit list), which Lightning CSS does not collapse; the same split keeps the True-black override's `backdrop-filter: none` on both engines.
-- **Overlay viewport caps ignored UI size (#171).** `zoom` does not scale `vh`/`dvh`, so raw caps rendered `zoom ×` taller and drifted or clipped at Large/Xlarge. The command-palette padding, the shortcuts-dialog padding and the split-view pane/picker heights now multiply by `--ui-fit`, matching the app frame.
-- **Settings → About showed a hardcoded vault path (#172).** The row printed a fixed `~/.local/share/com.enclave.app/enclave.db` that was never fetched from the backend, so it was wrong on macOS, Windows and Android. The row is removed; only Version remains.
+- 🧩 **The Android widget lock placeholder could stay stale (#132).** The old cache tick read `widget_hide_locked` even while locked, and that call throws `VaultLocked`; the exception aborted the tick after mirroring the lock state but before re-rendering, so with “hide widgets while locked” on the last-rendered note content could remain on the home screen until an unrelated update. The dial is now read only while unlocked (falling back to the last value), the placeholder always renders when the lock state changes, and locking triggers it directly from Rust.
+- 🧩 **Android widget updates can no longer take the process down (#121).** `NoteListWidget` had no exception guard, so a failure in `provideGlance` or an update broadcast could surface as “Problem loading widget” and crash the process. A shared helper now catches `Throwable` around every widget's render and each widget's `updateAll`, logs the widget name/id and cause, and renders the failure placeholder. `WidgetStore` also catches `Throwable`, not just `Exception`, on the JNA boundary.
+- 📄 **Android Markdown import, page export and backup now work (#38).** The dialog plugin returns `content://` URIs from both Android pickers, but the shell fed them to `std::fs`; a new `AndroidDocuments` ContentResolver bridge reads and writes SAF URIs over JNI, `import_markdown`/`write_file` route them there, and Settings → Backup offers a SAF location so a phone backup can leave app-private storage. Vault-wide folder export is now explicitly desktop-only on Android (the picker cannot choose a directory), with a clear message instead of a bogus path. Restoring a backup on Android remains desktop-only and is tracked in #38.
+- 🔐 **The Quick Capture window was already fixed for password vaults and is now regression-tested (#22).** The capture route checks the shared core's unlocked state and renders the inline guard when locked, which prompts for the password/PIN and derives the master key; the old path that handed the password-encrypted `vault.key` blob to `unlock_vault` is gone.
+- 🧾 **`SHA256SUMS` was written outside the released artifact set** in the new signing step (follow-up to #83); it now takes an explicit output path and CI writes it into the release artifacts directory so the checksums actually ship.
+- 🧪 **The scheduled UI audit had been red on `main` since v1.12.0 without anyone noticing (#135).** All 33 scenarios ran, but four assertions still clicked controls that v1.12.0 made platform-specific (page width on phones, vibration feedback on desktop). The audit matrix now skips hidden-by-design controls and opens the mobile settings panel through the drawer; the Linux job is green on the branch, so the weekly run recovers on merge.
+- 🧪 **The UI audit leaked appearance state between device profiles (#134).** `settingsMatrix` intentionally ends on UI size Xlarge, so the next profile in the same browser session measured everything under `zoom: 1.18` and failed the sidebar scenario with `after = saved × 1.18` — a harness artifact, not an app bug. Each profile now clears localStorage before its scenarios; the Windows DPI run went from 52/54 to 54/54.
+- 🪟 **The sidebar resize handle drifted off the edge at Large/Xlarge UI size (#169).** UI size applies CSS `zoom`, which scales rendered boxes but leaves layout px unscaled; the handle is positioned in layout px, yet its width was read from `getBoundingClientRect()` (zoomed px) and drags used raw viewport px, so it floated further from the edge the larger the zoom and dragged by the wrong distance. It now measures with `offsetWidth`, converts pointer deltas with the `--ui-fit` token, and caps the width in layout px.
+- 🎨 **Glass had no blur on Chromium shells (#170).** Vite 8 transforms CSS with Lightning CSS, which treats `backdrop-filter` and `-webkit-backdrop-filter` as the same declaration and keeps only the last, so the shipped stylesheet kept only the prefixed form — unsupported in Chromium — and Glass rendered as flat translucency on WebView2/Android while still blurring on WebKit and in dev. The two prefixes now live in rule blocks that differ in selector syntax (`:is(...)` vs an explicit list), which Lightning CSS does not collapse; the same split keeps the True-black override's `backdrop-filter: none` on both engines.
+- 🪟 **Overlay viewport caps ignored UI size (#171).** `zoom` does not scale `vh`/`dvh`, so raw caps rendered `zoom ×` taller and drifted or clipped at Large/Xlarge. The command-palette padding, the shortcuts-dialog padding and the split-view pane/picker heights now multiply by `--ui-fit`, matching the app frame.
+- ⚙️ **Settings → About showed a hardcoded vault path (#172).** The row printed a fixed `~/.local/share/com.enclave.app/enclave.db` that was never fetched from the backend, so it was wrong on macOS, Windows and Android. The row is removed; only Version remains.
+
+### 🔒 Security
+
+- 🔏 **Update downloads are signed and verified before installation (#83).** Until now the updater trusted the GitHub API: it checked the SHA-256 digest GitHub advertised and only installed a file it had downloaded, but a compromised GitHub account, a malicious release or a TLS-terminating proxy could serve arbitrary code with a matching digest. Every release asset now ships with a detached Ed25519 signature (`<asset>.sig`) over its SHA-256 digest, verified against a public key pinned in the app binary. A missing or invalid signature deletes the download and refuses installation, and the CI release jobs (desktop and Android) fail rather than publish unsigned assets. The private key lives in the `UPDATE_SIGNING_KEY` CI secret, never in the repository; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS`/`SHA256SUMS.sig` for manual installs. This is documented in SECURITY.md, and CONTRIBUTING now covers key generation, backup and rotation.
+- 🛡️ **`source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, #133).** A high-severity event-loop denial of service through indexed source-map section offsets, reached build-time through Vite → PostCSS. `npm audit` is back to 0 vulnerabilities; the dependency never ships in the runtime.
 
 ### 📝 Notes
 
-- **Still open for hardware (tracked in issues, not claimed as done):** #37 (arm64 offline embeddings) now compiles for arm64 and the ignored round-trip test passes on x86_64 Linux — the model loads, produces 384-dim deterministic vectors — but real-phone ONNX inference and RAG against a local Ollama are unverified; #126 now has continuous Windows CI coverage (71/71 scenarios at 100%/125%/150% scaling) with only an interactive window-resize and real NSIS/MSI install pass left, which needs a Windows machine with the Rust toolchain; #38 needs on-device confirmation of the new SAF read/write paths; #127 still needs the icon-flicker screen recording and idle battery stats.
-- **UI-audit hardening.** The `sidebar` scenario now asserts the resize handle centre aligns with the sidebar edge before and after a drag, and that a dragged width persists, so a UI-size regression of that kind fails CI instead of being caught by eye.
+- ⏳ **Still open for hardware (tracked in issues, not claimed as done):** #37 (arm64 offline embeddings) now compiles for arm64 and the ignored round-trip test passes on x86_64 Linux — the model loads, produces 384-dim deterministic vectors — but real-phone ONNX inference and RAG against a local Ollama are unverified; #126 now has continuous Windows CI coverage (71/71 scenarios at 100%/125%/150% scaling) with only an interactive window-resize and real NSIS/MSI install pass left, which needs a Windows machine with the Rust toolchain; #38 needs on-device confirmation of the new SAF read/write paths; #127 still needs the icon-flicker screen recording and idle battery stats.
+- 🧪 **UI-audit hardening.** The `sidebar` scenario now asserts the resize handle centre aligns with the sidebar edge before and after a drag, and that a dragged width persists, so a UI-size regression of that kind fails CI instead of being caught by eye.
 
-## [1.12.0] — 2026-10-01
+## [1.12.0] - 2026-10-01
 
 Unlocking gets flexible: a vault can now be opened with a PIN or a password, a phone can be registered against an existing desktop account with a one-time code instead of retyping the 12-word seed phrase, and the vault can be locked straight from the sidebar. Sync learned about folders and stopped hiding failures, the Android shell got its back gesture back, and the UI-size setting no longer clips the window.
 
-### Added
+### ✨ Added
 
-- **PIN or password unlock.** Vault creation, unlock, and the post-seed "set up a faster unlock" step now offer a PIN/password choice, and the old 8-character minimum is gone (passwords accept any non-empty secret; PINs are 4–12 digits). Android defaults to a PIN and opens the numeric keypad; the choice is remembered per device.
-- **Account pairing (desktop → phone).** The desktop can hand its account to a phone with a one-time 12-character code (60 bits of entropy, two-minute lifetime, single use, five wrong attempts allowed). The seed phrase never crosses the network in the clear: the payload is encrypted with a key derived from the code (HKDF-SHA256 → XChaCha20-Poly1305). Android's welcome screen gains "Pair with a desktop"; the desktop's sync card gains "Pair a phone" with the code, LAN address and a countdown.
-- **Lock button in the sidebar.** The expanded footer and the collapsed icon rail (and therefore the phone drawer) can lock the vault in one tap, using the same path as Settings → Lock now and the idle auto-lock.
-- **Folder sync.** Snapshots now carry the folder list; a page created in a folder on one device lands in that folder on the peer instead of falling back to the root.
+- 🔑 **PIN or password unlock.** Vault creation, unlock, and the post-seed "set up a faster unlock" step now offer a PIN/password choice, and the old 8-character minimum is gone (passwords accept any non-empty secret; PINs are 4–12 digits). Android defaults to a PIN and opens the numeric keypad; the choice is remembered per device.
+- 🤝 **Account pairing (desktop → phone).** The desktop can hand its account to a phone with a one-time 12-character code (60 bits of entropy, two-minute lifetime, single use, five wrong attempts allowed). The seed phrase never crosses the network in the clear: the payload is encrypted with a key derived from the code (HKDF-SHA256 → XChaCha20-Poly1305). Android's welcome screen gains "Pair with a desktop"; the desktop's sync card gains "Pair a phone" with the code, LAN address and a countdown.
+- 🔒 **Lock button in the sidebar.** The expanded footer and the collapsed icon rail (and therefore the phone drawer) can lock the vault in one tap, using the same path as Settings → Lock now and the idle auto-lock.
+- 📁 **Folder sync.** Snapshots now carry the folder list; a page created in a folder on one device lands in that folder on the peer instead of falling back to the root.
 
-### Changed
+### 🔧 Changed
 
-- **The Android drawer is navigation-only.** The page tree, favorites, folders, tags and trash no longer appear inside the drawer — the home screen already lists them — leaving Home plus Sync/Theme/Lock/Settings.
-- **Settings are platform-split.** Keyboard shortcuts, page width and the Sentinel terminal card are desktop-only; vibration feedback is phone-only; the auto-lock hint and vault-path fallback no longer assume a phone.
-- **The Android back gesture works again.** The generated Tauri activity disables WebView history navigation, so back did nothing in the app; it is re-enabled, overlays pop their own history entries, and stale entries left by backdrop/Escape closes are cleaned up.
+- 📱 **The Android drawer is navigation-only.** The page tree, favorites, folders, tags and trash no longer appear inside the drawer — the home screen already lists them — leaving Home plus Sync/Theme/Lock/Settings.
+- ⚙️ **Settings are platform-split.** Keyboard shortcuts, page width and the Sentinel terminal card are desktop-only; vibration feedback is phone-only; the auto-lock hint and vault-path fallback no longer assume a phone.
+- ↩️ **The Android back gesture works again.** The generated Tauri activity disables WebView history navigation, so back did nothing in the app; it is re-enabled, overlays pop their own history entries, and stale entries left by backdrop/Escape closes are cleaned up.
 
-### Fixed
+### 🐛 Fixed
 
-- **Sync failures were silent.** A snapshot merge error was swallowed with no log and no UI signal; merge failures now log the cause and surface as a toast, and the handshake steps (hello/digest/need/snapshot) are traceable.
-- **UI size no longer clips the window.** The scale setting is CSS `zoom`, which scales rendered boxes but not viewport units, so a `100vh` shell rendered taller than the window at Large/Xlarge and pushed the sidebar footer off-screen. The app frame, quick-capture and widget routes now divide by the scale (`--ui-fit`), landing exactly on the viewport.
-- **The sidebar resize handle showed a stray floating tooltip** ("Drag to resize · double-click to reset"); the native `title` was removed in favour of the existing accessible label.
+- 📡 **Sync failures were silent.** A snapshot merge error was swallowed with no log and no UI signal; merge failures now log the cause and surface as a toast, and the handshake steps (hello/digest/need/snapshot) are traceable.
+- 🪟 **UI size no longer clips the window.** The scale setting is CSS `zoom`, which scales rendered boxes but not viewport units, so a `100vh` shell rendered taller than the window at Large/Xlarge and pushed the sidebar footer off-screen. The app frame, quick-capture and widget routes now divide by the scale (`--ui-fit`), landing exactly on the viewport.
+- 💬 **The sidebar resize handle showed a stray floating tooltip** ("Drag to resize · double-click to reset"); the native `title` was removed in favour of the existing accessible label.
 
-### Notes
+### 📝 Notes
 
-- **No new dependencies.** Account pairing reuses the HKDF and XChaCha20-Poly1305 crates already in the tree; the only Rust manifest change is the added `net`/`io-util`/`time` Tokio features.
-- Documentation: the README was refreshed with screenshots and corrected structure/test commands, and the release-notes requirement is now recorded in CONTRIBUTING.
+- 📦 **No new dependencies.** Account pairing reuses the HKDF and XChaCha20-Poly1305 crates already in the tree; the only Rust manifest change is the added `net`/`io-util`/`time` Tokio features.
+- 📝 Documentation: the README was refreshed with screenshots and corrected structure/test commands, and the release-notes requirement is now recorded in CONTRIBUTING.
 
-## [1.11.0] — 2026-09-29
+## [1.11.0] - 2026-09-29
 
 A notes-first redesign of the Android app, an editor engine upgrade with a security fix underneath it, and a clean bill of health from both dependency auditors.
 
 **In one line each:** the phone gets a Google Keep-style shell — one big search pill with layout and sort controls, four ways to lay out notes, and a FAB that fans out into creation actions; the editor moves to Tiptap 3 because no 2.x patch existed for a prototype-pollution → XSS advisory; every known dependency vulnerability is fixed (`npm audit` 34 → 0, `cargo audit` 1 → 0); and Android's status-bar handling was fixed so the top of the app is below the clock and tappable again.
 
-### Added
+### ✨ Added
 
-- **Four notes layouts on phones — List, Gallery, Cards and Icons.** Picked from a bottom sheet behind the layout button inset into the search pill. *Cards* (a 2-column, title-first grid with a quiet “time ago” footer) is the new phone default; the choice is persisted in Settings.
-- **A sort sheet** — *Recently updated*, *Date created*, *Title* — next to the layout button, so the home list no longer depends on a Settings detour.
-- **A FAB creation stack**, in the reference design's idiom: tapping **+** fans out pills for **Text**, **Checklist**, **Journal**, **Meeting notes** and **Folder**, and the button inverts to a white ✕ circle while the stack is open. This replaces the old inline “Today's Journal / New Page” buttons, which took permanent screen space.
-- **A Checklist template** (heading plus three unchecked to-dos) that pre-fills a page when Checklist is chosen, alongside the existing Meeting/Project/Journal/Book templates.
-- **A drawer heading** — a large “Enclave” title above the drawer's Home entry, matching the reference design.
-- **Safe-area CSS variables.** `MainActivity` now reads the real Android window insets and publishes them as `--safe-top` / `--safe-bottom` (density-corrected, in CSS pixels); the shell consumes those variables everywhere instead of `env(safe-area-inset-*)`, which Android WebView reported as `0`.
+- 📱 **Four notes layouts on phones — List, Gallery, Cards and Icons.** Picked from a bottom sheet behind the layout button inset into the search pill. *Cards* (a 2-column, title-first grid with a quiet “time ago” footer) is the new phone default; the choice is persisted in Settings.
+- 🔀 **A sort sheet** — *Recently updated*, *Date created*, *Title* — next to the layout button, so the home list no longer depends on a Settings detour.
+- ➕ **A FAB creation stack**, in the reference design's idiom: tapping **+** fans out pills for **Text**, **Checklist**, **Journal**, **Meeting notes** and **Folder**, and the button inverts to a white ✕ circle while the stack is open. This replaces the old inline “Today's Journal / New Page” buttons, which took permanent screen space.
+- ✅ **A Checklist template** (heading plus three unchecked to-dos) that pre-fills a page when Checklist is chosen, alongside the existing Meeting/Project/Journal/Book templates.
+- 📱 **A drawer heading** — a large “Enclave” title above the drawer's Home entry, matching the reference design.
+- 📐 **Safe-area CSS variables.** `MainActivity` now reads the real Android window insets and publishes them as `--safe-top` / `--safe-bottom` (density-corrected, in CSS pixels); the shell consumes those variables everywhere instead of `env(safe-area-inset-*)`, which Android WebView reported as `0`.
 
-### Improved
+### ⚡ Improved
 
-- **The phone top bar** was a brand title, a separate search icon and a sync dot. It is now a single rounded search pill — “Search Enclave” — centred in the bar, with the layout and sort buttons inside it and a circular sync avatar on the right. The header no longer draws a separator line; it fades into the page so content scrolls under it naturally.
-- **The phone home screen** declutters once the vault has notes: the “Your encrypted workspace…” tagline and the two quick-action buttons disappear and creation moves to the FAB stack, giving the notes list the full screen. An empty vault still shows the welcome card and shortcuts.
-- **Phone navigation** is simpler: the floating bottom navigation bar was removed because Home, Sync and Settings all live in the drawer, and the FAB covers new-note creation. Graph view is no longer reachable on phones (desktop keeps it).
-- **Editor internals were migrated for Tiptap 3**: table extensions were consolidated into `@tiptap/extension-table`, StarterKit's newly bundled Link was disabled in favour of the app's explicit `Link.configure({ openOnClick, linkOnPaste })`, image storage was typed through the new `Storage` interface, and the task-item checkbox was rebuilt for the v3 DOM (see Fixes).
-- **Dependencies were refreshed** within their declared ranges: Svelte 5.57, SvelteKit 2.70.3, Vite 8.3, vite-plugin-svelte 7.3.1, Tauri JS/CLI 2.12 and plugins, marked 18.0.14, yjs 13.6.33, `@scure/bip39` 2.4, nanoid 3.3.19 and others.
+- 🔍 **The phone top bar** was a brand title, a separate search icon and a sync dot. It is now a single rounded search pill — “Search Enclave” — centred in the bar, with the layout and sort buttons inside it and a circular sync avatar on the right. The header no longer draws a separator line; it fades into the page so content scrolls under it naturally.
+- 🏠 **The phone home screen** declutters once the vault has notes: the “Your encrypted workspace…” tagline and the two quick-action buttons disappear and creation moves to the FAB stack, giving the notes list the full screen. An empty vault still shows the welcome card and shortcuts.
+- 🧭 **Phone navigation** is simpler: the floating bottom navigation bar was removed because Home, Sync and Settings all live in the drawer, and the FAB covers new-note creation. Graph view is no longer reachable on phones (desktop keeps it).
+- ✍️ **Editor internals were migrated for Tiptap 3**: table extensions were consolidated into `@tiptap/extension-table`, StarterKit's newly bundled Link was disabled in favour of the app's explicit `Link.configure({ openOnClick, linkOnPaste })`, image storage was typed through the new `Storage` interface, and the task-item checkbox was rebuilt for the v3 DOM (see Fixes).
+- 📦 **Dependencies were refreshed** within their declared ranges: Svelte 5.57, SvelteKit 2.70.3, Vite 8.3, vite-plugin-svelte 7.3.1, Tauri JS/CLI 2.12 and plugins, marked 18.0.14, yjs 13.6.33, `@scure/bip39` 2.4, nanoid 3.3.19 and others.
 
-### Fixed
+### 🐛 Fixed
 
-- **Android: the top bar sat under the status bar and its buttons were untappable.** The web view draws edge-to-edge, but `env(safe-area-inset-top)` reported `0`, so the shell never offset for the system bars and the status bar's input region swallowed taps on the top ~24 dp. *What changed:* `MainActivity` installs an insets listener that converts the system-bar/display-cutout insets to CSS pixels and writes the `--safe-*` variables, re-applying them after the page loads; all 23 safe-area calculations in the app now use those variables. Verified on the Android 16 emulator — the bar sits below the clock and its buttons respond.
-- **Pages created from a template came out empty.** The template helpers emitted `{ type: 'text', text: '' }` nodes. ProseMirror (and therefore Tiptap 3) rejects empty text nodes, so the editor silently fell back to an empty document — no error, no content. *What changed:* empty paragraphs and list items are emitted without text nodes; the new Checklist template was verified end to end on the emulator.
-- **Checklist checkboxes were invisible.** Tiptap 3 rewrote `TaskItem`'s rendered DOM: the span that used to be the visible box became a visually-hidden accessibility label with inline styles, so the old `.label span` checkbox CSS drew nothing. *What changed:* the checkbox is drawn from the label itself, keyed off the existing `li[data-checked="true"]` state (accent fill + white tick), and toggles correctly.
-- **The home FAB painted above the drawer's dim layer.** The drawer backdrop's stacking order was raised so an open drawer fully covers it.
-- **Desktop-only keyboard hints leaked onto phones.** The drawer's empty state said “press Ctrl+N”; on touch devices it now just offers “create one”.
-- **The UI audit broke after npm hoisting.** `tools/ui-audit/run.mjs` hard-coded `apps/frontend/node_modules/.bin/vite`; after a clean install the binary can be hoisted to the workspace root. It now resolves either location, so the audit and its CI job work in both layouts.
-- **Undeclared dependencies were made explicit.** `@tiptap/extension-code-block` and `@tauri-apps/api` were imported but never declared (working only by accident of hoisting), and the editor's `npm test` script referenced `tsx` without declaring it. All three are direct dependencies now, so the editor tests actually run.
+- 📐 **Android: the top bar sat under the status bar and its buttons were untappable.** The web view draws edge-to-edge, but `env(safe-area-inset-top)` reported `0`, so the shell never offset for the system bars and the status bar's input region swallowed taps on the top ~24 dp. *What changed:* `MainActivity` installs an insets listener that converts the system-bar/display-cutout insets to CSS pixels and writes the `--safe-*` variables, re-applying them after the page loads; all 23 safe-area calculations in the app now use those variables. Verified on the Android 16 emulator — the bar sits below the clock and its buttons respond.
+- 📝 **Pages created from a template came out empty.** The template helpers emitted `{ type: 'text', text: '' }` nodes. ProseMirror (and therefore Tiptap 3) rejects empty text nodes, so the editor silently fell back to an empty document — no error, no content. *What changed:* empty paragraphs and list items are emitted without text nodes; the new Checklist template was verified end to end on the emulator.
+- ✅ **Checklist checkboxes were invisible.** Tiptap 3 rewrote `TaskItem`'s rendered DOM: the span that used to be the visible box became a visually-hidden accessibility label with inline styles, so the old `.label span` checkbox CSS drew nothing. *What changed:* the checkbox is drawn from the label itself, keyed off the existing `li[data-checked="true"]` state (accent fill + white tick), and toggles correctly.
+- 🎨 **The home FAB painted above the drawer's dim layer.** The drawer backdrop's stacking order was raised so an open drawer fully covers it.
+- ⌨️ **Desktop-only keyboard hints leaked onto phones.** The drawer's empty state said “press Ctrl+N”; on touch devices it now just offers “create one”.
+- 🧪 **The UI audit broke after npm hoisting.** `tools/ui-audit/run.mjs` hard-coded `apps/frontend/node_modules/.bin/vite`; after a clean install the binary can be hoisted to the workspace root. It now resolves either location, so the audit and its CI job work in both layouts.
+- 📦 **Undeclared dependencies were made explicit.** `@tiptap/extension-code-block` and `@tauri-apps/api` were imported but never declared (working only by accident of hoisting), and the editor's `npm test` script referenced `tsx` without declaring it. All three are direct dependencies now, so the editor tests actually run.
 
-### Security
+### 🔒 Security
 
-- **`@tiptap/core` 2.27 → 3.31.3 — GHSA-cp6q-959q-f8rh (moderate).** `mergeAttributes()` assigned an own `__proto__` key from parsed input with ordinary bracket assignment, replacing the merged object's prototype; ProseMirror's DOM serializer then enumerated inherited values (including `src` and `onerror`) onto real DOM nodes, allowing script execution in the app origin when untrusted attribute objects were merged. No 2.x release was patched — the first fixed version is 3.30.4 — so this release performs the Tiptap 3 migration and pins `^3.31.3`.
-- **`nanoid` < 3.3.18 → 3.3.19 — GHSA-2v37-7h3g-55p8 (high).** Custom generators could loop indefinitely with `size: 0`; reached transitively via Vite → PostCSS.
-- **`cookie` < 0.7.0 → 0.7.2 — GHSA-pxg6-pf52-xh8x (low).** Cookie name, path and domain were accepted with out-of-bounds characters. SvelteKit still pins `^0.6.0`, so a root `overrides` entry forces the patched line; the SvelteKit API surface used (`parse`/`serialize`) is unchanged.
-- **`rustls` 0.23.43 → 0.23.45 — RUSTSEC-2026-0285 (medium).** TLS 1.3 handshake messages were incorrectly accepted across encryption-level boundaries; reached through `ureq` (the updater) and `hf-hub`/`fastembed`. `rustls-webpki` was bumped to 0.103.15 alongside it.
-- **`chacha20` 0.10.1 → 0.10.2.** The 0.10.1 release was yanked; 0.10.2 is the replacement. (The app's own sync stack uses `chacha20poly1305` 0.10 on `chacha20` 0.9, which was unaffected.)
-- **Audit state after this release:** `npm audit` 34 → 0 vulnerabilities; `cargo audit` 1 → 0.
+- 🛡️ **`@tiptap/core` 2.27 → 3.31.3 — GHSA-cp6q-959q-f8rh (moderate).** `mergeAttributes()` assigned an own `__proto__` key from parsed input with ordinary bracket assignment, replacing the merged object's prototype; ProseMirror's DOM serializer then enumerated inherited values (including `src` and `onerror`) onto real DOM nodes, allowing script execution in the app origin when untrusted attribute objects were merged. No 2.x release was patched — the first fixed version is 3.30.4 — so this release performs the Tiptap 3 migration and pins `^3.31.3`.
+- 🛡️ **`nanoid` < 3.3.18 → 3.3.19 — GHSA-2v37-7h3g-55p8 (high).** Custom generators could loop indefinitely with `size: 0`; reached transitively via Vite → PostCSS.
+- 🛡️ **`cookie` < 0.7.0 → 0.7.2 — GHSA-pxg6-pf52-xh8x (low).** Cookie name, path and domain were accepted with out-of-bounds characters. SvelteKit still pins `^0.6.0`, so a root `overrides` entry forces the patched line; the SvelteKit API surface used (`parse`/`serialize`) is unchanged.
+- 🛡️ **`rustls` 0.23.43 → 0.23.45 — RUSTSEC-2026-0285 (medium).** TLS 1.3 handshake messages were incorrectly accepted across encryption-level boundaries; reached through `ureq` (the updater) and `hf-hub`/`fastembed`. `rustls-webpki` was bumped to 0.103.15 alongside it.
+- 📦 **`chacha20` 0.10.1 → 0.10.2.** The 0.10.1 release was yanked; 0.10.2 is the replacement. (The app's own sync stack uses `chacha20poly1305` 0.10 on `chacha20` 0.9, which was unaffected.)
+- 🛡️ **Audit state after this release:** `npm audit` 34 → 0 vulnerabilities; `cargo audit` 1 → 0.
 
-### Notes
+### 📝 Notes
 
-- **A full `cargo update` was deliberately not taken.** Tauri 2.12 raises its MSRV from Rust 1.77 to 1.90, and this project declares `rust-version = "1.77"`; the Rust update was therefore limited to the security-relevant crates (rustls, rustls-webpki, chacha20). The remaining `cargo audit` entries are *unmaintained/unsound* warnings (the GTK tray stack via Tauri, tokenizer/`paste` via fastembed, `urlpattern`'s `unic-*`) with no fix that does not require the MSRV bump. Documented here so it is not mistaken for an oversight.
-- **Android versionCode:** committed as `1011000`; CI's auto-increment ships `1011001`, strictly ahead of v1.10.1's `1001066`. The release attaches the signed APK, the unsigned universal APK, the AAB and the desktop installers for Windows, Linux and macOS.
+- 📝 **A full `cargo update` was deliberately not taken.** Tauri 2.12 raises its MSRV from Rust 1.77 to 1.90, and this project declares `rust-version = "1.77"`; the Rust update was therefore limited to the security-relevant crates (rustls, rustls-webpki, chacha20). The remaining `cargo audit` entries are *unmaintained/unsound* warnings (the GTK tray stack via Tauri, tokenizer/`paste` via fastembed, `urlpattern`'s `unic-*`) with no fix that does not require the MSRV bump. Documented here so it is not mistaken for an oversight.
+- 🏷️ **Android versionCode:** committed as `1011000`; CI's auto-increment ships `1011001`, strictly ahead of v1.10.1's `1001066`. The release attaches the signed APK, the unsigned universal APK, the AAB and the desktop installers for Windows, Linux and macOS.
 
-## [1.10.1] — 2026-09-18
+## [1.10.1] - 2026-09-18
 
 Hotfix for an Android launch crash in v1.10.0.
 
-### Fixed
+### 🐛 Fixed
 
-- **Android release builds crashed on launch** — R8 minification stripped
-  JNA's own static hook (`com.sun.jna.Native.fromNative`), so the first
-  UniFFI core call (the widget-cache tick) threw `UnsatisfiedLinkError` and
-  killed the process. ProGuard now keeps the whole `uniffi.*` and JNA
-  surface; verified on a minified release build (launch, vault creation,
-  widget tick).
-- Widget interactions and the widget-cache tick catch `Throwable` now, so
-  a locked vault or a native-bridge hiccup can never take the app down.
+- 💥 **Android release builds crashed on launch** — R8 minification stripped JNA's own static hook (`com.sun.jna.Native.fromNative`), so the first UniFFI core call (the widget-cache tick) threw `UnsatisfiedLinkError` and killed the process. ProGuard now keeps the whole `uniffi.*` and JNA surface; verified on a minified release build (launch, vault creation, widget tick).
+- 🧩 Widget interactions and the widget-cache tick catch `Throwable` now, so a locked vault or a native-bridge hiccup can never take the app down.
 
-## [1.10.0] — 2026-09-18
+## [1.10.0] - 2026-09-18
 
-Enclave for Android is now the **full app** — the same editor, whiteboards,
-tables, databases, graph and search as desktop — with native home-screen
-widgets, a share target, launcher shortcuts and restart-safe P2P sync on
-top. Under the hood the Rust core moved into a shell-agnostic `core-api`
-crate, so desktop and Android share one vault, one network stack and one
-sync loop.
+Enclave for Android is now the **full app** — the same editor, whiteboards, tables, databases, graph and search as desktop — with native home-screen widgets, a share target, launcher shortcuts and restart-safe P2P sync on top. Under the hood the Rust core moved into a shell-agnostic `core-api` crate, so desktop and Android share one vault, one network stack and one sync loop.
 
-### Added
+### ✨ Added
 
-- **Full Enclave UI on Android** — the Tauri web view is the app's front
-  door: every desktop feature runs on Android (editor, whiteboards, tables,
-  databases, graph, search, folders, settings, sync). The native Keep-style
-  shell is gone; `MainActivity` routes Android intents into app pages.
-- **Android home-screen widgets** (Jetpack Glance):
-  - **Notes list** (3×2, resizable) — the notes you opted in, with checklist
-    items, text previews and labels; renders while the vault is locked.
-  - **Pinned note** (3×2, resizable) — one shared note in full; tapping a
-    checklist row ticks it through to the note (or opens the app while
-    locked).
+- 📱 **Full Enclave UI on Android** — the Tauri web view is the app's front door: every desktop feature runs on Android (editor, whiteboards, tables, databases, graph, search, folders, settings, sync). The native Keep-style shell is gone; `MainActivity` routes Android intents into app pages.
+- 🧩 **Android home-screen widgets** (Jetpack Glance):
+  - **Notes list** (3×2, resizable) — the notes you opted in, with checklist items, text previews and labels; renders while the vault is locked.
+  - **Pinned note** (3×2, resizable) — one shared note in full; tapping a checklist row ticks it through to the note (or opens the app while locked).
   - **Quick capture** (1×1) — one tap into a new note.
-  - Widget-picker configuration for pinned notes, plus **Pin this note to
-    the home screen** from the page menu.
-- **Widget privacy model** — widgets never read the vault. A per-note
-  **Show in Android widgets** switch puts a synced marker on the note; only
-  those notes enter an opt-in cache encrypted with an Android Keystore
-  AES-256-GCM key (hardware-backed where available) holding just the title,
-  labels, updated time, checklist state and text. **Hide widgets while
-  vault is locked** (Settings → Android widgets) blanks them to a lock
-  placeholder; the dial lives in the vault so the web app and the widget
-  renderer always agree.
-- **Android entry points** — the share sheet (“Share → Enclave” pre-fills
-  Quick Capture), launcher long-press shortcuts (New note / New checklist)
-  and a Quick Settings tile.
-- **`core-api` crate** — shell-agnostic Rust API over `core-db` and
-  `core-network` (vault lifecycle, documents, folders, blocks, search,
-  tags, page list, backlinks, settings, embeddings, network + the sync
-  loop) with UniFFI bindings for Kotlin. The Tauri shell delegates to it;
-  the Android app consumes it through JNA — one process, one vault, one
-  network, one sync loop.
-- **Restart-safe sync on Android** — the foreground sync service is owned
-  by the core (start/stop/re-arm/lock) and its notification reports live
-  state (“N devices connected”, “looking for your devices”); the enabled
-  choice persists per device and re-arms on unlock, after a restart and
-  when the network comes back.
-- **Desktop/mobile UI rework** — resizable sidebar with compact chrome,
-  consistent spacing and sizing across breakpoints, theme boot before
-  hydration, long-press action sheets with Escape/back handling,
-  phone-sized whiteboard and split-view toolbars, graph render/resize
-  fixes.
+  - Widget-picker configuration for pinned notes, plus **Pin this note to the home screen** from the page menu.
+- 🔐 **Widget privacy model** — widgets never read the vault. A per-note **Show in Android widgets** switch puts a synced marker on the note; only those notes enter an opt-in cache encrypted with an Android Keystore AES-256-GCM key (hardware-backed where available) holding just the title, labels, updated time, checklist state and text. **Hide widgets while vault is locked** (Settings → Android widgets) blanks them to a lock placeholder; the dial lives in the vault so the web app and the widget renderer always agree.
+- 📤 **Android entry points** — the share sheet (“Share → Enclave” pre-fills Quick Capture), launcher long-press shortcuts (New note / New checklist) and a Quick Settings tile.
+- 🦀 **`core-api` crate** — shell-agnostic Rust API over `core-db` and `core-network` (vault lifecycle, documents, folders, blocks, search, tags, page list, backlinks, settings, embeddings, network + the sync loop) with UniFFI bindings for Kotlin. The Tauri shell delegates to it; the Android app consumes it through JNA — one process, one vault, one network, one sync loop.
+- 🔄 **Restart-safe sync on Android** — the foreground sync service is owned by the core (start/stop/re-arm/lock) and its notification reports live state (“N devices connected”, “looking for your devices”); the enabled choice persists per device and re-arms on unlock, after a restart and when the network comes back.
+- 🪟 **Desktop/mobile UI rework** — resizable sidebar with compact chrome, consistent spacing and sizing across breakpoints, theme boot before hydration, long-press action sheets with Escape/back handling, phone-sized whiteboard and split-view toolbars, graph render/resize fixes.
 
-### Changed
+### 🔧 Changed
 
-- Android app data directory matches the Tauri app's, so vaults created by
-  earlier Android builds keep working.
-- Android build: Kotlin 2.0.21 + Compose compiler, Glance widgets, and
-  cargo-ndk in CI (the shared core `.so` is compiled into the app).
-- The UniFFI surface is the frozen native API (own record types + one flat
-  error), so core internals can change without breaking Kotlin.
+- 📁 Android app data directory matches the Tauri app's, so vaults created by earlier Android builds keep working.
+- 🤖 Android build: Kotlin 2.0.21 + Compose compiler, Glance widgets, and cargo-ndk in CI (the shared core `.so` is compiled into the app).
+- 🧱 The UniFFI surface is the frozen native API (own record types + one flat error), so core internals can change without breaking Kotlin.
 
-### Fixed
+### 🗑️ Removed
 
-- Locking the vault with “hide widgets while locked” on no longer crashes
-  the widget cache rebuild — lock only re-renders from the existing cache,
-  and a lock racing a refresh keeps the last good cache.
-- Every widget instance (notes list, pinned, quick capture) refreshes on
-  change, and a stale render can no longer land after a fresh one.
-- **Android intent routing** — `MainActivity` navigated with
-  `tauri://localhost` (desktop WebKit only, `ERR_UNKNOWN_URL_SCHEME` on
-  Android/Windows). Warm routes now go through a SPA bridge; cold starts
-  load against the web view's real origin.
-- **Share → capture** — Android pauses/resumes the activity on intent
-  delivery, which the auto-lock-on-hide treated as backgrounding and locked
-  the vault mid-share; a short grace period keeps real backgrounding
-  locking. Sharing into a locked app now shows the unlock step inline on
-  the capture screen, keeps the shared text, saves after unlock and lands
-  on the home screen.
-- **capture/widget auto-unlock** — both passed the password-encrypted key
-  file to `unlock_vault` as a raw database key; they now use the shared
-  core's unlocked state (the desktop wallpaper widget included).
-- **Desktop capture/widget windows** — `core:window:allow-close` and the
-  `capture`/`widget` windows joined the capability: the capture popup could
-  not close itself and the widget window had no core permissions.
-- **Windows cdylib link** — the standalone `core_api.dll` now names the
-  `crypt32`/`user32` system libraries its OpenSSL depends on (the main
-  binary got them transitively via WebView2).
-- **Prerender error on `/capture`** — `searchParams` is read on mount, not
-  during prerender.
+- 🗑️ The native Keep-style Compose shell (list/detail/capture), its QR pairing screen and the shell-only state preferences — superseded by the full app. The zxing dependency is gone with it, so the app no longer requests the camera permission; peers connect through the Sync card's address copy / add-peer flow.
 
-### Removed
+### 🐛 Fixed
 
-- The native Keep-style Compose shell (list/detail/capture), its QR pairing
-  screen and the shell-only state preferences — superseded by the full app.
-  The zxing dependency is gone with it, so the app no longer requests the
-  camera permission; peers connect through the Sync card's address copy /
-  add-peer flow.
+- 🧩 Locking the vault with “hide widgets while locked” on no longer crashes the widget cache rebuild — lock only re-renders from the existing cache, and a lock racing a refresh keeps the last good cache.
+- 🧩 Every widget instance (notes list, pinned, quick capture) refreshes on change, and a stale render can no longer land after a fresh one.
+- 🧭 **Android intent routing** — `MainActivity` navigated with `tauri://localhost` (desktop WebKit only, `ERR_UNKNOWN_URL_SCHEME` on Android/Windows). Warm routes now go through a SPA bridge; cold starts load against the web view's real origin.
+- 📤 **Share → capture** — Android pauses/resumes the activity on intent delivery, which the auto-lock-on-hide treated as backgrounding and locked the vault mid-share; a short grace period keeps real backgrounding locking. Sharing into a locked app now shows the unlock step inline on the capture screen, keeps the shared text, saves after unlock and lands on the home screen.
+- 🔐 **capture/widget auto-unlock** — both passed the password-encrypted key file to `unlock_vault` as a raw database key; they now use the shared core's unlocked state (the desktop wallpaper widget included).
+- 🪟 **Desktop capture/widget windows** — `core:window:allow-close` and the `capture`/`widget` windows joined the capability: the capture popup could not close itself and the widget window had no core permissions.
+- 🪟 **Windows cdylib link** — the standalone `core_api.dll` now names the `crypt32`/`user32` system libraries its OpenSSL depends on (the main binary got them transitively via WebView2).
+- 🪟 **Prerender error on `/capture`** — `searchParams` is read on mount, not during prerender.
 
-## [1.9.0] — 2026-09-09
+## [1.9.0] - 2026-09-09
 
-Mobile ↔ desktop sync finally works end to end: this release fixes the
-Android mDNS root cause, hardens the P2P layer, ships incremental sync on
-a versioned wire protocol and keeps Android sync alive in the background —
-wrapped in a desktop/mobile sync-first UI pass.
+Mobile ↔ desktop sync finally works end to end: this release fixes the Android mDNS root cause, hardens the P2P layer, ships incremental sync on a versioned wire protocol and keeps Android sync alive in the background — wrapped in a desktop/mobile sync-first UI pass.
 
-### Added
+### ✨ Added
 
-- **P2P sync protocol versioning (v3)** — auth frames carry a wire protocol
-  version; mismatched peers refuse the session with "update this/the peer
-  device" guidance instead of passing auth (same-vault keys!) and silently
-  misinterpreting frames. Pre-versioning peers (≤ 1.8.0) are refused and
-  must update alongside.
-- **Incremental sync** — the full-vault snapshot on every connect is gone.
-  Peers exchange a metadata digest (id, rev, updated_at, tombstone), diff
-  it against their local index and pull only newer/missing docs
-  (digest → need → partial snapshot → LWW merge → ack). Reconnects move
-  O(changed docs) instead of O(vault); converged pairs exchange two tiny
-  frames and still refresh "last synced". Deletions propagate as
-  tombstones; the doc-level LWW merge path is unchanged.
-- **Android background sync** — a foreground service (dataSync) with a
-  high-perf Wi-Fi lock keeps the sync stack alive while the app is
-  backgrounded or the screen is off; started via JNI only while sync is
-  enabled (no notification for users who never enable P2P), stopped on
-  disable/lock. On return to the app the network re-checks itself and
-  reloads docs (resume-reconnect).
-- **Release version pre-flight** (`npm run release:check`) — verifies the
-  four version declarations agree (package.json, tauri.conf.json,
-  Cargo.toml, CHANGELOG), previews the exact versionName/versionCode CI
-  will ship from the committed counter, enforces strictly-increasing
-  versionCode vs the last release tag, and `--apk` aapt-inspects a locally
-  built artifact — no more tag→download→check→re-tag loops.
-- **Sync card** (sidebar) — one place for sync: live status dot (pulses
-  when peers are online), this-device address with **one-tap copy** (the
-  manual-connect story), peer list with connect states, inline add-peer,
-  last-sync line, and a one-tap start when sync is off. Collapsed state
-  persists per device.
-- **Command palette as a launcher** — actions are query-filtered (type
-  "sync" to narrow), plus Start/Stop P2P sync, Copy sync address,
-  New folder and Open settings; recents capped at 8 (previously rendered
-  every document on big vaults).
-- **Android sync-first UX** — Sync tab in the bottom nav (opens the sync
-  card, live dot when peers connect), topbar sync dot on every screen
-  (tap = open sync), home FAB for one-tap new pages with haptics,
-  overscroll containment on the page tree.
-- npm `build:android` / `build:all` aliases.
+- 🔢 **P2P sync protocol versioning (v3)** — auth frames carry a wire protocol version; mismatched peers refuse the session with "update this/the peer device" guidance instead of passing auth (same-vault keys!) and silently misinterpreting frames. Pre-versioning peers (≤ 1.8.0) are refused and must update alongside.
+- ⚡ **Incremental sync** — the full-vault snapshot on every connect is gone. Peers exchange a metadata digest (id, rev, updated_at, tombstone), diff it against their local index and pull only newer/missing docs (digest → need → partial snapshot → LWW merge → ack). Reconnects move O(changed docs) instead of O(vault); converged pairs exchange two tiny frames and still refresh "last synced". Deletions propagate as tombstones; the doc-level LWW merge path is unchanged.
+- 🔋 **Android background sync** — a foreground service (dataSync) with a high-perf Wi-Fi lock keeps the sync stack alive while the app is backgrounded or the screen is off; started via JNI only while sync is enabled (no notification for users who never enable P2P), stopped on disable/lock. On return to the app the network re-checks itself and reloads docs (resume-reconnect).
+- 🏷️ **Release version pre-flight** (`npm run release:check`) — verifies the four version declarations agree (package.json, tauri.conf.json, Cargo.toml, CHANGELOG), previews the exact versionName/versionCode CI will ship from the committed counter, enforces strictly-increasing versionCode vs the last release tag, and `--apk` aapt-inspects a locally built artifact — no more tag→download→check→re-tag loops.
+- 🔄 **Sync card** (sidebar) — one place for sync: live status dot (pulses when peers are online), this-device address with **one-tap copy** (the manual-connect story), peer list with connect states, inline add-peer, last-sync line, and a one-tap start when sync is off. Collapsed state persists per device.
+- ⌨️ **Command palette as a launcher** — actions are query-filtered (type "sync" to narrow), plus Start/Stop P2P sync, Copy sync address, New folder and Open settings; recents capped at 8 (previously rendered every document on big vaults).
+- 📱 **Android sync-first UX** — Sync tab in the bottom nav (opens the sync card, live dot when peers connect), topbar sync dot on every screen (tap = open sync), home FAB for one-tap new pages with haptics, overscroll containment on the page tree.
+- 📦 npm `build:android` / `build:all` aliases.
 
-### Changed
+### 🔧 Changed
 
-- **Manual peer connect shows the exact address to dial**
-  (`host:port` from NetworkStatus.local_host) in the sync card, peer
-  tooltips and the palette — no more guessing which IP to dial.
-- **Sync failures are visible** — wrong-vault-key peers, protocol-version
-  skew and failed handshakes surface as snackbars (previously silent
-  eprintlns); manual-connect dial errors toast instead of console.error.
-- **Micro-interactions** — press-scale on buttons, pop-in entrances for
-  the palette/context menus/confirm dialogs, snackbar slide-in,
-  pulsing online dot.
+- 🔗 **Manual peer connect shows the exact address to dial** (`host:port` from NetworkStatus.local_host) in the sync card, peer tooltips and the palette — no more guessing which IP to dial.
+- 📡 **Sync failures are visible** — wrong-vault-key peers, protocol-version skew and failed handshakes surface as snackbars (previously silent eprintlns); manual-connect dial errors toast instead of console.error.
+- ✨ **Micro-interactions** — press-scale on buttons, pop-in entrances for the palette/context menus/confirm dialogs, snackbar slide-in, pulsing online dot.
 
-### Fixed
+### 🐛 Fixed
 
-- **Android mDNS discovery was dead on real devices** — Android's Wi-Fi
-  driver filters multicast unless the app holds a MulticastLock; the app
-  never did, so the phone could neither discover desktop peers nor answer
-  their queries (the root cause of "mobile doesn't sync"). Permissions
-  (`ACCESS_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE`) + a lifetime
-  MulticastLock fix it.
-- **Offline LANs couldn't sync at all** — local IP resolution dialed
-  1.1.1.1 as its fallback and failed without a default route; interfaces
-  are now enumerated via if-addrs (private IPv4 preferred), UDP trick
-  demoted to last resort.
-- **Duplicate snapshot merges** — mutual dials left two live sockets per
-  peer pair; the unregistered twin re-delivered every frame. Sessions
-  register first-come and twins back off.
-- **Synced documents stayed invisible** — the sidebar never re-queried
-  after a merge; now the document list reloads when a peer's changes
-  land.
-- **False "synced" state** — malformed snapshots/digests merged as empty
-  and reported success; every frame type is strictly parsed and dropped
-  with a log instead.
-- **Stuck Android versionCode** — every release since v1.2.0 shipped the
-  identical code 1001003 (the auto-increment counter was never committed
-  back); the counter now advances per release and `release:check`
-  enforces strict increase against the last tag.
-- **Test infrastructure** — parallel cargo tests shared the host's real
-  mDNS namespace and dialed each other's peers; network tests are now
-  hermetic (mDNS-off `start_test`), plus a vec0 auto-extension
-  registration race in db tests.
-- CODEOWNERS trust-boundary paths pointed at non-existent
-  `apps/desktop/…` files — now the real `apps/frontend` ones.
+- 📡 **Android mDNS discovery was dead on real devices** — Android's Wi-Fi driver filters multicast unless the app holds a MulticastLock; the app never did, so the phone could neither discover desktop peers nor answer their queries (the root cause of "mobile doesn't sync"). Permissions (`ACCESS_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE`) + a lifetime MulticastLock fix it.
+- 📡 **Offline LANs couldn't sync at all** — local IP resolution dialed 1.1.1.1 as its fallback and failed without a default route; interfaces are now enumerated via if-addrs (private IPv4 preferred), UDP trick demoted to last resort.
+- 🔗 **Duplicate snapshot merges** — mutual dials left two live sockets per peer pair; the unregistered twin re-delivered every frame. Sessions register first-come and twins back off.
+- 🔄 **Synced documents stayed invisible** — the sidebar never re-queried after a merge; now the document list reloads when a peer's changes land.
+- 🛡️ **False "synced" state** — malformed snapshots/digests merged as empty and reported success; every frame type is strictly parsed and dropped with a log instead.
+- 🏷️ **Stuck Android versionCode** — every release since v1.2.0 shipped the identical code 1001003 (the auto-increment counter was never committed back); the counter now advances per release and `release:check` enforces strict increase against the last tag.
+- 🧪 **Test infrastructure** — parallel cargo tests shared the host's real mDNS namespace and dialed each other's peers; network tests are now hermetic (mDNS-off `start_test`), plus a vec0 auto-extension registration race in db tests.
+- 🧪 CODEOWNERS trust-boundary paths pointed at non-existent `apps/desktop/…` files — now the real `apps/frontend` ones.
 
-## [1.8.0] — 2026-09-04
+## [1.8.0] - 2026-09-04
 
-### Added
+The liquid-glass look of v1.7.0 becomes a fully opaque matte design language, with new background styles, custom accents and a dense desktop dashboard.
 
-- **Matte design language** — the 1.7 liquid-glass look becomes fully opaque
-  by default: warm charcoal surfaces (dark/light/OLED-true-black), warm
-  neutrals, hairline borders and diffused shadows. Every frosted chrome piece
-  (top bars, drawer, bottom nav, action sheets, export sheet, command-palette
-  scrim, wallpaper widget card) is now solid.
-- **Background styles** (Settings → Appearance) — **Matte** (default),
-  **Soft glow** (accent-tinted ambient gradient behind content) and
-  **Glass** (gradient + frosted translucent chrome with backdrop blur). The
-  gradient re-tints automatically when the accent color changes.
-- **Custom accent color** — pick any hex in Settings → Appearance; hover and
-  subtle shades derive from the accent via color-mix, so custom accents look
-  native everywhere.
-- **Corner presets** — standard / rounded / rounder.
-- **Dense desktop home dashboard** — full-width two-column layout (recent
-  pages lead; quick actions + favorites rail) that uses the whole window
-  instead of a centered column; collapses to a rail-first single column on
-  phones.
-- **Responsive editor rails** — backlinks/TOC side rails yield width via
-  container queries on common laptop sizes; narrower backlinks rail and
-  responsive page gutters replace the fixed dead space.
-- **Android UX + accessibility pass** — contextual back arrow in the app bar
-  (drawer trigger only on root screens), single clean title row (emoji tile
-  and mode pill fold into the ⋯ sheet), bottom nav now fixed and visible with
-  52px labeled tabs and accent states (it previously never rendered), matte
-  bottom sheets with safe-area padding, WCAG AA contrast for muted/faint text
-  on both themes, 40–48px touch targets, tighter home layout on phones.
+### ✨ Added
 
-### Changed
+- 🎨 **Matte design language** — the 1.7 liquid-glass look becomes fully opaque by default: warm charcoal surfaces (dark/light/OLED-true-black), warm neutrals, hairline borders and diffused shadows. Every frosted chrome piece (top bars, drawer, bottom nav, action sheets, export sheet, command-palette scrim, wallpaper widget card) is now solid.
+- 🌈 **Background styles** (Settings → Appearance) — **Matte** (default), **Soft glow** (accent-tinted ambient gradient behind content) and **Glass** (gradient + frosted translucent chrome with backdrop blur). The gradient re-tints automatically when the accent color changes.
+- 🎨 **Custom accent color** — pick any hex in Settings → Appearance; hover and subtle shades derive from the accent via color-mix, so custom accents look native everywhere.
+- 🎨 **Corner presets** — standard / rounded / rounder.
+- 🖥️ **Dense desktop home dashboard** — full-width two-column layout (recent pages lead; quick actions + favorites rail) that uses the whole window instead of a centered column; collapses to a rail-first single column on phones.
+- 📐 **Responsive editor rails** — backlinks/TOC side rails yield width via container queries on common laptop sizes; narrower backlinks rail and responsive page gutters replace the fixed dead space.
+- ♿ **Android UX + accessibility pass** — contextual back arrow in the app bar (drawer trigger only on root screens), single clean title row (emoji tile and mode pill fold into the ⋯ sheet), bottom nav now fixed and visible with 52px labeled tabs and accent states (it previously never rendered), matte bottom sheets with safe-area padding, WCAG AA contrast for muted/faint text on both themes, 40–48px touch targets, tighter home layout on phones.
 
-- **Native desktop window chrome** — main window uses native OS decorations
-  and title bar again (min width restored to 680).
+### 🔧 Changed
 
-### Fixed
+- 🪟 **Native desktop window chrome** — main window uses native OS decorations and title bar again (min width restored to 680).
 
-- **Graph canvas colors** — now read live CSS tokens (theme/accent aware) and
-  re-render on theme change instead of using a hardcoded palette.
-- **Editor menu tinting** — slash, bubble, mention, link, database, embed and
-  drag-handle menus tint via color-mix tokens; hardcoded violet/red removed so
-  accent customization applies everywhere.
-- **Undefined `--color-hover` references** in PageEmbedView, DBCell and
-  VaultGuard.
+### 🗑️ Removed
 
-### Removed
+- 🗑️ **Page comments** — the per-page comment thread in the page menu is gone as part of the redesign.
 
-- **Page comments** — the per-page comment thread in the page menu is gone
-  as part of the redesign.
+### 🐛 Fixed
 
-## [1.7.0] — 2026-09-01
+- 🎨 **Graph canvas colors** — now read live CSS tokens (theme/accent aware) and re-render on theme change instead of using a hardcoded palette.
+- 🎨 **Editor menu tinting** — slash, bubble, mention, link, database, embed and drag-handle menus tint via color-mix tokens; hardcoded violet/red removed so accent customization applies everywhere.
+- 🎨 **Undefined `--color-hover` references** in PageEmbedView, DBCell and VaultGuard.
 
-### Added
+## [1.7.0] - 2026-09-01
 
-- **Split-screen view** — two pages side by side with a draggable divider
-  (ratio persisted), each pane with its own editor and autosave; open from
-  the page toolbar or Ctrl/Cmd+Click a sidebar page; panes stack on narrow
-  windows.
-- **Desktop wallpaper widget** — transparent glass panel (recents + quick
-  capture + date) docked to the monitor corner, toggled from the tray;
-  opening a page surfaces and navigates the main window.
-- **Android home-screen widget** — frosted card with New note (routes to
-  quick capture) and Open buttons. Launcher-only for now; a live recents
-  feed needs a Rust→Kotlin bridge (follow-up).
-- **Mobile rebuild round 1** — liquid-glass UI (floating frosted topbar
-  over a vibrant gradient, glass bottom-nav pill, glass drawer/sheets),
-  action sheet for page actions (favorite, exports, info, delete), 44–52px
-  touch targets, labeled footer actions, mobile-feel near-full-width
-  drawer.
-- **Manual peer connect** — "Add peer — host:port" in the sidebar for
-  networks where mDNS is blocked; manual sessions merge into the real peer
-  record and auto-redial.
-- **Database density** — Compact/Spacious toggle per block, persisted with
-  the document; compact mode: 120px columns, 2–3px cell padding.
-- **Tighter editor spacing everywhere** — line-height 1.55, reduced heading/
-  list/quote/callout/table/toggle margins.
+Split-screen editing, home-screen and desktop widgets, a liquid-glass mobile rebuild, and P2P discovery that survives multi-homed networks.
 
-### Fixed
+### ✨ Added
 
-- **P2P discovery** — only the first resolved mDNS address was dialed; on
-  multi-homed devices (WiFi + VPN/docker) that could be the wrong interface
-  with no fallback. Dials every advertised address (private IPv4 first)
-  with a 5s per-host timeout; mDNS failure no longer stops the sync server.
-- **macOS widget build** — transparency requires the macos-private-api
-  feature (enabled + allowlisted via app.macOSPrivateApi).
+- 🪟 **Split-screen view** — two pages side by side with a draggable divider (ratio persisted), each pane with its own editor and autosave; open from the page toolbar or Ctrl/Cmd+Click a sidebar page; panes stack on narrow windows.
+- 🖼️ **Desktop wallpaper widget** — transparent glass panel (recents + quick capture + date) docked to the monitor corner, toggled from the tray; opening a page surfaces and navigates the main window.
+- 🧩 **Android home-screen widget** — frosted card with New note (routes to quick capture) and Open buttons. Launcher-only for now; a live recents feed needs a Rust→Kotlin bridge (follow-up).
+- ✨ **Mobile rebuild round 1** — liquid-glass UI (floating frosted topbar over a vibrant gradient, glass bottom-nav pill, glass drawer/sheets), action sheet for page actions (favorite, exports, info, delete), 44–52px touch targets, labeled footer actions, mobile-feel near-full-width drawer.
+- 🔗 **Manual peer connect** — "Add peer — host:port" in the sidebar for networks where mDNS is blocked; manual sessions merge into the real peer record and auto-redial.
+- 🗄️ **Database density** — Compact/Spacious toggle per block, persisted with the document; compact mode: 120px columns, 2–3px cell padding.
+- 📐 **Tighter editor spacing everywhere** — line-height 1.55, reduced heading/list/quote/callout/table/toggle margins.
 
-## [1.6.0] — 2026-09-01
+### 🐛 Fixed
 
-### Added
+- 📡 **P2P discovery** — only the first resolved mDNS address was dialed; on multi-homed devices (WiFi + VPN/docker) that could be the wrong interface with no fallback. Dials every advertised address (private IPv4 first) with a 5s per-host timeout; mDNS failure no longer stops the sync server.
+- 🍎 **macOS widget build** — transparency requires the macos-private-api feature (enabled + allowlisted via app.macOSPrivateApi).
 
-- **Folders in the vault** — `folders` table + `documents.folder_id`
-  (migrated on existing vaults), commands for create/rename/delete/move;
-  the sidebar gains a collapsible folder tree with inline rename, page
-  counts, a right-click menu, and Move-to-folder on every page. Folder
-  moves sync (rev bump); folders themselves are vault-local. Deleting a
-  folder never deletes pages — they fall back to the root.
-- **Editor right-click context menu** — add link (page picker), add
-  external link, cut/copy/paste, undo/redo, select all, and Insert /
-  Paragraph / Format flyouts (flip at screen edges). The caret moves to
-  the click point unless it lands inside a selection.
-- **Markdown tables** — `@tiptap/extension-table` stack; insert a 3×3
-  table from the Insert flyout or slash menu, GFM round-trip in markdown
-  export/import, and a table toolbar (add/remove rows & columns) that
-  appears when the cursor is inside a table.
-- **Markdown source view** — `</>` toolbar button toggles the editor to an
-  editable markdown textarea (Ctrl+S applies); leaving source mode parses
-  it back through the markdown importer and autosaves.
-- **Database right-click menu** — insert row/column, delete row/column,
-  delete database from any cell, header, or row.
-- **TableMenu / insert test harness** — headless jsdom harness
-  (`npm run test:insert`) that creates the real editor with production
-  extensions and asserts every insert command, table row/column ops,
-  task checkbox toggling, toggle collapse/expand/backspace-delete, and
-  node-view `stopEvent` behavior.
+## [1.6.0] - 2026-09-01
 
-### Changed
+Folders, a right-click editor menu, Markdown tables and source view, plus a rebuilt sidebar, database and toggle blocks.
 
-- **Sidebar redesigned** — the collapsed sidebar is now an icon rail
-  (logo, Home / Graph / New page, folder icons with page-count badges,
-  sync/theme/settings) instead of a bare strip; the extended sidebar keeps
-  its full tree, tags, trash, and footer.
-- **Database rework** — doc sync debounced (250ms, flushed on unmount),
-  toolbar with row count + + Row button, Obsidian-style polish (view
-  switcher, header labels, row hover, cell focus ring, accent buttons).
-- **Editor polish (Obsidian-style)** — custom task checkboxes, per-type
-  callout tints, muted blockquote rail, rebuilt toggle blocks (chevron
-  node view with persisted collapse state).
-- **App name** — installer/launcher and Android label now "Enclave".
+### ✨ Added
 
-### Fixed
+- 📁 **Folders in the vault** — `folders` table + `documents.folder_id` (migrated on existing vaults), commands for create/rename/delete/move; the sidebar gains a collapsible folder tree with inline rename, page counts, a right-click menu, and Move-to-folder on every page. Folder moves sync (rev bump); folders themselves are vault-local. Deleting a folder never deletes pages — they fall back to the root.
+- 🖱️ **Editor right-click context menu** — add link (page picker), add external link, cut/copy/paste, undo/redo, select all, and Insert / Paragraph / Format flyouts (flip at screen edges). The caret moves to the click point unless it lands inside a selection.
+- 📊 **Markdown tables** — `@tiptap/extension-table` stack; insert a 3×3 table from the Insert flyout or slash menu, GFM round-trip in markdown export/import, and a table toolbar (add/remove rows & columns) that appears when the cursor is inside a table.
+- 📝 **Markdown source view** — `</>` toolbar button toggles the editor to an editable markdown textarea (Ctrl+S applies); leaving source mode parses it back through the markdown importer and autosaves.
+- 🗄️ **Database right-click menu** — insert row/column, delete row/column, delete database from any cell, header, or row.
+- 🧪 **TableMenu / insert test harness** — headless jsdom harness (`npm run test:insert`) that creates the real editor with production extensions and asserts every insert command, table row/column ops, task checkbox toggling, toggle collapse/expand/backspace-delete, and node-view `stopEvent` behavior.
 
-- **Editor freezes / dead blocks** — six node views called Svelte 4's
-  `$set` on Svelte 5 `mount()` exports; the TypeError escaped ProseMirror's
-  update pipeline and left the editor frozen. Replaced with Svelte 5
-  exports (`setLanguage`, `applyData`) or clean view recreation.
-- **Blocks vanishing when typing inside them** — inputs inside node views
-  (database, bookmark, image, file, page-embed) leaked keypress events to
-  ProseMirror, which replaced the block with the typed character. All
-  views now implement `stopEvent`.
-- **Database unresponsive** — the prop-sync `$effect` re-ran on every edit
-  and reset local state to the stale prop; state now initializes once and
-  syncs via the exported `applyData()`.
-- **Toggle blocks** — couldn't be deleted (Backspace now unwraps/deletes
-  them) and collapsed state wasn't persisted; rebuilt as a custom node
-  view with a stale-closure fix for consecutive chevron clicks.
-- **Toggle/list blocks styling** — custom checkboxes, callout colors, and
-  blockquote rails were using an undefined CSS var or native elements that
-  fought ProseMirror.
+### 🔧 Changed
 
-## [1.5.0] — 2026-08-25
+- 🧭 **Sidebar redesigned** — the collapsed sidebar is now an icon rail (logo, Home / Graph / New page, folder icons with page-count badges, sync/theme/settings) instead of a bare strip; the extended sidebar keeps its full tree, tags, trash, and footer.
+- 🗄️ **Database rework** — doc sync debounced (250ms, flushed on unmount), toolbar with row count + + Row button, Obsidian-style polish (view switcher, header labels, row hover, cell focus ring, accent buttons).
+- 🎨 **Editor polish (Obsidian-style)** — custom task checkboxes, per-type callout tints, muted blockquote rail, rebuilt toggle blocks (chevron node view with persisted collapse state).
+- 🏷️ **App name** — installer/launcher and Android label now "Enclave".
 
-### Added
+### 🐛 Fixed
 
-- **PDF support** — paste or insert a PDF (slash menu → PDF) and it's
-  stored in the vault and shown inline in the page; an "Open" button hands
-  it to the system viewer (tauri-plugin-opener, works on Android via
-  ACTION_VIEW). CSP updated to allow the inline preview.
-- **Brand mark — "the keyhole vault" logo** — violet→indigo gradient tile
-  with a white keyhole: in-app SVG component (sidebar, top bar, vault
-  screen, home empty state) plus a full regenerated app-icon set for
-  desktop (PNG/ICO) and Android (legacy launcher + adaptive icon,
-  background color fixed from the default green). Reproducible via
-  `scripts/generate-icons.py`; source SVG at `src-tauri/icons/logo.svg`.
-  Three alternative logo concepts (shield-E, hexagon fortress, layered
-  vault) are rendered as previews by the same script (`--concepts`).
-- **Icon system rework** — one consistent stroke set (24px grid, Lucide-
-  style geometry, ~60 icons) moved into `@enclave/ui` and shared with the
-  editor package.
-- **Editor: slash menu upgraded** — real icons in grouped sections (Basic
-  blocks / Lists / Media / Advanced) with accent-tinted selection states;
-  bubble menu (B/I/S/code) now uses icon buttons.
-- **Editor: image captions** — images are figure blocks with an editable
-  caption underneath (stored as a node attribute).
-- **Editor: code block polish** — language bar with code icon, more
-  languages (rust, go, java, c, cpp, yaml, toml), icon copy button with
-  "Copied" state.
-- **Editor: bookmark card redesign** — gradient link avatar, inline URL
-  with external-link icon, hover lift.
-- **Editor: template gallery** — slash menu templates render as a two-
-  column tile grid.
-- **Editor: drag-handle menu** — items now have icons (duplicate, copy,
-  cut, delete).
-- **Home page polish** — recent/favorite pages are cards (two-column on
-  desktop) with icon chips and relative timestamps ("2h ago"); logo in the
-  empty state.
-- **Command palette** — arrow-key navigation with a visible active item,
-  Enter activates.
-- **Vault onboarding** — welcome screen highlights the three core promises
-  (encrypted, P2P, offline-first) with icons; recovery phrase can be copied
-  to the clipboard with one tap.
-- **Bottom navigation** — Material-style active pill behind the selected tab.
+- 💥 **Editor freezes / dead blocks** — six node views called Svelte 4's `$set` on Svelte 5 `mount()` exports; the TypeError escaped ProseMirror's update pipeline and left the editor frozen. Replaced with Svelte 5 exports (`setLanguage`, `applyData`) or clean view recreation.
+- ⌨️ **Blocks vanishing when typing inside them** — inputs inside node views (database, bookmark, image, file, page-embed) leaked keypress events to ProseMirror, which replaced the block with the typed character. All views now implement `stopEvent`.
+- 🗄️ **Database unresponsive** — the prop-sync `$effect` re-ran on every edit and reset local state to the stale prop; state now initializes once and syncs via the exported `applyData()`.
+- 🔽 **Toggle blocks** — couldn't be deleted (Backspace now unwraps/deletes them) and collapsed state wasn't persisted; rebuilt as a custom node view with a stale-closure fix for consecutive chevron clicks.
+- 🎨 **Toggle/list blocks styling** — custom checkboxes, callout colors, and blockquote rails were using an undefined CSS var or native elements that fought ProseMirror.
 
-### Changed
+## [1.5.0] - 2026-08-25
 
-- `Icon.svelte` moved from `apps/frontend/src/lib` to `@enclave/ui`;
-  `@enclave/editor` now depends on `@enclave/ui`.
-- Slash, bubble and drag-handle menus are now fixed-positioned and clamped
-  to the viewport — they stay next to the caret/selection instead of
-  rendering detached from the editor.
-- Settings icon replaced with a Material-style sliders mark.
-- Comments section moved below the editor — it no longer sits between the
-  title and the content.
+The brand identity and editor UI get a full rework: the keyhole-vault logo, a shared icon set, richer editor blocks and inline PDF support.
 
-### Fixed
+### ✨ Added
 
-- Sidebar collapse was ignored under narrow/wide density settings (equal
-  CSS specificity, density rule won) — collapsed now wins.
+- 📄 **PDF support** — paste or insert a PDF (slash menu → PDF) and it's stored in the vault and shown inline in the page; an "Open" button hands it to the system viewer (tauri-plugin-opener, works on Android via ACTION_VIEW). CSP updated to allow the inline preview.
+- 🎨 **Brand mark — "the keyhole vault" logo** — violet→indigo gradient tile with a white keyhole: in-app SVG component (sidebar, top bar, vault screen, home empty state) plus a full regenerated app-icon set for desktop (PNG/ICO) and Android (legacy launcher + adaptive icon, background color fixed from the default green). Reproducible via `scripts/generate-icons.py`; source SVG at `src-tauri/icons/logo.svg`. Three alternative logo concepts (shield-E, hexagon fortress, layered vault) are rendered as previews by the same script (`--concepts`).
+- 🎨 **Icon system rework** — one consistent stroke set (24px grid, Lucide-style geometry, ~60 icons) moved into `@enclave/ui` and shared with the editor package.
+- 🎛️ **Editor: slash menu upgraded** — real icons in grouped sections (Basic blocks / Lists / Media / Advanced) with accent-tinted selection states; bubble menu (B/I/S/code) now uses icon buttons.
+- 🖼️ **Editor: image captions** — images are figure blocks with an editable caption underneath (stored as a node attribute).
+- 💻 **Editor: code block polish** — language bar with code icon, more languages (rust, go, java, c, cpp, yaml, toml), icon copy button with "Copied" state.
+- 🔖 **Editor: bookmark card redesign** — gradient link avatar, inline URL with external-link icon, hover lift.
+- 🧩 **Editor: template gallery** — slash menu templates render as a two-column tile grid.
+- 🖱️ **Editor: drag-handle menu** — items now have icons (duplicate, copy, cut, delete).
+- 🏠 **Home page polish** — recent/favorite pages are cards (two-column on desktop) with icon chips and relative timestamps ("2h ago"); logo in the empty state.
+- ⌨️ **Command palette** — arrow-key navigation with a visible active item, Enter activates.
+- 🔐 **Vault onboarding** — welcome screen highlights the three core promises (encrypted, P2P, offline-first) with icons; recovery phrase can be copied to the clipboard with one tap.
+- 📱 **Bottom navigation** — Material-style active pill behind the selected tab.
 
-### Removed
+### 🔧 Changed
 
-- Block-type dropdown from the page top bar (the slash menu already covers
-  headings).
+- 📦 `Icon.svelte` moved from `apps/frontend/src/lib` to `@enclave/ui`; `@enclave/editor` now depends on `@enclave/ui`.
+- 🎛️ Slash, bubble and drag-handle menus are now fixed-positioned and clamped to the viewport — they stay next to the caret/selection instead of rendering detached from the editor.
+- ⚙️ Settings icon replaced with a Material-style sliders mark.
+- 💬 Comments section moved below the editor — it no longer sits between the title and the content.
 
-## [1.4.0] — 2026-08-25
+### 🗑️ Removed
 
-### Added
+- 🗑️ Block-type dropdown from the page top bar (the slash menu already covers headings).
 
-- **Offline-first updates (opt-in)** — the auto "Update now" banner is gone;
-  Enclave never phones home on its own. Settings → Updates has an "Allow
-  checking for updates?" toggle (off by default) and a manual "Check"
-  button. Every check shows the full changelog and requires the user to
-  review it and agree per update before anything downloads. The Sentinel CLI
-  is promoted in Settings for users who want Enclave to stay fully offline.
-- **Modern Android navigation** — bottom navigation bar (Home / Graph /
-  Settings) on phones, drawer + search in the top bar, and the Android back
-  gesture now closes the topmost overlay (drawer, search, settings) instead
-  of exiting the app.
-- **More customization** — theme mode Auto/Light/Dark (follows the OS),
-  OLED true-black dark mode, editor font size (S–XL), page width
-  (compact/wide/full), home page order (recent/created/title), vibration
-  feedback toggle, reduce-motion, and auto-lock after inactivity
-  (never/1m/5m/15m/1h) which re-locks the vault on an idle phone.
-- **Save reliability** — content saves retry with backoff (stale retries
-  can't overwrite newer edits) and the editor shows a live
-  Saving…/Save failed status.
-- **Snackbar feedback with Undo** — moving a page to trash no longer pops a
-  native confirm; it shows a snackbar with Undo (consistent with the page
-  view). Permanent deletes use an in-app confirm dialog instead of the
-  browser alert.
-- **Haptic feedback** on key phone interactions (toggleable).
+### 🐛 Fixed
 
-### Changed
+- 🪟 Sidebar collapse was ignored under narrow/wide density settings (equal CSS specificity, density rule won) — collapsed now wins.
 
-- **Mobile UX pass (Android)** — the desktop-style fixed sidebar is now a
-  slide-in drawer with a top bar (menu / search / settings), row actions are
-  always tappable (no hover dependency), the home page uses full-width
-  thumb-sized action buttons, the editor topbar wraps, the backlinks rail
-  and keyboard-tip lists are hidden on phones, and the Settings / Ask-AI /
-  update dialogs become full-screen bottom sheets. Context menus are clamped
-  to the viewport; safe-area insets are respected.
-- Sidebar page tree is capped at 120 rows with a "Show all" button — big
-  vaults stay snappy (one tap reveals the rest).
-- Settings panel reorganized: Appearance / General / Security / Updates /
-  AI / Backup / Shortcuts / About; it scrolls instead of clipping on short
-  windows.
-- Known gaps (real-device sync, arm64 RAG, Android file dialogs) moved out
-  of the README into tracked GitHub issues.
+## [1.4.0] - 2026-08-25
 
-### Fixed
+Mobile UX, opt-in offline-first updates, and a deeper customization and reliability pass across desktop and Android.
 
-- Context menu could render off-screen when opened near the viewport edge.
-- Settings / Update dialogs overflowed (and clipped) on small screens.
-- No more native `confirm()` alerts in the main flow (trash/delete).
+### ✨ Added
 
-## [1.3.1] — 2026-08-18
+- ⬆️ **Offline-first updates (opt-in)** — the auto "Update now" banner is gone; Enclave never phones home on its own. Settings → Updates has an "Allow checking for updates?" toggle (off by default) and a manual "Check" button. Every check shows the full changelog and requires the user to review it and agree per update before anything downloads. The Sentinel CLI is promoted in Settings for users who want Enclave to stay fully offline.
+- 📱 **Modern Android navigation** — bottom navigation bar (Home / Graph / Settings) on phones, drawer + search in the top bar, and the Android back gesture now closes the topmost overlay (drawer, search, settings) instead of exiting the app.
+- 🎨 **More customization** — theme mode Auto/Light/Dark (follows the OS), OLED true-black dark mode, editor font size (S–XL), page width (compact/wide/full), home page order (recent/created/title), vibration feedback toggle, reduce-motion, and auto-lock after inactivity (never/1m/5m/15m/1h) which re-locks the vault on an idle phone.
+- 💾 **Save reliability** — content saves retry with backoff (stale retries can't overwrite newer edits) and the editor shows a live Saving…/Save failed status.
+- ↩️ **Snackbar feedback with Undo** — moving a page to trash no longer pops a native confirm; it shows a snackbar with Undo (consistent with the page view). Permanent deletes use an in-app confirm dialog instead of the browser alert.
+- 📳 **Haptic feedback** on key phone interactions (toggleable).
 
-### Fixed
+### 🔧 Changed
 
-- **Android "Update now" downloaded the unsigned APK** — the CI upload ships both the
-  raw tauri APK and the signed one; the updater picked the first `.apk` (unsigned),
-  whose signature mismatch makes the package installer refuse the install. It now
-  skips any asset named `unsigned` and always takes the signed APK.
+- 📱 **Mobile UX pass (Android)** — the desktop-style fixed sidebar is now a slide-in drawer with a top bar (menu / search / settings), row actions are always tappable (no hover dependency), the home page uses full-width thumb-sized action buttons, the editor topbar wraps, the backlinks rail and keyboard-tip lists are hidden on phones, and the Settings / Ask-AI / update dialogs become full-screen bottom sheets. Context menus are clamped to the viewport; safe-area insets are respected.
+- 🪟 Sidebar page tree is capped at 120 rows with a "Show all" button — big vaults stay snappy (one tap reveals the rest).
+- ⚙️ Settings panel reorganized: Appearance / General / Security / Updates / AI / Backup / Shortcuts / About; it scrolls instead of clipping on short windows.
+- 📝 Known gaps (real-device sync, arm64 RAG, Android file dialogs) moved out of the README into tracked GitHub issues.
 
-## [1.3.0] — 2026-08-18
+### 🐛 Fixed
 
-### Added
+- 🖱️ Context menu could render off-screen when opened near the viewport edge.
+- 🪟 Settings / Update dialogs overflowed (and clipped) on small screens.
+- 💬 No more native `confirm()` alerts in the main flow (trash/delete).
 
-- **In-app updates (desktop + Android)** — Enclave now checks GitHub Releases on
-  startup and shows an "Update now" banner when a newer version is available.
-  One click downloads the platform installer/APK (with a live progress bar) and
-  installs it in place — no uninstall, all pages and settings are kept:
-  - Windows: silent NSIS over-install (the installer closes the running app and
-    replaces it, preserving user data).
+## [1.3.1] - 2026-08-18
+
+A one-line hotfix: the Android updater downloaded the unsigned APK and the package installer refused it.
+
+### 🐛 Fixed
+
+- 📦 **Android "Update now" downloaded the unsigned APK** — the CI upload ships both the raw tauri APK and the signed one; the updater picked the first `.apk` (unsigned), whose signature mismatch makes the package installer refuse the install. It now skips any asset named `unsigned` and always takes the signed APK.
+
+## [1.3.0] - 2026-08-18
+
+In-app updates for desktop and Android: check GitHub Releases, download the platform installer and install in place without losing the vault.
+
+### ✨ Added
+
+- ⬆️ **In-app updates (desktop + Android)** — Enclave now checks GitHub Releases on startup and shows an "Update now" banner when a newer version is available. One click downloads the platform installer/APK (with a live progress bar) and installs it in place — no uninstall, all pages and settings are kept:
+  - Windows: silent NSIS over-install (the installer closes the running app and replaces it, preserving user data).
   - macOS: opens the DMG; dragging onto Applications replaces the app.
   - Linux: swaps the new AppImage in place and launches it.
-  - Android: hands the APK to the Android package installer
-    (`REQUEST_INSTALL_PACKAGES`), which overwrites the app without uninstalling.
-  - Version comparison is numeric (1.10.0 > 1.2.0) and per-platform assets are
-    picked from the release automatically.
+  - Android: hands the APK to the Android package installer (`REQUEST_INSTALL_PACKAGES`), which overwrites the app without uninstalling.
+  - Version comparison is numeric (1.10.0 > 1.2.0) and per-platform assets are picked from the release automatically.
 
-## [1.2.0] — 2026-08-12
+## [1.2.0] - 2026-08-12
 
-### Added
+The Android app arrives, and P2P sync becomes mutually authenticated and end-to-end encrypted.
 
-- **Android app (first release)** — same SvelteKit frontend and Rust core as desktop,
-  wrapped with Tauri v2: SQLCipher vault, P2P sync, RAG, all fully offline-first.
-  - Signed release pipeline: `.apk` + `.aab` (arm64) build locally or in CI
-    (`.github/workflows/android.yml`), signed via `scripts/android-sign.sh` with
-    `ANDROID_KEYSTORE_*` secrets.
-  - Cross-compilation fixes: rustls instead of native-tls (no OpenSSL dependency),
-    vendored OpenSSL for SQLCipher on Android targets, desktop unchanged.
-  - Android project (`src-tauri/gen/android`) now committed so native
-    customizations persist; volatile artifacts ignored.
+### ✨ Added
+
+- 🤖 **Android app (first release)** — same SvelteKit frontend and Rust core as desktop, wrapped with Tauri v2: SQLCipher vault, P2P sync, RAG, all fully offline-first.
+  - Signed release pipeline: `.apk` + `.aab` (arm64) build locally or in CI (`.github/workflows/android.yml`), signed via `scripts/android-sign.sh` with `ANDROID_KEYSTORE_*` secrets.
+  - Cross-compilation fixes: rustls instead of native-tls (no OpenSSL dependency), vendored OpenSSL for SQLCipher on Android targets, desktop unchanged.
+  - Android project (`src-tauri/gen/android`) now committed so native customizations persist; volatile artifacts ignored.
   - Enclave adaptive launcher icon (all densities); Android 12+ splash uses it.
-  - Monotonic `versionCode` (`autoIncrementVersionCode`) — Play-compliant
-    strictly increasing codes, counter tracked in `tauri.properties`.
-  - x86_64 emulator builds (local embeddings gated out there — ONNX Runtime
-    ships no x86_64-android binaries; arm64 phones keep RAG).
-  - First-boot verified on emulator: vault creation (BIP39 + Argon2id +
-    SQLCipher), page editing, encrypted persistence across restart.
+  - Monotonic `versionCode` (`autoIncrementVersionCode`) — Play-compliant strictly increasing codes, counter tracked in `tauri.properties`.
+  - x86_64 emulator builds (local embeddings gated out there — ONNX Runtime ships no x86_64-android binaries; arm64 phones keep RAG).
+  - First-boot verified on emulator: vault creation (BIP39 + Argon2id + SQLCipher), page editing, encrypted persistence across restart.
 
-### Changed
+### 🔧 Changed
 
-- **P2P sync is now authenticated + encrypted** (desktop + Android):
-  - Mutual-auth handshake — challenge-response with HMAC-SHA256 proofs over
-    the vault-derived sync key (same owner = same BIP39 seed phrase).
-    Wrong-key peers are disconnected before any data, even the hello.
-  - Every frame sealed with XChaCha20-Poly1305 (AEAD) under a per-session
-    key; forged frames kill the session.
-  - Wire-format bump: devices must run this version to sync (old builds are
-    rejected at the handshake).
+- 🔐 **P2P sync is now authenticated + encrypted** (desktop + Android):
+  - Mutual-auth handshake — challenge-response with HMAC-SHA256 proofs over the vault-derived sync key (same owner = same BIP39 seed phrase). Wrong-key peers are disconnected before any data, even the hello.
+  - Every frame sealed with XChaCha20-Poly1305 (AEAD) under a per-session key; forged frames kill the session.
+  - Wire-format bump: devices must run this version to sync (old builds are rejected at the handshake).
 
-### Fixed
+### 🐛 Fixed
 
-- **Android release builds could not sync** — generated gradle set
-  `usesCleartextTraffic=false`, and Android's platform cleartext policy
-  blocked `ws://` before app code ran. Allowed (safe: payloads are
-  AEAD-sealed) in the committed Android project.
-- **Vault stayed unlocked when the app lost visibility** — on Android,
-  backgrounding the app now locks the vault and stops sync.
-- **Signing script trap bug** — an EXIT trap deleted the real keystore
-  alongside the temp aligned APK; cleanup now tracks only temp files.
-- **Root `tauri` npm script hijacked Android builds** — gradle's
-  `npm run -- tauri android android-studio-script` resolved to the desktop
-  `tauri dev` wrapper; the script now passes through to the real CLI.
+- 🔌 **Android release builds could not sync** — generated gradle set `usesCleartextTraffic=false`, and Android's platform cleartext policy blocked `ws://` before app code ran. Allowed (safe: payloads are AEAD-sealed) in the committed Android project.
+- 🔒 **Vault stayed unlocked when the app lost visibility** — on Android, backgrounding the app now locks the vault and stops sync.
+- 🧹 **Signing script trap bug** — an EXIT trap deleted the real keystore alongside the temp aligned APK; cleanup now tracks only temp files.
+- ⚙️ **Root `tauri` npm script hijacked Android builds** — gradle's `npm run -- tauri android android-studio-script` resolved to the desktop `tauri dev` wrapper; the script now passes through to the real CLI.
 
-## [1.1.1] — 2026-08-10
+## [1.1.1] - 2026-08-10
 
-### Fixed
+A single blocking fix: the Tauri CSP denied the WebAssembly module Argon2id needs, so vault creation failed on every platform.
 
-- **Vault creation blocked on every platform** — `hash-wasm` compiles a WebAssembly module
-  at runtime for Argon2id key derivation, and the Tauri CSP had no `script-src`, so WASM
-  compilation was denied ("WebAssembly.compile() violates CSP … 'unsafe-eval' is not an
-  allowed source"). Added `script-src 'self' 'wasm-unsafe-eval'` — permits WASM without
-  granting general `eval`. Regression guard: `tests/csp.test.ts` fails CI if the directive
-  is ever dropped.
+### 🐛 Fixed
 
-## [1.1.0] — 2026-08-10
+- 🛡️ **Vault creation blocked on every platform** — `hash-wasm` compiles a WebAssembly module at runtime for Argon2id key derivation, and the Tauri CSP had no `script-src`, so WASM compilation was denied ("WebAssembly.compile() violates CSP … 'unsafe-eval' is not an allowed source"). Added `script-src 'self' 'wasm-unsafe-eval'` — permits WASM without granting general `eval`. Regression guard: `tests/csp.test.ts` fails CI if the directive is ever dropped.
 
-### Added
+## [1.1.0] - 2026-08-10
 
-- **In-DB vector search** — `sqlite-vec` ANN index (`vec0` virtual tables, per-dimension, cosine
-  metric) inside the same encrypted SQLCipher file as the rest of the vault. No separate storage
-  engine, no second encryption boundary.
-- **Ranked RAG retrieval in Rust** — `search_embeddings` returns exact-cosine re-ranked top-k
-  (4× recall buffer over the ANN candidates) with an exact-scan fallback for dimensions without an
-  index yet. The frontend no longer ships every vector over IPC.
-- **Fully-offline embeddings** — built-in ONNX embedding model (fastembed, `all-MiniLM-L6-v2`,
-  384 dims). Downloads once (~25 MB) into the app data dir, then RAG retrieval works with zero
-  external services; chat still needs an endpoint.
-- **Generic AI client** — `ollama.ts` → `ai.ts`: any OpenAI-compatible endpoint. Local servers
-  (Ollama, llama.cpp, LM Studio, vLLM) or frontier APIs with a Bearer API key.
-- **Vault-encrypted AI settings** — endpoint, model and API key now live in the vault's `settings`
-  table (SQLCipher), not localStorage. Legacy localStorage settings migrate once on first load.
-- **Offline-embeddings toggle** in Settings — with it on, retrieval content never leaves the device.
-- **Whiteboard opt-in per page** — pages without a whiteboard block show a single "Whiteboard"
-  button instead of a permanent Paper|Whiteboard toggle; the block is created on first edit.
-- **CODEOWNERS** + hardened branch protection (see below).
-- **CHANGELOG.md** — this file.
+RAG v2 moves retrieval inside the encrypted vault: an in-database vector index, offline embeddings and a generic OpenAI-compatible AI client, with API keys stored in the vault.
 
-### Fixed
+### ✨ Added
 
-- **Editor crash loop** (`effect_update_depth_exceeded`) — the TipTap editor now mounts from a
-  `use:action` instead of a reactive `$effect` that read and wrote the same state, which re-created
-  the Editor endlessly (in prod it crashed, in dev it remounted ~50×/s).
-- **Drag-handle grip read as "::"** — the grip was the Braille glyph `⠿` (U+28FF); at 11px it
-  renders as two vertical dot columns indistinguishable from `::` and followed the mouse beside
-  every block while typing. Replaced with an inline 3×3 dot SVG.
-- **Tauri permission denials** — `event.listen` (sync events) and `window.confirm` (delete/archive
-  confirmations) were denied; the app shipped with no capability file. Added
-  `core:default` + `dialog:default` + `dialog:allow-confirm`.
-- **Deep links 404** — the dynamic `[id]` route inherited prerendering and baked a "Not Found" error
-  into the static fallback; the route is now client-only.
-- **IndexedDB `get()` contract** — (removed with the web platform, see below) the adapter returned
-  `{id, value}` where the KV contract expects the bare value, breaking every record read on web
-  builds.
-- **Duplicate `codeBlock` extension** — StarterKit already provides one; the custom node view now
-  configures `codeBlock: false` instead of registering a second.
+- 🔍 **In-DB vector search** — `sqlite-vec` ANN index (`vec0` virtual tables, per-dimension, cosine metric) inside the same encrypted SQLCipher file as the rest of the vault. No separate storage engine, no second encryption boundary.
+- 🎯 **Ranked RAG retrieval in Rust** — `search_embeddings` returns exact-cosine re-ranked top-k (4× recall buffer over the ANN candidates) with an exact-scan fallback for dimensions without an index yet. The frontend no longer ships every vector over IPC.
+- 🧠 **Fully-offline embeddings** — built-in ONNX embedding model (fastembed, `all-MiniLM-L6-v2`, 384 dims). Downloads once (~25 MB) into the app data dir, then RAG retrieval works with zero external services; chat still needs an endpoint.
+- 🤖 **Generic AI client** — `ollama.ts` → `ai.ts`: any OpenAI-compatible endpoint. Local servers (Ollama, llama.cpp, LM Studio, vLLM) or frontier APIs with a Bearer API key.
+- 🔐 **Vault-encrypted AI settings** — endpoint, model and API key now live in the vault's `settings` table (SQLCipher), not localStorage. Legacy localStorage settings migrate once on first load.
+- 📴 **Offline-embeddings toggle** in Settings — with it on, retrieval content never leaves the device.
+- 🎨 **Whiteboard opt-in per page** — pages without a whiteboard block show a single "Whiteboard" button instead of a permanent Paper|Whiteboard toggle; the block is created on first edit.
+- 👥 **CODEOWNERS** + hardened branch protection (see below).
+- 📝 **CHANGELOG.md** — this file.
 
-### Removed
+### 🔧 Changed
 
-- **Web platform** — per project direction (desktop + mobile only): the IndexedDB/WebCrypto storage
-  backend (`webStore.ts`) and its tests, browser fallbacks in backend/importExport/Whiteboard/
-  capture, stale `apps/mobile` + `apps/web` build artifacts, and the `preview` scripts.
+- 🌐 CSP now allows `https:` in `connect-src` for frontier AI endpoints (localhost remains the default).
+- 🔐 AI settings are stored in the encrypted vault instead of localStorage (API keys never sit in plaintext).
+- 🔍 `get_embeddings` (all vectors over IPC) replaced by `search_embeddings(query, limit)`.
 
-### Changed
+### 🗑️ Removed
 
-- CSP now allows `https:` in `connect-src` for frontier AI endpoints (localhost remains the default).
-- AI settings are stored in the encrypted vault instead of localStorage (API keys never sit in
-  plaintext).
-- `get_embeddings` (all vectors over IPC) replaced by `search_embeddings(query, limit)`.
+- 🗑️ **Web platform** — per project direction (desktop + mobile only): the IndexedDB/WebCrypto storage backend (`webStore.ts`) and its tests, browser fallbacks in backend/importExport/Whiteboard/capture, stale `apps/mobile` + `apps/web` build artifacts, and the `preview` scripts.
 
-## [1.0.0] — 2026-08-06
+### 🐛 Fixed
 
-Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi. First stable
-release, consolidating four stage branches plus housekeeping.
+- 💥 **Editor crash loop** (`effect_update_depth_exceeded`) — the TipTap editor now mounts from a `use:action` instead of a reactive `$effect` that read and wrote the same state, which re-created the Editor endlessly (in prod it crashed, in dev it remounted ~50×/s).
+- 🖱️ **Drag-handle grip read as "::"** — the grip was the Braille glyph `⠿` (U+28FF); at 11px it renders as two vertical dot columns indistinguishable from `::` and followed the mouse beside every block while typing. Replaced with an inline 3×3 dot SVG.
+- 🔑 **Tauri permission denials** — `event.listen` (sync events) and `window.confirm` (delete/archive confirmations) were denied; the app shipped with no capability file. Added `core:default` + `dialog:default` + `dialog:allow-confirm`.
+- 🔗 **Deep links 404** — the dynamic `[id]` route inherited prerendering and baked a "Not Found" error into the static fallback; the route is now client-only.
+- 💾 **IndexedDB `get()` contract** — (removed with the web platform, see below) the adapter returned `{id, value}` where the KV contract expects the bare value, breaking every record read on web builds.
+- 🧩 **Duplicate `codeBlock` extension** — StarterKit already provides one; the custom node view now configures `codeBlock: false` instead of registering a second.
 
-### Added
+## [1.0.0] - 2026-08-06
 
-- **RAG assistants** — vault-wide retrieval-augmented generation: document embeddings, an
-  OpenAI-compatible LLM client (chat + embeddings), context injection with rebuild-on-save, and a
-  sources UI.
-- **Web platform support** — static SPA with IndexedDB + WebCrypto storage routed through the
-  invoke bridge (removed in 1.1.0).
-- **Sync hardening** — dropped peers are redialed; health readout in the network panel.
-- **Hand-rolled HTML→Markdown serializer** — dropped the `turndown` dependency.
-- **Toolchain cleanup** — shared `tsconfig.base.json`; standard hex helper in the crypto self-check.
+Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi. First stable release, consolidating four stage branches plus housekeeping.
 
-### Fixed
+### ✨ Added
 
-- #21 — redial dropped peer connections.
-- #4 — replace turndown with the hand-rolled HTML→Markdown serializer.
-- #2 — drop custom `bytesToHex` from the crypto self-check.
+- 🧠 **RAG assistants** — vault-wide retrieval-augmented generation: document embeddings, an OpenAI-compatible LLM client (chat + embeddings), context injection with rebuild-on-save, and a sources UI.
+- 🌐 **Web platform support** — static SPA with IndexedDB + WebCrypto storage routed through the invoke bridge (removed in 1.1.0).
+- 🔗 **Sync hardening** — dropped peers are redialed; health readout in the network panel.
+- 📝 **Hand-rolled HTML→Markdown serializer** — dropped the `turndown` dependency.
+- 🧹 **Toolchain cleanup** — shared `tsconfig.base.json`; standard hex helper in the crypto self-check.
 
-## [0.4.0] — 2026-08-01
+### 🐛 Fixed
 
-Database v2, edgeless, LAN sync, comments, local AI.
+- 🔗 #21 — redial dropped peer connections.
+- 📝 #4 — replace turndown with the hand-rolled HTML→Markdown serializer.
+- 🧹 #2 — drop custom `bytesToHex` from the crypto self-check.
 
-## [0.3.0] — 2026-07-15
+## [0.4.0] - 2026-08-01
 
-Initial app release.
+Database v2, Edgeless v2, LAN sync, comments and mentions, and an optional local-AI assistant — the first feature-complete Enclave.
+
+### ✨ Added
+
+- 🗄️ **Database blocks** — typed columns (text, number, select/multi-select, date, checkbox and relation), rows, per-view sort and filter, and list, gallery, timeline and kanban views.
+- 🔗 **Backlinks and page linking** — pages can link and embed one another, and the graph view draws the real link network instead of a placeholder.
+- 🧠 **Local AI assistant (off by default)** — an optional assistant backed by a local Ollama endpoint.
+- 💬 **Comments and mentions** — per-page comment threads with @mentions.
+- 📁 **Markdown import and vault export** — an Obsidian-compatible Markdown round-trip.
+- 🎨 **Edgeless v2** — frames, presentation mode, page embeds and mindmaps on the whiteboard.
+- 🎛️ **Appearance customization** — accent colour, editor font and sidebar width.
+- 💾 **Desktop polish** — vault backup export, a tray icon and quick capture.
+- 🔎 **FTS5 search, WAL and trash** — the data plane beneath search, durability and recovery.
+
+### 🔧 Changed
+
+- 📡 **LAN sync v2** — document-level last-write-wins sync over mDNS discovery and WebSocket.
+- 🧩 **Editor depth** — images, page embeds and templates landed in the block editor.
+- 👥 **CI gating** — builds now wait on the test suite and cache Cargo artifacts.
+
+### 🐛 Fixed
+
+- 💥 **“state not managed” startup crash** — every Tauri command could fail at startup because state was registered after the command surface; registration now happens before the app runs.
+- 🪟 **Windows DLL dependency** — static OpenSSL so the shipped `.exe` needs no separately installed `libssl`/`libcrypto`.
+- 🐛 **Issue sweep** — resolved issues #9–#19 and introduced the AFFiNE-style UI shell.
+
+## [0.3.0] - 2026-07-15
+
+The first release with a clean installer set: CI uploads only the platform installers and the source archive, and the build drops its system OpenSSL dependency.
+
+### 🔧 Changed
+
+- 🛠️ **OpenSSL dependency removed** — the dependency and Windows build configuration were reworked so the package builds in CI without a system OpenSSL install.
+
+### 🐛 Fixed
+
+- 📦 **Release assets trimmed** — CI now publishes only the installers and the source archive instead of the whole build output, so release pages stay readable.
+
+## [0.2.0] - 2026-07-14
+
+A quick follow-up to the first release, repairing the Windows CI build.
+
+### 🐛 Fixed
+
+- 🪟 **Windows SQLCipher build** — vendored OpenSSL so the Windows CI job resolves SQLCipher’s native dependency.
+- 🧱 **Build error fix** — a compilation error in the initial pipeline was corrected.
+
+## [0.1.0] - 2026-07-14
+
+The first Enclave build: a SvelteKit + Tauri desktop app with a Notion-style block editor and a locally encrypted vault.
+
+### ✨ Added
+
+- 🧱 **SvelteKit + Tauri monorepo** — the initial architecture: a SvelteKit frontend, a Rust/Tauri backend, and shared `packages/`.
+- ✍️ **Notion-inspired block editor** — the first block-based editor and document store.
+- 🔐 **Encrypted storage** — BIP39 mnemonic generation, Argon2id key derivation and AES-256-GCM encryption for the vault.
+- 🎨 **Reactive theme store** — light and dark theming with local persistence.
+- 🪟 **Windows CI + NSIS installer** — the first packaged desktop build.
+- 🏷️ **Project renamed** — from the working name “Aethernote” to Enclave.
 
 [Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.13.0...HEAD
-[1.13.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.12.0...v1.13.0
-[1.12.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.11.0...v1.12.0
-[1.11.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.1...v1.11.0
-[1.5.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...v1.5.0
-[1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
-[1.3.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...v1.3.1
-[1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0
-[1.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.4.0...v1.0.0
+[0.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/releases/tag/v0.1.0
+[0.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.1.0...v0.2.0
+[0.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.2.0...v0.3.0
 [0.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/releases/tag/v0.3.0
+[1.0.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.4.0...v1.0.0
+[1.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.0.0...v1.1.0
+[1.1.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.0...v1.1.1
+[1.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.1.1...v1.2.0
+[1.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.2.0...v1.3.0
+[1.3.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.0...v1.3.1
+[1.4.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.3.1...v1.4.0
+[1.5.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.4.0...v1.5.0
+[1.6.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.5.0...v1.6.0
+[1.7.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.6.0...v1.7.0
+[1.8.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.7.0...v1.8.0
+[1.9.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.8.0...b698898
+[1.10.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/b698898...v1.10.0
+[1.10.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.0...v1.10.1
+[1.11.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.1...v1.11.0
+[1.12.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.11.0...v1.12.0
+[1.13.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.12.0...v1.13.0

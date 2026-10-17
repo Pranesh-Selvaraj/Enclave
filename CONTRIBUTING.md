@@ -193,8 +193,20 @@ MIT. By contributing, you agree that your contributions will be licensed under t
 1. **Bump the version** to `<new>` across `package.json`, `apps/frontend/package.json`,
    `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` (Cargo.lock updates on the
    next `cargo check`).
-2. **Changelog** — add a `[<new>]` entry under `## [Unreleased]` in `CHANGELOG.md`
-   (Keep a Changelog format) and update the compare links at the bottom.
+2. **Changelog** — add the new release to the top of `CHANGELOG.md` and
+   update the compare links at the bottom. Every release uses the same layout:
+
+   - Heading: `## [<new>] - YYYY-MM-DD` (no `v`, ISO date).
+   - A one-paragraph prose summary of the release under the heading.
+   - Section headings in this order, each carrying an emoji and omitted when
+     empty: `### ✨ Added`, `### ⚡ Improved`, `### 🔧 Changed`,
+     `### 🗑️ Removed`, `### 🐛 Fixed`, `### 🔒 Security`, `### 📝 Notes`.
+   - One single-line, emoji-prefixed bullet per change, starting with a bold
+     headline: `- 🔐 **Short headline.** What changed, why, and the concrete
+     fix, with issue/PR/advisory references.`
+
+   Add `[<new>]: .../compare/v<previous>...v<new>` to the reference block at
+   the bottom so the heading links to its diff.
 
    **Release notes must be self-contained prose.** Say, in words, what was
    added, changed, improved and fixed, and explain the concrete cause and fix
@@ -217,9 +229,18 @@ MIT. By contributing, you agree that your contributions will be licensed under t
    merge it, then tag + publish:
 
    ```bash
-   git tag -a v<new> -m "v<new> — <summary>"
+   git tag -a v<new> -m "v<new>"
    git push origin main --tags
-   gh release create v<new> --title "Enclave v<new> — <summary>" --notes "$(changelog body)"
+   ```
+
+   Pushing the tag makes CI create the GitHub release: the title is the bare tag
+   `v<new>`, matching the git tag and the `## [<new>]` changelog heading, and the
+   body is extracted from that changelog entry, so the page and `CHANGELOG.md`
+   carry the same text. The description lives in the body, never in the title.
+   If the page needs correcting, edit it in place rather than re-creating it:
+
+   ```bash
+   gh release edit v<new> --title "v<new>" --notes "$(changelog body)"
    ```
 
 Android release signing runs in CI (`.github/workflows/android.yml`) with the
