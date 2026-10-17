@@ -168,6 +168,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<div class="settings-panel" role="document" onclick={(e: MouseEvent) => e.stopPropagation()}>
 			<div class="settings-header">
+				<span class="sheet-grabber" aria-hidden="true"></span>
 				<h2>Settings</h2>
 				<button class="settings-close" onclick={() => (open = false)} aria-label="Close settings" title="Close settings">
 					<Icon name="x" size={16} />
@@ -537,6 +538,7 @@ sentinel check</pre>
 		background: var(--color-surface);
 	}
 	.settings-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+	.sheet-grabber { display: none; }
 	.settings-close {
 		display: flex;
 		align-items: center;
@@ -671,34 +673,82 @@ sentinel check</pre>
 	}
 
 	/* Full-screen sheet on phones — the panel is long and a centered modal
-	 * overflows (and clips) on small screens. */
+	 * overflows (and clips) on small screens. Rows stack (label, then control)
+	 * so a label is never squeezed beside a wide control, and the controls
+	 * stretch into evenly-sized, thumb-height targets. */
 	@media (max-width: 768px) {
 		.modal-backdrop { align-items: flex-end; padding: 0; }
 		.settings-panel {
 			width: 100%;
 			max-width: 100%;
-			max-height: calc(92vh * var(--ui-fit));
-			max-height: calc(92dvh * var(--ui-fit));
-			border-radius: 18px 18px 0 0;
+			max-height: calc(94vh * var(--ui-fit));
+			max-height: calc(94dvh * var(--ui-fit));
+			border-radius: 20px 20px 0 0;
 			border-bottom: none;
 		}
-		.settings-header { padding-top: calc(8px + var(--safe-top)); }
-		.settings-section { padding: 12px 18px; }
-		.setting-row {
-			min-height: 44px;
-			flex-wrap: wrap;
-			gap: 4px 10px;
+		.settings-header {
+			padding: calc(22px + var(--safe-top)) 12px 14px 18px;
 		}
-		.seg { padding: 8px 14px; font-size: 13px; border-radius: 8px; }
+		.settings-header h2 { font-size: 19px; }
+		/* Drag-handle affordance for the sheet. */
+		.sheet-grabber {
+			display: block;
+			position: absolute;
+			top: calc(8px + var(--safe-top));
+			left: 50%;
+			transform: translateX(-50%);
+			width: 40px;
+			height: 4px;
+			border-radius: 999px;
+			background: var(--color-border-strong);
+		}
+		.settings-close { width: 44px; height: 44px; }
+		.settings-section { padding: 16px 18px; }
+		.settings-section h3 { font-size: 12px; margin-bottom: 14px; }
+		/* Label owns the first line; a wide control wraps under it. */
+		.setting-row {
+			align-items: center;
+			flex-wrap: wrap;
+			gap: 10px;
+			margin: 0 0 18px;
+			min-height: 0;
+		}
+		.setting-row:last-child { margin-bottom: 2px; }
+		.setting-row > span:first-child {
+			flex: 1 1 auto;
+			min-width: 0;
+			font-size: 14.5px;
+			font-weight: 500;
+			color: var(--color-text);
+		}
+		/* Wide controls take their own full-width line and split it evenly. */
+		.seg-row, .swatch-row { flex: 1 1 100%; justify-content: flex-start; gap: 8px; }
+		.seg {
+			flex: 1 1 0;
+			min-width: 0;
+			min-height: 46px;
+			padding: 0 6px;
+			font-size: 13px;
+			border-radius: 12px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		/* Compact controls (switch, button, colour well) stay beside the label. */
+		.switch { flex: 0 0 auto; width: 50px; height: 30px; }
+		.switch-slider::before { width: 22px; height: 22px; left: 4px; top: 4px; }
+		.switch input:checked + .switch-slider::before { transform: translateX(20px); }
+		.swatch { width: 40px; height: 40px; }
+		.color-field { flex: 0 0 auto; width: 54px; height: 40px; }
+		.danger-btn { min-height: 46px; padding: 10px 18px; font-size: 14px; }
+		/* Text fields span the full width at a comfortable height. */
+		.ai-input { flex: 1 1 100%; width: 100%; box-sizing: border-box; min-height: 46px; font-size: 14px; padding: 8px 12px; }
+		.setting-row :global(.btn) { min-height: 46px; }
+		.backup-hint { font-size: 13px; }
+		.settings-footer { padding: 10px 18px calc(16px + var(--safe-bottom)); }
+		.settings-footer :global(.btn) { width: 100%; min-height: 48px; font-size: 15px; justify-content: center; }
 		/* Glass is desktop-only chrome: backdrop-filter is expensive on phone
 		 * GPUs and interacts badly with WebView zoom repaints (#127). */
 		.hidden-phone { display: none; }
-		.swatch { width: 44px; height: 44px; }
-		.switch { width: 46px; height: 26px; }
-		.switch-slider::before { width: 18px; height: 18px; left: 4px; top: 4px; }
-		.switch input:checked + .switch-slider::before { transform: translateX(20px); }
-		.ai-input { width: 100%; box-sizing: border-box; }
-		.danger-btn { min-height: 44px; padding: 10px 16px; }
-		.settings-footer { padding-bottom: calc(14px + var(--safe-bottom)); }
 	}
 </style>
