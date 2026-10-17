@@ -938,11 +938,9 @@
 	<!-- Left Sidebar (drawer on phones) -->
 	<aside class="sidebar" class:collapsed={!sidebarOpen} class:open={sidebarOpen} class:resizing={resizingSidebar} bind:this={sidebarEl} style={sidebarOpen && sidebarWidth ? `width:${sidebarWidth}px;min-width:${sidebarWidth}px` : ''}>
 		{#if sidebarOpen}
-			{#if isMobile}
-				<div class="drawer-title">Enclave</div>
-			{/if}
 			<nav class="side-nav">
-				<a href="/" class="nav-item" class:active={currentPath === '/'}>
+				<a href="/" class="nav-item" class:active={currentPath === '/'}
+					onclick={() => (sidebarOpen = false)}>
 					<Icon name="home" size={16} />
 					<span>Home</span>
 				</a>
@@ -955,38 +953,44 @@
 			</nav>
 
 			{#if isMobile}
-				<!-- Phone drawer: app actions, not the note tree (issue #161). -->
-				<div class="drawer-actions">
-					<button class="drawer-action" onclick={() => (syncCardOpen = !syncCardOpen)} aria-expanded={syncCardOpen}>
-						<span class="drawer-action-icon" class:online={networkRunning}><Icon name="network" size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Sync</span>
-							<span class="drawer-action-sub">{syncLabel}</span>
-						</span>
-						<span class="drawer-action-chevron"><Icon name={syncCardOpen ? 'chevronDown' : 'chevronRight'} size={15} /></span>
-					</button>
-					<button class="drawer-action" onclick={() => theme.toggle()}>
-						<span class="drawer-action-icon"><Icon name={theme.value === 'dark' ? 'sun' : 'moon'} size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Theme</span>
-							<span class="drawer-action-sub">{theme.mode === 'auto' ? 'Auto (system)' : theme.value === 'dark' ? 'Dark' : 'Light'}</span>
-						</span>
-					</button>
-					<button class="drawer-action" onclick={() => { sidebarOpen = false; openUI('settings'); }}>
-						<span class="drawer-action-icon"><Icon name="settings" size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Settings</span>
-							<span class="drawer-action-sub">Appearance, AI, backup, shortcuts</span>
-						</span>
-						<span class="drawer-action-chevron"><Icon name="chevronRight" size={15} /></span>
-					</button>
-					<button class="drawer-action" onclick={lockNow}>
-						<span class="drawer-action-icon"><Icon name="lock" size={18} /></span>
-						<span class="drawer-action-text">
-							<span class="drawer-action-title">Lock vault</span>
-							<span class="drawer-action-sub">Close the vault on this device</span>
-						</span>
-					</button>
+				<!-- Phone drawer: Home + a plain folder list; tapping a folder filters
+				     the home screen to that folder's notes. -->
+				<div class="drawer-folders">
+					<div class="drawer-section-head">
+						<span class="section-title">Folders</span>
+						<button class="row-btn" onclick={startCreateFolder} title="New folder" aria-label="New folder">
+							<Icon name="plus" size={14} />
+						</button>
+					</div>
+					{#if editingFolder?.id === null}
+						<input
+							class="folder-input drawer-folder-input"
+							bind:value={editingFolder.name}
+							placeholder="Folder name"
+							aria-label="Folder name"
+							bind:this={editingInput}
+							onkeydown={(e: KeyboardEvent) => {
+								if (e.key === 'Enter') { e.preventDefault(); commitFolderName(); }
+								else if (e.key === 'Escape') editingFolder = null;
+							}}
+							onblur={commitFolderName}
+						/>
+					{/if}
+					{#each folders as folder (folder.id)}
+						<a
+							href="/?folder={folder.id}"
+							class="drawer-folder"
+							class:active={$page.url.searchParams.get('folder') === folder.id}
+							onclick={() => (sidebarOpen = false)}
+						>
+							<span class="drawer-folder-icon"><Icon name="folder" size={17} /></span>
+							<span class="drawer-folder-name">{folder.name}</span>
+							<span class="drawer-folder-count">{documents.filter((d) => d.folder_id === folder.id).length}</span>
+						</a>
+					{/each}
+					{#if folders.length === 0}
+						<div class="drawer-empty">No folders yet</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -1204,6 +1208,26 @@
 			{/if}
 
 			<div class="sidebar-footer">
+				{#if isMobile}
+					<!-- App actions: a simple list pinned to the bottom of the drawer. -->
+					<div class="drawer-actions">
+						<button class="drawer-action" onclick={() => (syncCardOpen = !syncCardOpen)} aria-expanded={syncCardOpen}>
+							<span class="drawer-action-icon"><Icon name="network" size={18} /></span>
+							<span class="drawer-action-label">Sync</span>
+							<span class="drawer-action-state">{syncState === 'connected' ? 'Connected' : syncState === 'searching' ? 'Searching' : 'Off'}</span>
+							<Icon name={syncCardOpen ? 'chevronDown' : 'chevronRight'} size={14} />
+						</button>
+						<button class="drawer-action" onclick={() => openUI('settings')}>
+							<span class="drawer-action-icon"><Icon name="settings" size={18} /></span>
+							<span class="drawer-action-label">Settings</span>
+							<Icon name="chevronRight" size={14} />
+						</button>
+						<button class="drawer-action" onclick={lockNow}>
+							<span class="drawer-action-icon"><Icon name="lock" size={18} /></span>
+							<span class="drawer-action-label">Lock vault</span>
+						</button>
+					</div>
+				{/if}
 				<button class="new-page-btn" onclick={createDocument} title="New page (Ctrl+N)">
 					<Icon name="plus" size={15} />
 					<span>New page</span>
@@ -1317,13 +1341,6 @@
 					</div>
 				</div>
 			</div>
-			{#if isMobile}
-				<!-- Anchors the bottom of the phone drawer instead of a dead gap. -->
-				<div class="drawer-foot">
-					<div class="drawer-foot-title">Enclave</div>
-					<div class="drawer-foot-sub">Local-first · encrypted vault · no cloud</div>
-				</div>
-			{/if}
 		{:else}
 			<!-- Collapsed sidebar: icon rail with the essentials. -->
 			<nav class="mini-nav" aria-label="Main">
@@ -1770,7 +1787,6 @@
 		justify-content: center;
 	}
 
-	.drawer-title { display: none; }
 
 	/* ── Sidebar ──
 	   One scroll context for the whole sidebar: pages, tags and trash scroll
@@ -2752,72 +2768,64 @@
 			border-right: 1px solid var(--color-border);
 		}
 		/* Mobile drawer proportions: bigger rows, thumb-friendly targets. */
-		/* Keep-style drawer heading. */
-		.drawer-title {
-			display: block;
-			padding: calc(14px + var(--safe-top)) 20px 6px;
-			font-size: 26px;
-			font-weight: 700;
-			letter-spacing: -0.02em;
-			color: var(--color-text);
-		}
-		/* App-actions panel — the phone drawer is settings/actions, not the
-		   note tree (issue #161). */
-		.drawer-actions { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; }
+		/* Simple action list pinned to the bottom of the drawer. */
+		.drawer-actions { display: flex; flex-direction: column; gap: 2px; padding: 2px 8px 4px; }
 		.drawer-action {
 			display: flex;
 			align-items: center;
 			gap: 12px;
-			width: 100%;
-			min-height: 52px;
-			padding: 8px 12px;
+			min-height: 48px;
+			padding: 0 12px;
 			border: none;
-			background: transparent;
+			background: none;
 			color: var(--color-text);
 			border-radius: var(--radius-lg);
-			text-align: left;
 			font: inherit;
+			font-size: 15px;
 			cursor: pointer;
+			text-align: left;
 		}
 		.drawer-action:hover { background: var(--color-surface-hover); }
 		.drawer-action:active { background: var(--color-surface-active); }
-		.drawer-action-icon {
+		.drawer-action-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+		.drawer-action-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.drawer-action-state { font-size: 12px; color: var(--color-text-muted); }
+		.new-page-btn, .footer-row { display: none; }
+		/* App actions + sync card pin straight to the bottom (no filler below). */
+		.sidebar-footer { margin-top: auto; }
+		.drawer-folders { padding: 2px 8px 8px; }
+		.drawer-section-head {
 			display: flex;
 			align-items: center;
-			justify-content: center;
-			width: 34px;
-			height: 34px;
-			border-radius: 10px;
-			background: var(--color-surface-hover);
-			color: var(--color-accent);
-			flex-shrink: 0;
+			justify-content: space-between;
+			padding: 8px 6px 2px;
 		}
-		.drawer-action-icon.online { color: var(--color-success); }
-		.drawer-action-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-		.drawer-action-title { font-size: 15px; font-weight: 600; }
-		.drawer-action-sub {
-			font-size: 12px;
-			color: var(--color-text-muted);
+		.drawer-empty { padding: 10px 12px; font-size: 13px; color: var(--color-text-faint); }
+		.drawer-folder {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			min-height: 48px;
+			padding: 0 12px;
+			border-radius: var(--radius-lg);
+			color: var(--color-text);
+			text-decoration: none;
+			font-size: 15px;
+		}
+		.drawer-folder:hover { background: var(--color-surface-hover); }
+		.drawer-folder:active { background: var(--color-surface-active); }
+		.drawer-folder.active { background: var(--color-accent-subtle); color: var(--color-accent); }
+		.drawer-folder-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+		.drawer-folder-name {
+			flex: 1;
+			min-width: 0;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
 		}
-		.drawer-action-chevron { color: var(--color-text-muted); flex-shrink: 0; }
-		/* Creation is the FAB and the app actions moved into the body above, so
-		   the duplicated footer chips and New page row are gone on phones. */
-		.new-page-btn, .footer-row { display: none; }
-		/* No page tree on phones, so the sync card follows the actions instead of
-		   being pinned to the bottom (which left a dead gap in the middle). */
-		.sidebar-footer { position: static; margin-top: 0; }
-		/* Small brand/privacy footer anchors the bottom of the drawer. */
-		.drawer-foot {
-			margin-top: auto;
-			padding: 18px 16px calc(14px + var(--safe-bottom));
-			border-top: 1px solid var(--color-border);
-		}
-		.drawer-foot-title { font-size: 13px; font-weight: 600; color: var(--color-text-muted); }
-		.drawer-foot-sub { font-size: 12px; color: var(--color-text-faint); margin-top: 2px; }
-		.side-nav { gap: 4px; padding: 4px 10px 10px; }
+		.drawer-folder-count { font-size: 12px; color: var(--color-text-muted); }
+		.drawer-folder-input { margin: 4px 6px 6px; }
+		.side-nav { gap: 4px; padding: calc(12px + var(--safe-top)) 10px 10px; }
 		.nav-item { padding: 12px 14px; font-size: 15px; border-radius: var(--radius-lg); min-height: 48px; }
 		.section-head { padding: 14px 16px 6px; }
 		.section-title { font-size: 12px; }
