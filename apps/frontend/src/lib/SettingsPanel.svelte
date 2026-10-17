@@ -17,7 +17,6 @@
 		onlock?: () => void;
 	} = $props();
 
-	let vaultPath = $state('~/.local/share/com.enclave.app/enclave.db');
 	let appVersion = $state('');
 
 	// Effective accent color (preset hex or the user's custom hex).
@@ -489,7 +488,6 @@ sentinel check</pre>
 				<h3>About</h3>
 				<div class="about-info">
 					<div class="about-row"><span>Version</span><span class="about-value">{appVersion || '…'}</span></div>
-					<div class="about-row"><span>Vault</span><span class="about-value">{vaultPath || (isAndroid ? 'App-private vault storage' : '~/.local/share/com.enclave.app/')}</span></div>
 				</div>
 			</div>
 
