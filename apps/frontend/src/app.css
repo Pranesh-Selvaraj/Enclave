@@ -2,6 +2,44 @@
    Matte = opaque, flat, low-gloss. Warm neutrals, hairline borders and
    diffused shadows. No translucency or backdrop blur is used anywhere by
    design — surfaces are solid so contrast stays crisp on every screen. */
+
+/* Bundled fonts — the app is offline-first and declares Inter and JetBrains Mono
+   in the token stack below, so both ship inside it rather than being fetched. Before
+   this, neither was loaded and almost every install silently rendered an OS
+   fallback: the same build looked different on Windows, Linux and Android.
+
+   Inter is the variable font, so one file per style covers every weight from
+   100 to 900; the static weights would have been four files and larger.
+   Licences: apps/frontend/static/fonts/*-OFL.txt (SIL Open Font License 1.1). */
+@font-face {
+	font-family: 'Inter';
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('/fonts/InterVariable.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'Inter';
+	font-style: italic;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('/fonts/InterVariable-Italic.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+}
+
 :root {
 	/* Native widgets (scrollbars, selects, autofill, selection) follow the
 	   rendered theme, not the static <meta name="color-scheme"> preference. */

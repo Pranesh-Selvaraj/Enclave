@@ -20,9 +20,12 @@ The wordmark is `ENCLAVE`, **constructed on a cell grid** — the initial **E at
 | [`logo-tile.svg`](logo-tile.svg) | The tile, edge to edge | Favicons |
 | [`mark.svg`](mark.svg) | The keyhole alone, in `currentColor` | Anywhere text could go |
 | [`lockup.svg`](lockup.svg), [`lockup-dark.svg`](lockup-dark.svg) | The tile beside the wordmark, for light and for dark pages; on dark pages the tile turns to paper | The README and the website |
+| [`icon-foreground.svg`](icon-foreground.svg), [`icon-background.svg`](icon-background.svg) | The Android adaptive-icon layers: the keyhole alone at 62 % of the canvas (inside Android's 66/108 safe zone, so no launcher mask clips it), and solid ink behind it | `scripts/generate-icons.mjs` |
 | [`social-preview.png`](social-preview.png) | A 1280×640 card for links to the repository | GitHub → Settings → Social preview |
 
-Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **The generator itself is not committed yet** — the numbers are the source of truth in the meantime.
+Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **Their generator is not committed yet** — the numbers are the source of truth in the meantime.
+
+`scripts/generate-icons.mjs` derives every platform icon from these files by handing them to `tauri icon`, which does the rasterising and writes `.ico`/`.icns` correctly. The geometry therefore lives here and nowhere else. It replaced `scripts/generate-icons.py`, which redrew the mark from scratch with Pillow — a second, hand-synced copy — and wrote the Android icons into `src-tauri/gen/android`, a path the repository restructure left behind, so Android had silently stopped receiving icons.
 
 ### The mark — a 24 grid
 
