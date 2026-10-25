@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
@@ -73,6 +74,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.core_api.Document
 import uniffi.core_api.Folder
+import java.util.Calendar
+import java.util.TimeZone
 
 private enum class HomeSheet { LAYOUT, SORT }
 
@@ -152,7 +155,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Enclave",
+                    greeting(),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
@@ -201,6 +204,35 @@ fun HomeScreen(
 
             if (loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+
+            if (visible.isNotEmpty() && !loading) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        sectionTitle(folders, folderFilter).uppercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.6.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(999.dp),
+                    ) {
+                        Text(
+                            "${visible.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                        )
+                    }
+                }
             }
 
             if (visible.isEmpty() && !loading) {
@@ -376,7 +408,7 @@ private fun NoteRow(doc: Document, onClick: () -> Unit) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    shortDate(doc.updatedAt),
+                    timeAgo(doc.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -411,7 +443,7 @@ private fun NoteCard(doc: Document, onClick: () -> Unit) {
             Spacer(Modifier.height(18.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    shortDate(doc.updatedAt),
+                    timeAgo(doc.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -449,7 +481,7 @@ private fun GalleryTile(doc: Document, onClick: () -> Unit) {
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    shortDate(doc.updatedAt),
+                    timeAgo(doc.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -538,5 +570,44 @@ private fun CreateStack(open: Boolean, onToggle: () -> Unit, onCreate: (CreateKi
     }
 }
 
-/** `2026-10-17T…` -> `2026-10-17`; relative formatting lands with the sync work. */
-private fun shortDate(iso: String): String = iso.take(10)
+/** The old app's greeting, so the home reads the same way. */
+private fun greeting(): String {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return when {
+        hour < 12 -> "Good morning"
+        hour < 18 -> "Good afternoon"
+        else -> "Good evening"
+    }
+}
+
+/** "Recent pages" at the root, the folder name when one is selected. */
+private fun sectionTitle(folders: List<Folder>, folderFilter: String?): String =
+    folders.firstOrNull { it.id == folderFilter }?.name ?: "Recent pages"
+
+/** `2026-10-17T09:00:00+00:00` -> `just now` / `12m ago` / `3h ago` / `2d ago` / `2026-10-17`. */
+private fun timeAgo(iso: String): String {
+    val then = parseIsoUtc(iso) ?: return iso.take(10)
+    val seconds = ((System.currentTimeMillis() - then) / 1000).coerceAtLeast(0)
+    return when {
+        seconds < 60 -> "just now"
+        seconds < 3600 -> "${seconds / 60}m ago"
+        seconds < 86_400 -> "${seconds / 3600}h ago"
+        seconds < 7 * 86_400 -> "${seconds / 86_400}d ago"
+        else -> iso.take(10)
+    }
+}
+
+/** Minimal RFC 3339 parser (second precision, UTC) — `java.time` needs API 26. */
+private fun parseIsoUtc(iso: String): Long? = runCatching {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    cal.clear()
+    cal.set(
+        iso.substring(0, 4).toInt(),
+        iso.substring(5, 7).toInt() - 1,
+        iso.substring(8, 10).toInt(),
+        iso.substring(11, 13).toInt(),
+        iso.substring(14, 16).toInt(),
+        iso.substring(17, 19).toInt(),
+    )
+    cal.timeInMillis
+}.getOrNull()

@@ -35,14 +35,26 @@ enum class Accent(
     }
 }
 
+/** How the vault is unlocked on this device. PIN is the Android default. */
+enum class AuthMode(val id: String, val label: String) {
+    PIN("pin", "PIN"),
+    PASSWORD("password", "Password");
+
+    companion object {
+        fun fromId(id: String?): AuthMode = entries.firstOrNull { it.id == id } ?: PIN
+    }
+}
+
 /**
- * Device-local appearance preferences. Theme and accent describe *this*
- * screen, so they are not vault data (which would sync them to every device).
+ * Device-local appearance and unlock preferences. Theme, accent and the
+ * PIN/password choice describe *this* screen, so they are not vault data
+ * (which would sync them to every device).
  */
 object AppPrefs {
     private const val PREFS = "enclave-app"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_ACCENT = "accent"
+    private const val KEY_AUTH_MODE = "auth_mode"
 
     var themeMode by mutableStateOf(ThemeMode.SYSTEM)
         private set
@@ -50,10 +62,14 @@ object AppPrefs {
     var accent by mutableStateOf(Accent.VIOLET)
         private set
 
+    var authMode by mutableStateOf(AuthMode.PIN)
+        private set
+
     fun load(context: Context) {
         val prefs = prefs(context)
         themeMode = ThemeMode.fromId(prefs.getString(KEY_THEME, null))
         accent = Accent.fromId(prefs.getString(KEY_ACCENT, null))
+        authMode = AuthMode.fromId(prefs.getString(KEY_AUTH_MODE, null))
     }
 
     fun setThemeMode(context: Context, mode: ThemeMode) {
@@ -64,6 +80,11 @@ object AppPrefs {
     fun setAccent(context: Context, value: Accent) {
         accent = value
         prefs(context).edit().putString(KEY_ACCENT, value.id).apply()
+    }
+
+    fun setAuthMode(context: Context, mode: AuthMode) {
+        authMode = mode
+        prefs(context).edit().putString(KEY_AUTH_MODE, mode.id).apply()
     }
 
     private fun prefs(context: Context) =

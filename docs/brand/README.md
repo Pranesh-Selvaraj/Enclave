@@ -22,6 +22,13 @@ The wordmark is `ENCLAVE`, **constructed on a cell grid** — the initial **E at
 | [`lockup.svg`](lockup.svg), [`lockup-dark.svg`](lockup-dark.svg) | The tile beside the wordmark, for light and for dark pages; on dark pages the tile turns to paper | The README and the website |
 | [`icon-foreground.svg`](icon-foreground.svg), [`icon-background.svg`](icon-background.svg) | The Android adaptive-icon layers: the keyhole alone at 62 % of the canvas (inside Android's 66/108 safe zone, so no launcher mask clips it), and solid ink behind it | `scripts/generate-icons.mjs` |
 | [`social-preview.png`](social-preview.png) | A 1280×640 card for links to the repository | GitHub → Settings → Social preview |
+| [`watermark.svg`](watermark.svg), [`watermark-dark.svg`](watermark-dark.svg) | The lockup at 6 % ink or paper on a 1920×1080 canvas | Quiet backgrounds, decks and documentation |
+
+### Watermarks
+
+`watermark.svg` is the ink lockup at 6 % for light surfaces; `watermark-dark.svg` is the paper lockup at 6 % for dark surfaces. Use one at full size as a quiet background, never behind body copy and never as a replacement for the lockup itself. Both are generated from the lockups, so the geometry stays identical.
+
+The design tokens, the Figma documentation plugin and the exported gate screens live in [`docs/design/`](../design/README.md); this directory remains the vector source of truth.
 
 Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **Their generator is not committed yet** — the numbers are the source of truth in the meantime.
 

@@ -1,0 +1,798 @@
+// Enclave design documentation — Figma development plugin (generated file).
+//
+// Source of truth: docs/design/tokens.json and docs/brand/*.svg.
+// Rebuild with: node docs/design/figma/build.mjs
+//
+// The plugin creates two pages and never edits existing pages:
+//   Enclave — Brand       brand assets, palette, type, usage rules
+//   Enclave — Current UI  the gate as implemented (PIN, keypad, seed, login)
+
+const TOKENS = __TOKENS__;
+const SVG = {
+  lockupInk: __SVG_LOCKUP_INK__,
+  lockupPaper: __SVG_LOCKUP_PAPER__,
+  icon: __SVG_ICON__,
+  watermarkInk: __SVG_WATERMARK_INK__,
+  watermarkPaper: __SVG_WATERMARK_PAPER__,
+};
+
+const DARK = TOKENS.color.dark;
+const LIGHT = TOKENS.color.light;
+const TYPE = TOKENS.typography.scale;
+const LAYOUT = TOKENS.layout;
+const RADIUS = TOKENS.radius;
+const PAGE_W = LAYOUT.screen.width;
+const PAGE_H = LAYOUT.screen.height;
+const PAD = LAYOUT.screen.margin;
+const CONTENT_W = PAGE_W - PAD * 2;
+const KEYPAD_H = LAYOUT.keypad.height;
+const PIN_LENGTH = 4;
+
+let F = {};
+
+function hex(value) {
+  const h = value.replace('#', '');
+  return {
+    r: parseInt(h.slice(0, 2), 16) / 255,
+    g: parseInt(h.slice(2, 4), 16) / 255,
+    b: parseInt(h.slice(4, 6), 16) / 255,
+  };
+}
+
+function paint(value, opacity = 1) {
+  return { type: 'SOLID', color: hex(value), opacity };
+}
+
+async function tryFont(family, style) {
+  try {
+    await figma.loadFontAsync({ family, style });
+    return { family, style };
+  } catch (error) {
+    return null;
+  }
+}
+
+async function loadFonts() {
+  const sans = TOKENS.typography.family.sans;
+  const mono = TOKENS.typography.family.mono;
+  const regular = (await tryFont(sans, 'Regular')) || (await tryFont('Roboto', 'Regular'));
+  if (!regular) throw new Error('No UI font found — install Inter in Figma.');
+  const medium = (await tryFont(sans, 'Medium')) || regular;
+  const semibold =
+    (await tryFont(sans, 'SemiBold')) || (await tryFont(sans, 'Semi Bold')) || medium;
+  const bold = (await tryFont(sans, 'Bold')) || semibold;
+  const monoRegular = (await tryFont(mono, 'Regular')) || regular;
+  const monoMedium = (await tryFont(mono, 'Medium')) || monoRegular;
+  F = { regular, medium, semibold, bold, mono: monoRegular, monoMedium };
+}
+
+function makeText(chars, font, size, line, color, options = {}) {
+  const node = figma.createText();
+  node.fontName = font;
+  node.characters = chars;
+  node.fontSize = size;
+  node.lineHeight = { unit: 'PIXELS', value: line };
+  node.fills = [paint(color)];
+  node.textAutoResize = 'HEIGHT';
+  if (options.align) node.textAlignHorizontal = options.align;
+  if (options.name) node.name = options.name;
+  return node;
+}
+
+function makeFrame(name, width, height, fillColor, radius = 0) {
+  const node = figma.createFrame();
+  node.name = name;
+  node.resize(width, height);
+  node.fills = fillColor ? [paint(fillColor)] : [];
+  node.cornerRadius = radius;
+  node.clipsContent = true;
+  return node;
+}
+
+function vstack(name, width, options = {}) {
+  const node = makeFrame(name, width, 20, null);
+  node.layoutMode = 'VERTICAL';
+  node.primaryAxisSizingMode = 'AUTO';
+  node.counterAxisSizingMode = 'FIXED';
+  node.itemSpacing = options.gap || 0;
+  node.counterAxisAlignItems = options.align || 'CENTER';
+  node.primaryAxisAlignItems = 'MIN';
+  node.paddingTop = options.pt || 0;
+  node.paddingBottom = options.pb || 0;
+  node.paddingLeft = options.pl || 0;
+  node.paddingRight = options.pr || 0;
+  node.clipsContent = false;
+  return node;
+}
+
+function hstack(name, width, height, options = {}) {
+  const node = makeFrame(name, width, height, null);
+  node.layoutMode = 'HORIZONTAL';
+  node.primaryAxisSizingMode = 'FIXED';
+  node.counterAxisSizingMode = 'FIXED';
+  node.itemSpacing = options.gap || 0;
+  node.counterAxisAlignItems = options.align || 'CENTER';
+  node.primaryAxisAlignItems = options.axis || 'MIN';
+  node.clipsContent = false;
+  return node;
+}
+
+function space(parent, height) {
+  const node = figma.createFrame();
+  node.name = 'Spacer';
+  node.resize(1, height);
+  node.fills = [];
+  parent.appendChild(node);
+  return node;
+}
+
+function fillWidth(node) {
+  try {
+    node.layoutSizingHorizontal = 'FILL';
+  } catch (error) {
+    try {
+      node.layoutAlign = 'STRETCH';
+    } catch (ignored) {
+      /* older API */
+    }
+  }
+}
+
+function add(parent, child, options = {}) {
+  parent.appendChild(child);
+  if (options.fill !== false) fillWidth(child);
+  return child;
+}
+
+function asset(svg, naturalWidth, naturalHeight, width, name) {
+  const sized = svg.replace('<svg ', `<svg width="${naturalWidth}" height="${naturalHeight}" `);
+  const node = figma.createNodeFromSvg(sized);
+  node.name = name;
+  node.rescale(width / node.width);
+  return node;
+}
+
+function screen(name, C) {
+  return makeFrame(name, PAGE_W, PAGE_H, C.background);
+}
+
+function field(label, C) {
+  const node = makeFrame(`Field / ${label}`, CONTENT_W, LAYOUT.field.height, null, RADIUS.field);
+  node.strokes = [paint(C.outline)];
+  node.strokeWeight = 1;
+  node.strokeAlign = 'INSIDE';
+  node.layoutMode = 'HORIZONTAL';
+  node.primaryAxisSizingMode = 'FIXED';
+  node.counterAxisSizingMode = 'FIXED';
+  node.counterAxisAlignItems = 'CENTER';
+  node.paddingLeft = 16;
+  node.paddingRight = 16;
+  add(node, makeText(label, F.regular, 16, 24, C.onSurfaceVariant));
+  return node;
+}
+
+function button(label, C, enabled = true) {
+  const node = makeFrame(
+    `Button / ${label}`,
+    CONTENT_W,
+    LAYOUT.button.height,
+    enabled ? C.primary : C.surfaceVariant,
+    RADIUS.pill,
+  );
+  node.layoutMode = 'HORIZONTAL';
+  node.primaryAxisSizingMode = 'FIXED';
+  node.counterAxisSizingMode = 'FIXED';
+  node.primaryAxisAlignItems = 'CENTER';
+  node.counterAxisAlignItems = 'CENTER';
+  const text = makeText(
+    label,
+    F.semibold,
+    TYPE.label.size,
+    TYPE.label.line,
+    enabled ? C.onPrimary : C.onSurfaceVariant,
+  );
+  node.appendChild(text);
+  return node;
+}
+
+function authSwitch(mode, C) {
+  const inner = (CONTENT_W - 6) / 2;
+  const node = makeFrame('Mode switch', CONTENT_W, LAYOUT.switch.height, C.surfaceVariant, RADIUS.pill);
+  node.layoutMode = 'NONE';
+  const active = makeFrame('Active', inner, LAYOUT.switch.height - 6, C.primary, RADIUS.pill);
+  active.x = mode === 'PIN' ? 3 : 3 + inner;
+  active.y = 3;
+  node.appendChild(active);
+
+  [
+    ['PIN', 'PIN'],
+    ['Password', 'PASSWORD'],
+  ].forEach(([label, key], index) => {
+    const text = makeText(
+      label,
+      F.semibold,
+      TYPE.label.size,
+      TYPE.label.line,
+      key === mode ? C.onPrimary : C.onSurfaceVariant,
+    );
+    text.name = `Mode / ${label}`;
+    text.textAutoResize = 'NONE';
+    text.resize(inner, LAYOUT.switch.height);
+    text.x = 3 + index * inner;
+    text.y = 0;
+    text.textAlignHorizontal = 'CENTER';
+    text.textAlignVertical = 'CENTER';
+    node.appendChild(text);
+  });
+  return node;
+}
+
+function pinDots(count, C, error = false) {
+  const row = hstack('PIN dots', CONTENT_W, LAYOUT.dots.size, {
+    gap: LAYOUT.dots.gap,
+    axis: 'CENTER',
+  });
+  for (let index = 0; index < PIN_LENGTH; index += 1) {
+    const dot = figma.createEllipse();
+    dot.name = `Dot ${index + 1}`;
+    dot.resize(LAYOUT.dots.size, LAYOUT.dots.size);
+    dot.fills = index < count ? [paint(C.primary)] : [];
+    dot.strokes = [paint(error ? C.error : index < count ? C.primary : C.outline)];
+    dot.strokeWeight = 1.5;
+    row.appendChild(dot);
+  }
+  return row;
+}
+
+function keypadKey(label, C) {
+  const node = makeFrame(`Key ${label || 'blank'}`, LAYOUT.keypad.key, LAYOUT.keypad.key, null);
+  node.layoutMode = 'HORIZONTAL';
+  node.primaryAxisSizingMode = 'FIXED';
+  node.counterAxisSizingMode = 'FIXED';
+  node.primaryAxisAlignItems = 'CENTER';
+  node.counterAxisAlignItems = 'CENTER';
+  if (label) {
+    node.appendChild(
+      makeText(label, F.medium, 28, 34, C.onSurface, {
+        align: 'CENTER',
+      }),
+    );
+  }
+  return node;
+}
+
+function keypad(C) {
+  const pad = vstack('Keypad', CONTENT_W, { gap: 2 });
+  [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['', '0', '⌫'],
+  ].forEach((keys, index) => {
+    const row = hstack(`Keypad row ${index + 1}`, CONTENT_W, LAYOUT.keypad.key, {
+      axis: 'SPACE_BETWEEN',
+    });
+    keys.forEach((key) => row.appendChild(keypadKey(key, C)));
+    pad.appendChild(row);
+  });
+  return pad;
+}
+
+function gateContent(C, options) {
+  const content = vstack('Content', CONTENT_W);
+  add(content, asset(options.lockup, 347.1, 48, options.logoWidth, 'Lockup'), { fill: false });
+  if (!options.form) return content;
+
+  const form = vstack('Form', CONTENT_W);
+  if (options.notice) {
+    space(form, 14);
+    add(form, makeText(options.notice, F.regular, TYPE.body.size, TYPE.body.line, C.primary, { align: 'CENTER' }));
+  }
+  space(form, 26);
+  add(form, authSwitch(options.mode, C));
+  space(form, 26);
+
+  if (options.mode === 'PIN') {
+    add(
+      form,
+      makeText(options.label, F.regular, TYPE.body.size, TYPE.body.line, C.onSurfaceVariant, {
+        align: 'CENTER',
+        name: 'PIN label',
+      }),
+    );
+    space(form, 16);
+    add(form, pinDots(options.dots || 0, C, Boolean(options.error)));
+    if (options.errorText) {
+      space(form, 12);
+      add(
+        form,
+        makeText(options.errorText, F.regular, TYPE.small.size, TYPE.small.line, C.error, {
+          align: 'CENTER',
+        }),
+      );
+    }
+  } else {
+    add(form, field(options.fieldLabel || 'Password', C));
+    if (options.confirmField) {
+      space(form, 12);
+      add(form, field(options.confirmLabel || 'Confirm password', C));
+    }
+    if (options.errorText) {
+      space(form, 12);
+      add(
+        form,
+        makeText(options.errorText, F.regular, TYPE.small.size, TYPE.small.line, C.error, {
+          align: 'CENTER',
+        }),
+      );
+    }
+  }
+
+  space(form, 24);
+  add(form, button(options.buttonLabel, C, Boolean(options.buttonEnabled)));
+  content.appendChild(form);
+  return content;
+}
+
+function placeGate(frame, content, options) {
+  frame.appendChild(content);
+  content.x = PAD;
+  const reserve = options.keypad ? KEYPAD_H + 16 : 0;
+  content.y = Math.max(56, (PAGE_H - reserve - content.height) / 2 - 6);
+
+  if (options.keypad) {
+    const pad = keypad(options.C);
+    frame.appendChild(pad);
+    pad.x = PAD;
+    pad.y = PAGE_H - pad.height - 12;
+  }
+  if (options.note) {
+    const note = vstack('Note', CONTENT_W, { align: 'CENTER' });
+    add(
+      note,
+      makeText(options.note, F.regular, TYPE.small.size, TYPE.small.line, options.C.onSurfaceVariant, {
+        align: 'CENTER',
+      }),
+    );
+    frame.appendChild(note);
+    note.x = PAD;
+    note.y = PAGE_H - note.height - LAYOUT.note.bottom;
+  }
+}
+
+function buildGate(name, C, options) {
+  const frame = screen(name, C);
+  const content = gateContent(C, options);
+  placeGate(frame, content, { keypad: options.keypad, note: options.note, C });
+  return frame;
+}
+
+function buildIntro(C) {
+  const frame = screen('Intro / Logo', C);
+  const glow = figma.createEllipse();
+  glow.name = 'Glow';
+  glow.resize(340, 340);
+  glow.x = (PAGE_W - 340) / 2;
+  glow.y = (PAGE_H - 340) / 2;
+  glow.fills = [paint(C.primary, 0.22)];
+  glow.effects = [{ type: 'LAYER_BLUR', radius: 120, visible: true }];
+  frame.appendChild(glow);
+  const logo = asset(SVG.lockupPaper, 347.1, 48, LAYOUT.lockup.intro, 'Lockup');
+  logo.x = (PAGE_W - logo.width) / 2;
+  logo.y = (PAGE_H - logo.height) / 2;
+  frame.appendChild(logo);
+  return frame;
+}
+
+function buildSeed(C) {
+  const frame = screen('Seed phrase', C);
+  const content = vstack('Seed', CONTENT_W);
+  add(content, makeText('Your recovery phrase', F.semibold, TYPE.title.size, TYPE.title.line, C.onSurface, { align: 'CENTER' }));
+  space(content, 8);
+  add(
+    content,
+    makeText('Write these 12 words down in order and keep them offline.', F.regular, TYPE.small.size, TYPE.small.line, C.onSurfaceVariant, {
+      align: 'CENTER',
+    }),
+  );
+  space(content, 24);
+  const words = ['seven', 'bike', 'poem', 'require', 'supreme', 'other', 'bargain', 'army', 'census', 'trend', 'orbit', 'tide'];
+  for (let index = 0; index < words.length; index += 2) {
+    const row = hstack('Words', CONTENT_W, LAYOUT.seedChip.height, { gap: 10 });
+    for (let column = 0; column < 2; column += 1) {
+      const position = index + column;
+      const chip = makeFrame(`Word ${position + 1}`, (CONTENT_W - 10) / 2, LAYOUT.seedChip.height, C.surfaceVariant, RADIUS.chip);
+      chip.layoutMode = 'HORIZONTAL';
+      chip.primaryAxisSizingMode = 'FIXED';
+      chip.counterAxisSizingMode = 'FIXED';
+      chip.counterAxisAlignItems = 'CENTER';
+      chip.paddingLeft = 14;
+      chip.paddingRight = 14;
+      chip.itemSpacing = 8;
+      chip.appendChild(makeText(`${position + 1}`, F.regular, 11, 14, C.onSurfaceVariant));
+      chip.appendChild(makeText(words[position], F.medium, TYPE.word.size, TYPE.word.line, C.onSurface));
+      row.appendChild(chip);
+    }
+    content.appendChild(row);
+    if (index + 2 < words.length) space(content, 10);
+  }
+  space(content, 28);
+  add(content, button("I've saved my recovery phrase", C, true));
+  frame.appendChild(content);
+  content.x = PAD;
+  content.y = (PAGE_H - content.height) / 2;
+  return frame;
+}
+
+function swatchRow(parent, name, value, C) {
+  const row = hstack(`Color / ${name}`, 464, 28, { gap: 10 });
+  row.appendChild(makeFrame(`Swatch / ${name}`, 24, 24, value, 6));
+  row.appendChild(makeText(`${name}  ${value}`, F.regular, 12, 16, C.onSurface));
+  parent.appendChild(row);
+  space(parent, 5);
+}
+
+function buildPalette(name, C, background) {
+  const frame = makeFrame(name, 520, 690, background, 0);
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisSizingMode = 'AUTO';
+  frame.counterAxisSizingMode = 'FIXED';
+  frame.paddingTop = 28;
+  frame.paddingLeft = 28;
+  frame.paddingRight = 28;
+  frame.counterAxisAlignItems = 'MIN';
+  add(frame, makeText('Palette', F.semibold, 22, 28, C.onSurface));
+  space(frame, 4);
+  add(frame, makeText(name.includes('Light') ? 'Light theme' : 'Dark theme', F.regular, 12, 16, C.onSurfaceVariant));
+  space(frame, 16);
+  Object.entries(C).forEach(([key, value]) => {
+    if (typeof value === 'string' && value.startsWith('#')) swatchRow(frame, key, value, C);
+  });
+  return frame;
+}
+
+function buildType() {
+  const frame = makeFrame('Type', 520, 690, DARK.background, 0);
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisSizingMode = 'AUTO';
+  frame.counterAxisSizingMode = 'FIXED';
+  frame.paddingTop = 28;
+  frame.paddingLeft = 28;
+  frame.paddingRight = 28;
+  frame.counterAxisAlignItems = 'MIN';
+  add(frame, makeText('Typography', F.semibold, 22, 28, DARK.onSurface));
+  space(frame, 4);
+  add(frame, makeText('Inter for running text · JetBrains Mono for code', F.regular, 12, 16, DARK.onSurfaceVariant));
+  space(frame, 16);
+  ['heading', 'title', 'body', 'small', 'label'].forEach((key) => {
+    const style = TYPE[key];
+    add(frame, makeText(`${key} · ${style.size}/${style.line} · ${style.weight}`, F[style.weight.toLowerCase()] || F.regular, style.size, style.line, DARK.onSurface));
+    space(frame, 8);
+  });
+  add(frame, makeText('mono · JetBrains Mono 14/20', F.mono, 14, 20, DARK.onSurface));
+  return frame;
+}
+
+function buildUsage() {
+  const frame = makeFrame('Usage', 520, 690, LIGHT.background, 0);
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisSizingMode = 'AUTO';
+  frame.counterAxisSizingMode = 'FIXED';
+  frame.paddingTop = 28;
+  frame.paddingLeft = 28;
+  frame.paddingRight = 28;
+  frame.counterAxisAlignItems = 'MIN';
+  add(frame, makeText('Usage', F.semibold, 22, 28, LIGHT.onSurface));
+  space(frame, 16);
+  const rules = [
+    'The wordmark is geometry, never typeset.',
+    'Dark: paper lockup on #121211. Light: ink lockup on #F6F5F2.',
+    'Running text is Inter; code is JetBrains Mono.',
+    'Watermark: 6% ink or paper, never over body text.',
+    'Use tokens.json; do not introduce ad-hoc hex values.',
+    'The keyhole mark is never redrawn or recoloured outside the palette.',
+  ];
+  rules.forEach((rule) => {
+    add(frame, makeText(`— ${rule}`, F.regular, 13, 20, LIGHT.onSurfaceVariant));
+    space(frame, 8);
+  });
+  return frame;
+}
+
+function buildBrandFrame(name, C, lockupSvg, iconSvg, watermarkSvg) {
+  const frame = makeFrame(name, 1200, 760, C.background, 0);
+  add(frame, makeText('Enclave', F.semibold, 32, 40, C.onSurface));
+  const title = frame.children[frame.children.length - 1];
+  title.x = 56;
+  title.y = 48;
+
+  const logo = asset(lockupSvg, 347.1, 48, 360, 'Lockup');
+  frame.appendChild(logo);
+  logo.x = 56;
+  logo.y = 120;
+
+  const icon = asset(iconSvg, 1024, 1024, 160, 'App icon');
+  frame.appendChild(icon);
+  icon.x = 56;
+  icon.y = 230;
+
+  const watermark = asset(watermarkSvg, 1920, 1080, 560, 'Watermark');
+  frame.appendChild(watermark);
+  watermark.x = 560;
+  watermark.y = 170;
+
+  const caption = makeText(
+    'Brand assets · lockup, app icon and watermark · vectors live in docs/brand',
+    F.regular,
+    12,
+    16,
+    C.onSurfaceVariant,
+  );
+  frame.appendChild(caption);
+  caption.x = 56;
+  caption.y = 430;
+
+  const disk = makeText('Dark theme uses the paper lockup; light theme uses ink.', F.regular, 12, 16, C.onSurfaceVariant);
+  frame.appendChild(disk);
+  disk.x = 56;
+  disk.y = 460;
+  return frame;
+}
+
+async function createPage(name) {
+  let candidate = name;
+  let counter = 2;
+  while (figma.root.children.some((page) => page.name === candidate)) {
+    candidate = `${name} ${counter}`;
+    counter += 1;
+  }
+  const page = figma.createPage();
+  page.name = candidate;
+  await figma.setCurrentPageAsync(page);
+  return page;
+}
+
+async function setReactions(node, reactions) {
+  if (!node || typeof node.setReactionsAsync !== 'function') return false;
+  try {
+    await node.setReactionsAsync(reactions);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function clickTo(destination, type, duration) {
+  return {
+    trigger: { type: 'ON_CLICK' },
+    actions: [
+      {
+        type: 'NODE',
+        destinationId: destination.id,
+        navigation: 'NAVIGATE',
+        transition: { type, duration, easing: { type: 'EASE_IN_AND_OUT' } },
+        preserveScrollPosition: false,
+      },
+    ],
+  };
+}
+
+async function wirePrototype(frames) {
+  const { intro, registerPin, registerPassword, registerConfirmed, seed, loginPin } = frames;
+  await setReactions(intro, [
+    {
+      trigger: { type: 'AFTER_TIMEOUT', timeout: 0.9 },
+      actions: [
+        {
+          type: 'NODE',
+          destinationId: registerPin.id,
+          navigation: 'NAVIGATE',
+          transition: { type: 'SMART_ANIMATE', duration: 0.65, easing: { type: 'EASE_IN_AND_OUT' } },
+          preserveScrollPosition: false,
+        },
+      ],
+    },
+  ]);
+
+  const pinLabel = registerPin.findOne((node) => node.name === 'PIN label');
+  await setReactions(pinLabel, [clickTo(frames.registerPinKeypad, 'SMART_ANIMATE', 0.3)]);
+
+  const toPassword = registerPin.findOne((node) => node.name === 'Mode / Password');
+  const toPin = registerPassword.findOne((node) => node.name === 'Mode / PIN');
+  await setReactions(toPassword, [clickTo(registerPassword, 'SMART_ANIMATE', 0.2)]);
+  await setReactions(toPin, [clickTo(registerPin, 'SMART_ANIMATE', 0.2)]);
+
+  const create = registerConfirmed.findOne((node) => node.name === 'Button / Create vault');
+  await setReactions(create, [clickTo(seed, 'SMART_ANIMATE', 0.3)]);
+
+  const loginLabel = loginPin.findOne((node) => node.name === 'PIN label');
+  await setReactions(loginLabel, [clickTo(frames.loginPinKeypad, 'SMART_ANIMATE', 0.3)]);
+
+  try {
+    figma.currentPage.flowStartingPoints = [{ nodeId: intro.id, name: 'Enclave gate' }];
+  } catch (error) {
+    /* older API */
+  }
+}
+
+async function main() {
+  await figma.loadAllPagesAsync();
+  await loadFonts();
+
+  const brandPage = await createPage('Enclave — Brand');
+  const brandDark = buildBrandFrame('Brand / Dark', DARK, SVG.lockupPaper, SVG.icon, SVG.watermarkPaper);
+  brandPage.appendChild(brandDark);
+  brandDark.x = 0;
+  brandDark.y = 0;
+
+  const brandLight = buildBrandFrame('Brand / Light', LIGHT, SVG.lockupInk, SVG.icon, SVG.watermarkInk);
+  brandPage.appendChild(brandLight);
+  brandLight.x = 1240;
+  brandLight.y = 0;
+
+  const paletteDark = buildPalette('Palette / Dark', DARK, DARK.background);
+  brandPage.appendChild(paletteDark);
+  paletteDark.x = 0;
+  paletteDark.y = 800;
+
+  const paletteLight = buildPalette('Palette / Light', LIGHT, LIGHT.background);
+  brandPage.appendChild(paletteLight);
+  paletteLight.x = 560;
+  paletteLight.y = 800;
+
+  const type = buildType();
+  brandPage.appendChild(type);
+  type.x = 1120;
+  type.y = 800;
+
+  const usage = buildUsage();
+  brandPage.appendChild(usage);
+  usage.x = 1680;
+  usage.y = 800;
+
+  const brandNote = makeText(
+    'Generated from docs/design/tokens.json and docs/brand/*.svg — rebuild with node docs/design/figma/build.mjs',
+    F.regular,
+    14,
+    20,
+    '#8A8A8A',
+  );
+  brandPage.appendChild(brandNote);
+  brandNote.x = 0;
+  brandNote.y = -60;
+
+  const uiPage = await createPage('Enclave — Current UI');
+  const registerNotice = 'A 12-word recovery phrase is generated next. It is the only way to recover the vault if you forget your PIN — write it down and keep it offline.';
+  const frames = {
+    intro: buildIntro(DARK),
+    registerPin: buildGate('Register / PIN', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'Create a PIN',
+      dots: 0,
+      buttonLabel: 'Create vault',
+      buttonEnabled: false,
+      note: registerNotice,
+    }),
+    registerPinKeypad: buildGate('Register / PIN / Keypad', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'Create a PIN',
+      dots: 0,
+      buttonLabel: 'Create vault',
+      buttonEnabled: false,
+      keypad: true,
+    }),
+    registerConfirm: buildGate('Register / Confirm', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'Confirm your PIN',
+      dots: 0,
+      buttonLabel: 'Create vault',
+      buttonEnabled: false,
+      keypad: true,
+    }),
+    registerConfirmed: buildGate('Register / Confirmed', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'PIN confirmed',
+      dots: PIN_LENGTH,
+      buttonLabel: 'Create vault',
+      buttonEnabled: true,
+      note: registerNotice,
+    }),
+    registerPassword: buildGate('Register / Password', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PASSWORD',
+      fieldLabel: 'Choose a password',
+      confirmField: true,
+      buttonLabel: 'Create vault',
+      buttonEnabled: false,
+      note: registerNotice.replace('PIN', 'password'),
+    }),
+    registerLight: buildGate('Register / PIN (light)', LIGHT, {
+      lockup: SVG.lockupInk,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'Create a PIN',
+      dots: 0,
+      buttonLabel: 'Create vault',
+      buttonEnabled: false,
+      note: registerNotice,
+    }),
+    seed: buildSeed(DARK),
+    loginPin: buildGate('Login / PIN', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'Enter your PIN',
+      dots: 0,
+      buttonLabel: 'Unlock',
+      buttonEnabled: false,
+    }),
+    loginPinKeypad: buildGate('Login / PIN / Keypad', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PIN',
+      label: 'Enter your PIN',
+      dots: 0,
+      buttonLabel: 'Unlock',
+      buttonEnabled: false,
+      keypad: true,
+    }),
+    loginPassword: buildGate('Login / Password', DARK, {
+      lockup: SVG.lockupPaper,
+      logoWidth: LAYOUT.lockup.form,
+      form: true,
+      mode: 'PASSWORD',
+      fieldLabel: 'Password',
+      buttonLabel: 'Unlock',
+      buttonEnabled: false,
+    }),
+  };
+
+  Object.values(frames).forEach((frame, index) => {
+    uiPage.appendChild(frame);
+    frame.x = index * (PAGE_W + 48);
+    frame.y = 0;
+  });
+
+  const uiNote = makeText(
+    'The gate as implemented · tap the PIN label in the prototype to reveal the keypad · Intro → Register glides the lockup.',
+    F.regular,
+    14,
+    20,
+    '#8A8A8A',
+  );
+  uiPage.appendChild(uiNote);
+  uiNote.x = 0;
+  uiNote.y = -60;
+
+  try {
+    figma.viewport.scrollAndZoomIntoView(Object.values(frames));
+  } catch (error) {
+    /* ignore */
+  }
+
+  await wirePrototype(frames);
+  figma.notify('Enclave design pages created — Brand and Current UI.');
+  figma.closePlugin();
+}
+
+main().catch((error) => {
+  figma.notify(`Enclave design pages failed: ${error.message}`, { error: true, timeout: 10000 });
+  figma.closePlugin();
+});

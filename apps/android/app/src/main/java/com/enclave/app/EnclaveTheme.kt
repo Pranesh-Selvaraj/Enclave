@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.enclave.app.ui.EnclaveTypography
 
 /** Enclave palette for the native Android surfaces (widget config, …). */
 @Composable
@@ -28,5 +29,5 @@ internal fun EnclaveTheme(content: @Composable () -> Unit) {
             onSurface = Color(0xFF211D17),
         )
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = EnclaveTypography, content = content)
 }

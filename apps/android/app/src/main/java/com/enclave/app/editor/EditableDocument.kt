@@ -32,12 +32,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import com.enclave.app.ui.EnclaveMono
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 
@@ -97,7 +97,7 @@ private fun TextBlockField(block: TextBlock, onChanged: () -> Unit) {
             else -> typography.titleMedium
         }.copy(fontWeight = FontWeight.SemiBold)
 
-        "codeBlock" -> typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+        "codeBlock" -> typography.bodyMedium.copy(fontFamily = EnclaveMono)
         else -> typography.bodyLarge
     }
 
@@ -166,7 +166,7 @@ private class MarkTransformation(
             if (style.strike) builder.addStyle(SpanStyle(textDecoration = TextDecoration.LineThrough), i, j)
             if (style.code) {
                 builder.addStyle(
-                    SpanStyle(fontFamily = FontFamily.Monospace, color = codeForeground, background = codeBackground),
+                    SpanStyle(fontFamily = EnclaveMono, color = codeForeground, background = codeBackground),
                     i,
                     j,
                 )

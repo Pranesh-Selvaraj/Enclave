@@ -45,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enclave.app.core.Core
@@ -163,7 +162,7 @@ fun SyncScreen(onBack: () -> Unit) {
                             Text(
                                 address,
                                 style = MaterialTheme.typography.titleMedium,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = EnclaveMono,
                                 modifier = Modifier.weight(1f),
                             )
                             TextButton(
