@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use rusqlite::Connection;
 
 pub mod crypto;
+pub mod frames;
 pub mod pairing;
 pub mod updater;
 
@@ -27,6 +28,8 @@ pub use core_db::{
     SyncStats, TagInfo,
 };
 pub use core_network::{NetworkState, NetworkStatus, Peer, PeerMessage};
+
+use frames::SyncFrame;
 
 // UniFFI surface for native shells (Android Kotlin). See `ffi.rs`.
 #[cfg(feature = "uniffi")]
@@ -1019,7 +1022,9 @@ impl EnclaveCore {
     pub fn sync_digest(&self) -> Option<String> {
         let payload = self.with_db(|db| {
             let index = core_db::query_doc_index(db).map_err(db_err)?;
-            Ok(serde_json::json!({ "kind": "digest", "docs": index }).to_string())
+            SyncFrame::Digest { docs: index }
+                .to_json()
+                .map_err(|e| CoreError::InvalidInput(format!("digest frame: {e}")))
         });
         payload.ok()
     }
@@ -1027,13 +1032,13 @@ impl EnclaveCore {
     pub fn sync_snapshot_for(&self, ids: &[String]) -> Option<String> {
         let payload = self.with_db(|db| {
             let (docs, blocks, folders) = core_db::query_sync_data_for(db, ids).map_err(db_err)?;
-            Ok(serde_json::json!({
-                "kind": "snapshot",
-                "docs": docs,
-                "blocks": blocks,
-                "folders": folders,
-            })
-            .to_string())
+            SyncFrame::Snapshot {
+                docs,
+                blocks,
+                folders,
+            }
+            .to_json()
+            .map_err(|e| CoreError::InvalidInput(format!("snapshot frame: {e}")))
         });
         payload.ok()
     }
@@ -1073,8 +1078,11 @@ impl EnclaveCore {
                         if !want.is_empty() {
                             eprintln!("sync: digest from {peer_id} — pulling {} doc(s)", want.len());
                         }
-                        let need = serde_json::json!({ "kind": "need", "ids": want }).to_string();
-                        self.network.send_to(&peer_id, need).await;
+                        let need = SyncFrame::Need { ids: want };
+                        match need.to_json() {
+                            Ok(need) => self.network.send_to(&peer_id, need).await,
+                            Err(e) => eprintln!("sync: need frame from {peer_id} failed: {e}"),
+                        }
                     }
                     Err(e) => eprintln!("sync: digest from {peer_id} — local index failed: {e}"),
                 }
@@ -1128,13 +1136,14 @@ impl EnclaveCore {
                             stats.docs_changed, stats.blocks_changed, docs.len(), blocks.len()
                         );
                         self.network.mark_synced().await;
-                        let ack = serde_json::json!({
-                            "kind": "ack",
-                            "docs_changed": stats.docs_changed,
-                            "blocks_changed": stats.blocks_changed,
-                        })
-                        .to_string();
-                        self.network.send_to(&peer_id, ack).await;
+                        let ack = SyncFrame::Ack {
+                            docs_changed: stats.docs_changed as u64,
+                            blocks_changed: stats.blocks_changed as u64,
+                        };
+                        match ack.to_json() {
+                            Ok(ack) => self.network.send_to(&peer_id, ack).await,
+                            Err(e) => eprintln!("sync: ack frame to {peer_id} failed: {e}"),
+                        }
                         emit(SyncEvent::Done {
                             peer: peer_id,
                             docs_changed: stats.docs_changed as u64,

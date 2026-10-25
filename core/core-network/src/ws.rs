@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
+use crate::frames::TransportFrame;
 use crate::{crypto, NetworkState, PeerMessage};
 
 /// Upper bound for the auth handshake (challenge + proof exchange).
@@ -212,14 +213,13 @@ where
 
     // ── Auth phase (plaintext, but only challenges + proofs — no data) ──
     let my_challenge = random_bytes::<32>()?;
-    let auth = serde_json::json!({
-        "kind": "auth",
-        "v": PROTOCOL_VERSION,
-        "peer_id": local_peer_id,
-        "name": local_name,
-        "challenge": b64(&my_challenge),
-    });
-    write.send(Message::Text(auth.to_string().into())).await?;
+    let auth = serde_json::to_string(&TransportFrame::Auth {
+        v: PROTOCOL_VERSION,
+        peer_id: local_peer_id.clone(),
+        name: local_name.clone(),
+        challenge: b64(&my_challenge),
+    })?;
+    write.send(Message::Text(auth.into())).await?;
 
     let peer_auth = await_frame(&mut read, "auth").await?;
     let peer_id = peer_auth["peer_id"]
@@ -232,12 +232,11 @@ where
             // user-actionable state, not a quiet close.
             let _ = message_tx.send(PeerMessage {
                 from_peer: peer_id.clone(),
-                payload: serde_json::json!({
-                    "kind": "session_failed",
-                    "host": host,
-                    "error": e,
+                payload: serde_json::to_string(&TransportFrame::SessionFailed {
+                    host: host.clone(),
+                    error: e.clone(),
                 })
-                .to_string(),
+                .expect("transport frame serializes"),
             });
             e
         })?;
@@ -247,12 +246,11 @@ where
     )?;
 
     let my_proof = crypto::proof(&sync_key, &my_challenge, &peer_challenge, &local_peer_id);
-    let proof_msg = serde_json::json!({
-        "kind": "auth_proof",
-        "peer_id": local_peer_id,
-        "proof": b64(&my_proof),
-    });
-    write.send(Message::Text(proof_msg.to_string().into())).await?;
+    let proof_msg = serde_json::to_string(&TransportFrame::AuthProof {
+        peer_id: local_peer_id.clone(),
+        proof: b64(&my_proof),
+    })?;
+    write.send(Message::Text(proof_msg.into())).await?;
 
     let peer_proof_frame = await_frame(&mut read, "auth_proof").await?;
     let peer_proof = unb64(
@@ -264,25 +262,23 @@ where
         // different vault key trying to pair. Not a quiet failure.
         let _ = message_tx.send(PeerMessage {
             from_peer: peer_id.clone(),
-            payload: serde_json::json!({
-                "kind": "session_failed",
-                "host": host,
-                "error": format!("peer {peer_id} rejected — wrong vault key"),
+            payload: serde_json::to_string(&TransportFrame::SessionFailed {
+                host: host.clone(),
+                error: format!("peer {peer_id} rejected — wrong vault key"),
             })
-            .to_string(),
+            .expect("transport frame serializes"),
         });
         return Err("peer failed auth (wrong vault key?)".into());
     }
     let session_key = crypto::session_key(&sync_key, &my_challenge, &peer_challenge);
 
     // ── Data phase (encrypted) — hello first, then app payloads ──
-    let hello = serde_json::json!({
-        "kind": "hello",
-        "peer_id": local_peer_id,
-        "name": local_name,
-    });
+    let hello = serde_json::to_string(&TransportFrame::Hello {
+        peer_id: local_peer_id,
+        name: local_name,
+    })?;
     let nonce = random_bytes::<24>()?;
-    let enc = crypto::encrypt(&session_key, &nonce, hello.to_string().as_bytes())?;
+    let enc = crypto::encrypt(&session_key, &nonce, hello.as_bytes())?;
     let mut frame = nonce.to_vec();
     frame.extend_from_slice(&enc);
     write.send(Message::Binary(frame.into())).await?;
@@ -311,27 +307,24 @@ where
                             Err(_) => break,
                         };
                         let text = String::from_utf8_lossy(&plain);
-                        let parsed = serde_json::from_str::<serde_json::Value>(&text).ok();
-                        if let Some(v) = &parsed {
-                            if v["kind"] == "hello" {
-                                if let (Some(pid), Some(name)) = (v["peer_id"].as_str(), v["name"].as_str()) {
-                                    // When both peers dial each other, two
-                                    // sockets exist for one peer id. Only the
-                                    // first to register owns it — the twin
-                                    // backs off here instead of stealing the
-                                    // registration and duplicating every
-                                    // subsequent snapshot merge.
-                                    if net.session_is_current(pid, &out_tx).await {
-                                        // Already ours (re-hello) — ignore.
-                                    } else if net.session_exists(pid).await {
-                                        registered = None;
-                                        break;
-                                    } else {
-                                        net.register_session(pid, name, &host, port, out_tx.clone()).await;
-                                        registered = Some(pid.to_string());
-                                        conn_id = pid.to_string();
-                                    }
-                                }
+                        if let Ok(TransportFrame::Hello { peer_id, name }) =
+                            serde_json::from_str::<TransportFrame>(&text)
+                        {
+                            // When both peers dial each other, two sockets
+                            // exist for one peer id. Only the first to
+                            // register owns it — the twin backs off here
+                            // instead of stealing the registration and
+                            // duplicating every subsequent snapshot merge.
+                            if net.session_is_current(&peer_id, &out_tx).await {
+                                // Already ours (re-hello) — ignore.
+                            } else if net.session_exists(&peer_id).await {
+                                registered = None;
+                                break;
+                            } else {
+                                net.register_session(&peer_id, &name, &host, port, out_tx.clone())
+                                    .await;
+                                registered = Some(peer_id.clone());
+                                conn_id = peer_id;
                             }
                         }
                         // Forward only from a registered session: pre-hello
