@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -30,7 +32,8 @@ enum class Accent(
     INDIGO("indigo", "Indigo", Color(0xFF4C6EF5), Color(0xFF8FA8FF)),
     TEAL("teal", "Teal", Color(0xFF0F766E), Color(0xFF5EEAD4)),
     AMBER("amber", "Amber", Color(0xFFB45309), Color(0xFFFBBF24)),
-    ROSE("rose", "Rose", Color(0xFFBE123C), Color(0xFFFDA4AF));
+    ROSE("rose", "Rose", Color(0xFFBE123C), Color(0xFFFDA4AF)),
+    CUSTOM("custom", "Custom", Color(0xFF6C5CE7), Color(0xFFA99BFF));
 
     companion object {
         fun fromId(id: String?): Accent = entries.firstOrNull { it.id == id } ?: VIOLET
@@ -96,12 +99,29 @@ object AppPrefs {
     private const val KEY_AUTO_LOCK = "auto_lock"
     private const val KEY_TEXT_SIZE = "editor_text_size"
     private const val KEY_PAGE_WIDTH = "editor_page_width"
+    private const val KEY_CUSTOM_ACCENT = "custom_accent"
 
     var themeMode by mutableStateOf(ThemeMode.SYSTEM)
         private set
 
     var accent by mutableStateOf(Accent.VIOLET)
         private set
+
+    /** ARGB chosen in the custom picker; used only when [accent] is CUSTOM. */
+    var customAccent by mutableStateOf<Color?>(null)
+        private set
+
+    /** The light-theme primary for the current accent (preset or custom). */
+    val accentLight: Color
+        get() = if (accent == Accent.CUSTOM) customAccent ?: Accent.VIOLET.light else accent.light
+
+    /** A lightened variant for dark surfaces; presets carry their own. */
+    val accentDark: Color
+        get() = if (accent == Accent.CUSTOM) {
+            lerp(customAccent ?: Accent.VIOLET.dark, Color.White, 0.35f)
+        } else {
+            accent.dark
+        }
 
     var authMode by mutableStateOf(AuthMode.PIN)
         private set
@@ -119,6 +139,7 @@ object AppPrefs {
         val prefs = prefs(context)
         themeMode = ThemeMode.fromId(prefs.getString(KEY_THEME, null))
         accent = Accent.fromId(prefs.getString(KEY_ACCENT, null))
+        customAccent = prefs.getInt(KEY_CUSTOM_ACCENT, 0).takeIf { it != 0 }?.let { Color(it) }
         authMode = AuthMode.fromId(prefs.getString(KEY_AUTH_MODE, null))
         autoLock = AutoLock.fromId(prefs.getString(KEY_AUTO_LOCK, null))
         editorTextSize = EditorTextSize.fromId(prefs.getString(KEY_TEXT_SIZE, null))
@@ -133,6 +154,15 @@ object AppPrefs {
     fun setAccent(context: Context, value: Accent) {
         accent = value
         prefs(context).edit().putString(KEY_ACCENT, value.id).apply()
+    }
+
+    fun setCustomAccent(context: Context, value: Color) {
+        customAccent = value
+        accent = Accent.CUSTOM
+        prefs(context).edit()
+            .putString(KEY_ACCENT, Accent.CUSTOM.id)
+            .putInt(KEY_CUSTOM_ACCENT, value.toArgb())
+            .apply()
     }
 
     fun setAuthMode(context: Context, mode: AuthMode) {

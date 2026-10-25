@@ -8,6 +8,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -99,7 +100,8 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun EnclaveTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
-    accent: Accent = Accent.VIOLET,
+    accentLight: Color = Accent.VIOLET.light,
+    accentDark: Color = Accent.VIOLET.dark,
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
@@ -109,13 +111,16 @@ fun EnclaveTheme(
     }
 
     val base = if (dark) DarkColors else LightColors
-    val primary = if (dark) accent.dark else accent.light
+    val primary = if (dark) accentDark else accentLight
+    // Pick the label colour from the accent's luminance, not the theme mode:
+    // a custom accent can be light in the light theme or dark in the dark one.
+    val onPrimary = if (primary.luminance() > 0.18f) Color(0xFF1B1A18) else Color.White
     val opposite = if (dark) Color.White else Color.Black
 
     MaterialTheme(
         colorScheme = base.copy(
             primary = primary,
-            onPrimary = if (dark) Color(0xFF1B1A18) else Color.White,
+            onPrimary = onPrimary,
             primaryContainer = lerp(primary, opposite, if (dark) 0.55f else 0.85f),
             onPrimaryContainer = lerp(primary, if (dark) Color.White else Color.Black, if (dark) 0.85f else 0.55f),
         ),

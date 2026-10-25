@@ -11,7 +11,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +46,9 @@ import com.enclave.app.editor.EditableDocument
 import com.enclave.app.editor.EditorDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.util.UUID
 
 /**
@@ -62,11 +69,28 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
     var sortOrder by remember { mutableStateOf(1.0) }
     var loaded by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var widgetEnabled by remember { mutableStateOf(false) }
+    var widgetEditable by remember { mutableStateOf(true) }
+    var widgetBlockId by remember { mutableStateOf<String?>(null) }
+    var widgetSortOrder by remember { mutableStateOf(1.0) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(documentId) {
         withContext(Dispatchers.IO) {
             val document = Core.ffi.getDocument(documentId)
             val blocks = Core.ffi.getBlocks(documentId)
+            // Per-page widget policy: the `widget` block decides whether this
+            // note may be shown in home-screen widgets and edited from them.
+            val widgetBlock = blocks.firstOrNull { it.blockType == "widget" }
+            widgetBlockId = widgetBlock?.id
+            widgetSortOrder = widgetBlock?.sortOrder
+                ?: ((blocks.maxOfOrNull { it.sortOrder } ?: 0.0) + 1.0)
+            if (widgetBlock != null) {
+                val widgetJson = runCatching { JSONObject(widgetBlock.contentJson) }.getOrNull()
+                widgetEnabled = widgetJson?.optBoolean("enabled", false) ?: false
+                widgetEditable = widgetJson?.optBoolean("editable", true) ?: true
+            }
             val docBlock = blocks.firstOrNull { it.blockType == "doc" }
             if (docBlock != null) {
                 docBlockId = docBlock.id
@@ -106,6 +130,23 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
         WidgetCacheBridge.requestRefresh()
     }
 
+    fun updateWidget(enabled: Boolean, editable: Boolean) {
+        widgetEnabled = enabled
+        widgetEditable = if (enabled) editable else false
+        scope.launch {
+            val id = widgetBlockId ?: UUID.randomUUID().toString()
+            widgetBlockId = id
+            val content = JSONObject()
+                .put("enabled", enabled)
+                .put("editable", if (enabled) editable else false)
+                .toString()
+            withContext(Dispatchers.IO) {
+                Core.ffi.upsertBlock(id, documentId, "widget", content, widgetSortOrder)
+            }
+            WidgetCacheBridge.requestRefresh()
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -114,6 +155,44 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Note options")
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Show in widgets") },
+                            trailingIcon = {
+                                if (widgetEnabled) {
+                                    Icon(Icons.Filled.Check, contentDescription = null)
+                                }
+                            },
+                            onClick = {
+                                menuOpen = false
+                                updateWidget(
+                                    enabled = !widgetEnabled,
+                                    editable = if (!widgetEnabled) true else widgetEditable,
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Allow editing from widgets") },
+                            enabled = widgetEnabled,
+                            trailingIcon = {
+                                if (widgetEditable) {
+                                    Icon(Icons.Filled.Check, contentDescription = null)
+                                }
+                            },
+                            onClick = {
+                                menuOpen = false
+                                updateWidget(enabled = true, editable = !widgetEditable)
+                            },
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

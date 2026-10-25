@@ -54,10 +54,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -71,6 +74,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.core_api.UpdateInfo
 import java.io.File
+import java.util.Locale
 
 private enum class SettingsSheet { THEME, ACCENT, AUTO_LOCK, TEXT_SIZE, PAGE_WIDTH }
 
@@ -103,6 +107,8 @@ fun SettingsScreen(
     var restoreError by remember { mutableStateOf<String?>(null) }
     var showRestore by remember { mutableStateOf(false) }
     var restoreBusy by remember { mutableStateOf(false) }
+    var showCustomAccent by remember { mutableStateOf(false) }
+    var customHex by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         hideWidgets = withContext(Dispatchers.IO) {
@@ -196,7 +202,7 @@ fun SettingsScreen(
                 SettingsRow(
                     title = "Accent",
                     value = AppPrefs.accent.label,
-                    swatch = AppPrefs.accent.light,
+                    swatch = AppPrefs.accentLight,
                 ) { sheet = SettingsSheet.ACCENT }
             }
             item {
@@ -229,7 +235,7 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
-                                "Widgets show a lock placeholder instead of note content.",
+                                "Widgets show a lock placeholder.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -252,7 +258,7 @@ fun SettingsScreen(
                     }
                 }
             }
-            item { SettingsRow("Lock now", subtitle = "The password is required to open it again") { onLock() } }
+            item { SettingsRow("Lock now", subtitle = "Requires your password to reopen.") { onLock() } }
 
             item { SectionTitle("Data") }
             item {
@@ -278,7 +284,7 @@ fun SettingsScreen(
             }
             item {
                 Text(
-                    "The backup is the encrypted vault database — without your password or recovery phrase it stays unreadable.",
+                    "Encrypted; unreadable without your password.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -295,7 +301,7 @@ fun SettingsScreen(
             }
             item {
                 Text(
-                    "Restoring replaces this device's vault and locks it. Only a backup of this vault opens with your password or recovery phrase.",
+                    "Replaces this vault and locks it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -334,7 +340,7 @@ fun SettingsScreen(
             }
             item {
                 Text(
-                    "Enclave never checks on its own — only when you ask. A download is verified against the pinned release key before the installer runs.",
+                    "Only when you ask; downloads are signature-verified.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -352,7 +358,7 @@ fun SettingsScreen(
             item { SettingsRow("Version", BuildConfig.VERSION_NAME, onClick = null) }
             item {
                 Text(
-                    "Type: Inter · JetBrains Mono (SIL Open Font License).",
+                    "Type: Inter · JetBrains Mono (OFL).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -360,7 +366,7 @@ fun SettingsScreen(
             }
             item {
                 Text(
-                    "Your vault stays on this device. Enclave has no cloud, no accounts and no telemetry.",
+                    "Local-only. No cloud, accounts or telemetry.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -382,9 +388,17 @@ fun SettingsScreen(
             title = "Accent",
             options = Accent.entries.map { it to it.label },
             selected = AppPrefs.accent,
-            onSelect = { AppPrefs.setAccent(context, it); sheet = null },
+            onSelect = {
+                if (it == Accent.CUSTOM) {
+                    customHex = (AppPrefs.customAccent ?: AppPrefs.accentLight).toHex()
+                    showCustomAccent = true
+                } else {
+                    AppPrefs.setAccent(context, it)
+                }
+                sheet = null
+            },
             onDismiss = { sheet = null },
-            swatch = { it.light },
+            swatch = { if (it == Accent.CUSTOM) AppPrefs.customAccent ?: it.light else it.light },
         )
 
         SettingsSheet.AUTO_LOCK -> OptionSheet(
@@ -412,6 +426,17 @@ fun SettingsScreen(
         )
 
         null -> Unit
+    }
+
+    if (showCustomAccent) {
+        CustomAccentDialog(
+            initialHex = customHex,
+            onDismiss = { showCustomAccent = false },
+            onSave = {
+                AppPrefs.setCustomAccent(context, it)
+                showCustomAccent = false
+            },
+        )
     }
 
     updateInfo?.let { info ->
@@ -558,6 +583,83 @@ fun SettingsScreen(
         )
     }
 }
+
+
+@Composable
+private fun CustomAccentDialog(
+    initialHex: String,
+    onDismiss: () -> Unit,
+    onSave: (Color) -> Unit,
+) {
+    // Select the current value so typing replaces it instead of appending.
+    var field by remember {
+        mutableStateOf(TextFieldValue(initialHex, TextRange(0, initialHex.length)))
+    }
+    val hex = field.text
+    val color = parseHexColor(hex)
+    val quick = listOf(
+        "#6C5CE7", "#4C6EF5", "#0F766E", "#B45309", "#BE123C",
+        "#2E7D32", "#C2410C", "#0E7490", "#7C3AED", "#DB2777",
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom accent") },
+        text = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .background(color ?: MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    OutlinedTextField(
+                        value = field,
+                        onValueChange = { field = it },
+                        label = { Text("Hex color") },
+                        singleLine = true,
+                        isError = color == null,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    quick.forEach { value ->
+                        val swatch = parseHexColor(value) ?: return@forEach
+                        Box(
+                            Modifier
+                                .size(26.dp)
+                                .background(swatch, CircleShape)
+                                .clickable { field = TextFieldValue(value, TextRange(value.length)) },
+                        )
+                    }
+                }
+                if (color == null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Use a six-digit hex value, like #6C5CE7.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = color != null, onClick = { color?.let(onSave) }) {
+                Text("Use color")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+private fun parseHexColor(value: String): Color? {
+    val clean = value.trim().removePrefix("#")
+    if (!Regex("^[0-9A-Fa-f]{6}$").matches(clean)) return null
+    return Color(android.graphics.Color.parseColor("#$clean"))
+}
+
+private fun Color.toHex(): String = String.format(Locale.US, "#%06X", 0xFFFFFF and toArgb())
 
 @Composable
 private fun SectionTitle(text: String) {

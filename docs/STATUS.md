@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup without creating a vault, and the Settings page now has auto-lock, editor text size and page width; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
+Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup without creating a vault, and Settings now has auto-lock, editor text size/page width, custom accents and per-page widget sharing; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
 
 ## Where we are
 
@@ -25,7 +25,8 @@ Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PI
 - **Editable block editor** over the core's ProseMirror contract: marks kept per character, task toggles write through the core, debounced saves, golden-fixture round-trip test.
 - **Sync**: `SyncController` (device-local choice, re-arms on unlock), foreground `SyncService` with Wi-Fi/multicast locks and a live notification, sync screen (address, peers, add-peer), widget-refresh via the core's mutation revision (no JNI hook).
 - **Widgets and entry points**: notes list, pinned note, quick capture, Quick Settings tile, launcher shortcuts, share target — over the Keystore-wrapped cache.
-- **Settings**: branded page; theme mode + five accents; editor text size and page width; auto-lock (Off/1/5/15/30 min); hide-widgets-while-locked (vault data); Lock now; backup/restore; update check; About.
+- **Settings**: branded page; theme mode, five presets + a custom accent picker; editor text size and page width; auto-lock (Off/1/5/15/30 min); hide-widgets-while-locked (vault data); Lock now; backup/restore; update check; About.
+- **Per-page widgets**: a note menu controls **Show in widgets** and **Allow editing from widgets**; the widget cache carries the per-page flag and the pinned widget opens a read-only page instead of ticking its checklist.
 - **Backup**: SAF export and restore; restore re-authenticates and only accepts a backup of the same vault (ADR 0007).
 - **Updates**: opt-in check, core-side SHA-256 + Ed25519 verification (shared with the desktop shell), package-installer hand-off.
 
@@ -48,7 +49,7 @@ ADR 0004 stays *Proposed* until the stack is settled. Phase 0's editor slice was
 
 ## Open work
 
-Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate) and [#189](https://github.com/Pranesh-Selvaraj/Enclave/issues/189) (settings: auto-lock, editor text size/page width) are implemented.
+Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate), [#189](https://github.com/Pranesh-Selvaraj/Enclave/issues/189) (auto-lock/editor preferences), [#190](https://github.com/Pranesh-Selvaraj/Enclave/issues/190) (custom accents), [#191](https://github.com/Pranesh-Selvaraj/Enclave/issues/191) (per-page widgets) and [#192](https://github.com/Pranesh-Selvaraj/Enclave/issues/192) (shorter copy) are implemented. [#193](https://github.com/Pranesh-Selvaraj/Enclave/issues/193) collects further Settings ideas.
 
 ## Release and operations
 

@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
         pendingEntryIntent = intent
 
         setContent {
-            EnclaveTheme(mode = AppPrefs.themeMode, accent = AppPrefs.accent) {
+            EnclaveTheme(mode = AppPrefs.themeMode, accentLight = AppPrefs.accentLight, accentDark = AppPrefs.accentDark) {
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Vault) }
                 var notice by remember { mutableStateOf<String?>(null) }
