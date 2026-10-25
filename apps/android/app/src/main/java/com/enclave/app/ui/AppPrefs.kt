@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /** Theme mode preference. */
 enum class ThemeMode(val id: String, val label: String) {
@@ -35,6 +37,42 @@ enum class Accent(
     }
 }
 
+/** How long the app may stay in the background before auto-locking. */
+enum class AutoLock(val id: String, val label: String, val minutes: Int) {
+    OFF("off", "Off", 0),
+    ONE_MINUTE("1", "1 minute", 1),
+    FIVE_MINUTES("5", "5 minutes", 5),
+    FIFTEEN_MINUTES("15", "15 minutes", 15),
+    THIRTY_MINUTES("30", "30 minutes", 30);
+
+    companion object {
+        fun fromId(id: String?): AutoLock = entries.firstOrNull { it.id == id } ?: FIVE_MINUTES
+    }
+}
+
+/** Reading scale for the note title and editor, on top of the system font scale. */
+enum class EditorTextSize(val id: String, val label: String, val scale: Float) {
+    SMALL("small", "Small", 0.9f),
+    DEFAULT("default", "Default", 1f),
+    LARGE("large", "Large", 1.15f),
+    EXTRA_LARGE("xl", "Extra large", 1.3f);
+
+    companion object {
+        fun fromId(id: String?): EditorTextSize = entries.firstOrNull { it.id == id } ?: DEFAULT
+    }
+}
+
+/** Maximum width of the note content column. */
+enum class EditorWidth(val id: String, val label: String, val maxWidth: Dp) {
+    NARROW("narrow", "Narrow", 360.dp),
+    STANDARD("standard", "Standard", 720.dp),
+    WIDE("wide", "Wide", 960.dp);
+
+    companion object {
+        fun fromId(id: String?): EditorWidth = entries.firstOrNull { it.id == id } ?: STANDARD
+    }
+}
+
 /** How the vault is unlocked on this device. PIN is the Android default. */
 enum class AuthMode(val id: String, val label: String) {
     PIN("pin", "PIN"),
@@ -55,6 +93,9 @@ object AppPrefs {
     private const val KEY_THEME = "theme_mode"
     private const val KEY_ACCENT = "accent"
     private const val KEY_AUTH_MODE = "auth_mode"
+    private const val KEY_AUTO_LOCK = "auto_lock"
+    private const val KEY_TEXT_SIZE = "editor_text_size"
+    private const val KEY_PAGE_WIDTH = "editor_page_width"
 
     var themeMode by mutableStateOf(ThemeMode.SYSTEM)
         private set
@@ -65,11 +106,23 @@ object AppPrefs {
     var authMode by mutableStateOf(AuthMode.PIN)
         private set
 
+    var autoLock by mutableStateOf(AutoLock.FIVE_MINUTES)
+        private set
+
+    var editorTextSize by mutableStateOf(EditorTextSize.DEFAULT)
+        private set
+
+    var editorWidth by mutableStateOf(EditorWidth.STANDARD)
+        private set
+
     fun load(context: Context) {
         val prefs = prefs(context)
         themeMode = ThemeMode.fromId(prefs.getString(KEY_THEME, null))
         accent = Accent.fromId(prefs.getString(KEY_ACCENT, null))
         authMode = AuthMode.fromId(prefs.getString(KEY_AUTH_MODE, null))
+        autoLock = AutoLock.fromId(prefs.getString(KEY_AUTO_LOCK, null))
+        editorTextSize = EditorTextSize.fromId(prefs.getString(KEY_TEXT_SIZE, null))
+        editorWidth = EditorWidth.fromId(prefs.getString(KEY_PAGE_WIDTH, null))
     }
 
     fun setThemeMode(context: Context, mode: ThemeMode) {
@@ -85,6 +138,21 @@ object AppPrefs {
     fun setAuthMode(context: Context, mode: AuthMode) {
         authMode = mode
         prefs(context).edit().putString(KEY_AUTH_MODE, mode.id).apply()
+    }
+
+    fun setAutoLock(context: Context, value: AutoLock) {
+        autoLock = value
+        prefs(context).edit().putString(KEY_AUTO_LOCK, value.id).apply()
+    }
+
+    fun setEditorTextSize(context: Context, value: EditorTextSize) {
+        editorTextSize = value
+        prefs(context).edit().putString(KEY_TEXT_SIZE, value.id).apply()
+    }
+
+    fun setEditorWidth(context: Context, value: EditorWidth) {
+        editorWidth = value
+        prefs(context).edit().putString(KEY_PAGE_WIDTH, value.id).apply()
     }
 
     private fun prefs(context: Context) =

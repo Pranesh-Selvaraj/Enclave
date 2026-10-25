@@ -2,9 +2,11 @@ package com.enclave.app.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -28,7 +31,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
@@ -126,10 +131,21 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
             return@Scaffold
         }
 
-        LazyColumn(
+        val density = LocalDensity.current
+        val fontScale = (density.fontScale * AppPrefs.editorTextSize.scale).coerceIn(0.8f, 3f)
+        Box(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 64.dp),
+            contentAlignment = Alignment.TopCenter,
         ) {
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = density.density, fontScale = fontScale),
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .widthIn(max = AppPrefs.editorWidth.maxWidth)
+                        .fillMaxHeight(),
+                    contentPadding = PaddingValues(bottom = 64.dp),
+                ) {
             item {
                 BasicTextField(
                     value = title,
@@ -154,12 +170,14 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 )
             }
 
-            item {
-                EditableDocument(
-                    doc = document,
-                    onChanged = { revision++ },
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                )
+                    item {
+                        EditableDocument(
+                            doc = document,
+                            onChanged = { revision++ },
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        )
+                    }
+                }
             }
         }
     }

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,11 +53,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.enclave.app.BuildConfig
+import com.enclave.app.R
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.sync.SyncController
@@ -65,7 +72,7 @@ import kotlinx.coroutines.withContext
 import uniffi.core_api.UpdateInfo
 import java.io.File
 
-private enum class SettingsSheet { THEME, ACCENT }
+private enum class SettingsSheet { THEME, ACCENT, AUTO_LOCK, TEXT_SIZE, PAGE_WIDTH }
 
 /**
  * Settings: appearance (device-local), security (the widget-hide dial is vault
@@ -135,11 +142,16 @@ fun SettingsScreen(
         }
     }
 
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val lockup = painterResource(
+        if (dark) R.drawable.ic_enclave_lockup_paper else R.drawable.ic_enclave_lockup_ink,
+    )
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -156,6 +168,26 @@ fun SettingsScreen(
             contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(
+                        painter = lockup,
+                        contentDescription = "Enclave",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.width(170.dp).aspectRatio(347.1f / 48f),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Settings",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
             item { SectionTitle("Appearance") }
             item {
                 SettingsRow("Theme", AppPrefs.themeMode.label) { sheet = SettingsSheet.THEME }
@@ -167,8 +199,23 @@ fun SettingsScreen(
                     swatch = AppPrefs.accent.light,
                 ) { sheet = SettingsSheet.ACCENT }
             }
+            item {
+                SettingsRow("Editor text size", AppPrefs.editorTextSize.label) {
+                    sheet = SettingsSheet.TEXT_SIZE
+                }
+            }
+            item {
+                SettingsRow("Page width", AppPrefs.editorWidth.label) {
+                    sheet = SettingsSheet.PAGE_WIDTH
+                }
+            }
 
             item { SectionTitle("Security") }
+            item {
+                SettingsRow("Auto-lock", AppPrefs.autoLock.label) {
+                    sheet = SettingsSheet.AUTO_LOCK
+                }
+            }
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
@@ -205,7 +252,7 @@ fun SettingsScreen(
                     }
                 }
             }
-            item { SettingsRow("Lock now", "The password is required to open it again") { onLock() } }
+            item { SettingsRow("Lock now", subtitle = "The password is required to open it again") { onLock() } }
 
             item { SectionTitle("Data") }
             item {
@@ -305,6 +352,14 @@ fun SettingsScreen(
             item { SettingsRow("Version", BuildConfig.VERSION_NAME, onClick = null) }
             item {
                 Text(
+                    "Type: Inter · JetBrains Mono (SIL Open Font License).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            item {
+                Text(
                     "Your vault stays on this device. Enclave has no cloud, no accounts and no telemetry.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -330,6 +385,30 @@ fun SettingsScreen(
             onSelect = { AppPrefs.setAccent(context, it); sheet = null },
             onDismiss = { sheet = null },
             swatch = { it.light },
+        )
+
+        SettingsSheet.AUTO_LOCK -> OptionSheet(
+            title = "Auto-lock",
+            options = AutoLock.entries.map { it to it.label },
+            selected = AppPrefs.autoLock,
+            onSelect = { AppPrefs.setAutoLock(context, it); sheet = null },
+            onDismiss = { sheet = null },
+        )
+
+        SettingsSheet.TEXT_SIZE -> OptionSheet(
+            title = "Editor text size",
+            options = EditorTextSize.entries.map { it to it.label },
+            selected = AppPrefs.editorTextSize,
+            onSelect = { AppPrefs.setEditorTextSize(context, it); sheet = null },
+            onDismiss = { sheet = null },
+        )
+
+        SettingsSheet.PAGE_WIDTH -> OptionSheet(
+            title = "Page width",
+            options = EditorWidth.entries.map { it to it.label },
+            selected = AppPrefs.editorWidth,
+            onSelect = { AppPrefs.setEditorWidth(context, it); sheet = null },
+            onDismiss = { sheet = null },
         )
 
         null -> Unit
@@ -483,10 +562,12 @@ fun SettingsScreen(
 @Composable
 private fun SectionTitle(text: String) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+        letterSpacing = 0.6.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
     )
 }
 
@@ -494,6 +575,7 @@ private fun SectionTitle(text: String) {
 private fun SettingsRow(
     title: String,
     value: String? = null,
+    subtitle: String? = null,
     swatch: Color? = null,
     onClick: (() -> Unit)? = null,
 ) {
@@ -509,11 +591,19 @@ private fun SettingsRow(
                 Box(Modifier.size(18.dp).background(swatch, CircleShape))
                 Spacer(Modifier.width(12.dp))
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                subtitle?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             value?.let {
                 Text(
                     it,

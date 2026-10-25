@@ -5,12 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
 import com.enclave.app.editor.NoteFactory
@@ -60,6 +64,31 @@ class MainActivity : ComponentActivity() {
                         WidgetCacheBridge.requestRefresh()
                         screen = Screen.Vault
                     }
+                }
+
+                // Auto-lock: remember when the app left the foreground, and on
+                // return past the configured timeout lock the vault (pausing
+                // sync first, exactly like the manual lock).
+                val lifecycleOwner = LocalLifecycleOwner.current
+                var backgroundedAt by remember { mutableStateOf(0L) }
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        when (event) {
+                            Lifecycle.Event.ON_STOP -> backgroundedAt = System.currentTimeMillis()
+                            Lifecycle.Event.ON_START -> {
+                                val minutes = AppPrefs.autoLock.minutes
+                                if (minutes > 0 && backgroundedAt > 0 && Core.ffi.isUnlocked()) {
+                                    val elapsed = System.currentTimeMillis() - backgroundedAt
+                                    if (elapsed >= minutes * 60_000L) lock()
+                                }
+                                backgroundedAt = 0
+                            }
+
+                            else -> Unit
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
 
                 LaunchedEffect(Unit) {

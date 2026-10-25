@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063 and can now restore a backup without creating a vault; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
+Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup without creating a vault, and the Settings page now has auto-lock, editor text size and page width; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
 
 ## Where we are
 
@@ -25,17 +25,16 @@ Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PI
 - **Editable block editor** over the core's ProseMirror contract: marks kept per character, task toggles write through the core, debounced saves, golden-fixture round-trip test.
 - **Sync**: `SyncController` (device-local choice, re-arms on unlock), foreground `SyncService` with Wi-Fi/multicast locks and a live notification, sync screen (address, peers, add-peer), widget-refresh via the core's mutation revision (no JNI hook).
 - **Widgets and entry points**: notes list, pinned note, quick capture, Quick Settings tile, launcher shortcuts, share target — over the Keystore-wrapped cache.
-- **Settings**: theme mode + five accents (device-local), hide-widgets-while-locked (vault data), Lock now, About.
+- **Settings**: branded page; theme mode + five accents; editor text size and page width; auto-lock (Off/1/5/15/30 min); hide-widgets-while-locked (vault data); Lock now; backup/restore; update check; About.
 - **Backup**: SAF export and restore; restore re-authenticates and only accepts a backup of the same vault (ADR 0007).
 - **Updates**: opt-in check, core-side SHA-256 + Ed25519 verification (shared with the desktop shell), package-installer hand-off.
 
 ## Android — next (in order)
 
-1. **Real-device pass.** The gate (register → confirm → seed → login → unlock) is verified on a Nothing A063 with PIN `1234`. What remains: widget render + interactive checklist, background sync to desktop, share target, export → restore and update install. The emulator (no KVM) only proved build/install/render; screenshots from that run are in `~/.enclave-dev/emulator-pass-2026-10-17/`.
+1. **Real-device pass.** Verified on a Nothing A063: the gate (register → confirm → seed → login → unlock), the running-app share target, export, restore and the update check. What remains: widgets + interactive checklist, the QS tile, background sync to the desktop app, a TalkBack pass and a release-signed update install. The emulator (no KVM) only proved build/install/render; screenshots from that run are in `~/.enclave-dev/emulator-pass-2026-10-17/`.
 2. **Cross-editor parity.** Edit the same vault from the native app and the web editor; confirm the JSON opens identically in both, including tables, tasks and marks.
 3. **Instrumented tests.** Vault flow and widget cache on-device; Compose UI tests for the editor and home.
-4. **Settings gaps** present in the Tauri app: page width, editor font size, auto-lock timeout.
-5. **Polish**: relative timestamps, snippets in the layouts, favorite/pin from the note menu, folder rename/delete, archive and trash screens.
+4. **Polish**: snippets in the layouts, favorite/pin from the note menu, folder rename/delete, archive and trash screens.
 
 ## Core — next
 
@@ -49,17 +48,17 @@ ADR 0004 stays *Proposed* until the stack is settled. Phase 0's editor slice was
 
 ## Open work
 
-Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate) is implemented.
+Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate) and [#189](https://github.com/Pranesh-Selvaraj/Enclave/issues/189) (settings: auto-lock, editor text size/page width) are implemented.
 
 ## Release and operations
 
 - Changelog and release conventions live on `main`; a release publishes the matching changelog entry as the release body (CI enforces it).
 - `v1.13.0` is the latest stable release and the supported product; `main` is migration code, and the README says so.
-- **Open PR: #180** — the whole native Android app (editor → restore). It needs a review; the branch is up to date with `main`.
+- **#180 is merged** into `main` (the Android app up to the restore work). The local `feat/android-editor` commits (contract fixtures, branded gate, design docs, gate restore + settings) are still local and need a PR.
 
 ## Known gaps and limitations
 
-- **Full real-device pass pending** — the gate is verified on a Nothing A063; widgets, background sync, share/export/restore and update install still need the checklist. The emulator (no `/dev/kvm`) was only usable for launch/render checks.
+- **Full real-device pass pending** — the gate, share target, export, restore and update check are verified on a Nothing A063; widgets, the QS tile, background sync, TalkBack and a release-signed update install still need the checklist. The emulator (no `/dev/kvm`) was only usable for launch/render checks.
 - **Foreign-vault restore** is deliberately out of scope (ADR 0007).
 - **Desktop updater orchestration** is still duplicated between the shell and the core; only the signature verifier and pinned key are shared.
 - **`feat/web-mobile-apps`** (remote) is an abandoned pre-restructure experiment ("split into desktop/web/mobile apps"); do not merge — delete when convenient.
