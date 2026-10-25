@@ -28,7 +28,7 @@ The wordmark is `ENCLAVE`, **constructed on a cell grid** — the initial **E at
 
 `watermark.svg` is the ink lockup at 6 % for light surfaces; `watermark-dark.svg` is the paper lockup at 6 % for dark surfaces. Use one at full size as a quiet background, never behind body copy and never as a replacement for the lockup itself. Both are generated from the lockups, so the geometry stays identical.
 
-The design tokens, the Figma documentation plugin and the exported gate screens live in [`docs/design/`](../design/README.md); this directory remains the vector source of truth.
+The design tokens and the rules that keep the UI consistent live in [`docs/design/`](../design/README.md); this directory remains the vector source of truth.
 
 Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **Their generator is not committed yet** — the numbers are the source of truth in the meantime.
 
