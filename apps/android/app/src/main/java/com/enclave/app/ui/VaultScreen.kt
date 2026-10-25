@@ -132,6 +132,11 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
     var restoreError by remember { mutableStateOf<String?>(null) }
     var restoreNotice by remember { mutableStateOf<String?>(null) }
     var pendingMnemonic by remember { mutableStateOf<String?>(null) }
+    var pendingUnlockAfterPin by remember { mutableStateOf(false) }
+    var showForgot by remember { mutableStateOf(false) }
+    var forgotPhrase by remember { mutableStateOf("") }
+    var forgotBusy by remember { mutableStateOf(false) }
+    var forgotError by remember { mutableStateOf<String?>(null) }
     var newPin by remember { mutableStateOf("") }
     var confirmNewPin by remember { mutableStateOf("") }
     var pinSetupBusy by remember { mutableStateOf(false) }
@@ -315,6 +320,10 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                     onRestore = {
                         restoreLauncher.launch(arrayOf("application/octet-stream", "*/*"))
                     },
+                    onForgot = {
+                        forgotError = null
+                        showForgot = true
+                    },
                     onAction = {
                         if (initialized == true) {
                             unlock()
@@ -390,6 +399,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                                         restoreBusy = false
                                         restoreBytes = null
                                         restoreSecret = ""
+                                        pendingUnlockAfterPin = false
                                         if (looksLikeMnemonic(secret)) {
                                             // A phrase restore ends without a usable
                                             // vault.key; set a new PIN to finish.
@@ -440,11 +450,15 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                 // The restored vault has no usable key file yet; setting the PIN
                 // is the only way to finish, so this dialog is not dismissable.
                 onDismissRequest = {},
-                title = { Text("Set a PIN for this device") },
+                title = { Text(if (pendingUnlockAfterPin) "Set a new PIN" else "Set a PIN for this device") },
                 text = {
                     Column {
                         Text(
-                            "The vault is restored. Choose a 4-digit PIN so this device can open it.",
+                            if (pendingUnlockAfterPin) {
+                                "Unlocked with your recovery phrase. Choose a new 4-digit PIN for this device."
+                            } else {
+                                "The vault is restored. Choose a 4-digit PIN so this device can open it."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -501,10 +515,15 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                                         pendingMnemonic = null
                                         newPin = ""
                                         confirmNewPin = ""
-                                        initialized = true
-                                        mode = AuthMode.PIN
-                                        AppPrefs.setAuthMode(context, AuthMode.PIN)
-                                        restoreNotice = "Vault restored — unlock with your new PIN."
+                                        if (pendingUnlockAfterPin) {
+                                            pendingUnlockAfterPin = false
+                                            onUnlocked()
+                                        } else {
+                                            initialized = true
+                                            mode = AuthMode.PIN
+                                            AppPrefs.setAuthMode(context, AuthMode.PIN)
+                                            restoreNotice = "Vault restored — unlock with your new PIN."
+                                        }
                                     }
                                     .onFailure {
                                         pinSetupBusy = false
@@ -513,6 +532,88 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                             }
                         },
                     ) { Text(if (pinSetupBusy) "Saving…" else "Set PIN") }
+                },
+            )
+        }
+
+        if (showForgot) {
+            AlertDialog(
+                onDismissRequest = {
+                    if (!forgotBusy) {
+                        showForgot = false
+                        forgotPhrase = ""
+                        forgotError = null
+                    }
+                },
+                title = { Text("Use your recovery phrase") },
+                text = {
+                    Column {
+                        Text(
+                            "Enter the 12 words you saved when this vault was created.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = forgotPhrase,
+                            onValueChange = {
+                                forgotPhrase = it
+                                forgotError = null
+                            },
+                            label = { Text("12-word recovery phrase") },
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        forgotError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !forgotBusy && forgotPhrase.isNotBlank(),
+                        onClick = {
+                            val phrase = forgotPhrase.trim()
+                            scope.launch {
+                                forgotBusy = true
+                                forgotError = null
+                                runCatching {
+                                    withContext(Dispatchers.IO) { Core.ffi.unlockWithMnemonic(phrase) }
+                                }
+                                    .onSuccess {
+                                        forgotBusy = false
+                                        showForgot = false
+                                        forgotPhrase = ""
+                                        // The phrase unlocked the vault, but the old
+                                        // PIN is unknown: replace it before going in.
+                                        pendingUnlockAfterPin = true
+                                        pendingMnemonic = phrase
+                                        newPin = ""
+                                        confirmNewPin = ""
+                                        pinSetupError = null
+                                    }
+                                    .onFailure {
+                                        forgotBusy = false
+                                        forgotError = "That recovery phrase did not unlock the vault."
+                                    }
+                            }
+                        },
+                    ) { Text(if (forgotBusy) "Unlocking…" else "Unlock") }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !forgotBusy,
+                        onClick = {
+                            showForgot = false
+                            forgotPhrase = ""
+                            forgotError = null
+                        },
+                    ) { Text("Cancel") }
                 },
             )
         }
@@ -540,6 +641,7 @@ private fun VaultGate(
     onBackspace: () -> Unit,
     onOpenKeypad: () -> Unit,
     onRestore: () -> Unit,
+    onForgot: () -> Unit,
     onAction: () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -764,6 +866,15 @@ private fun VaultGate(
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        if (initialized) {
+                            TextButton(onClick = onForgot, enabled = !busy) {
+                                Text(
+                                    "Forgot PIN or password?",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }

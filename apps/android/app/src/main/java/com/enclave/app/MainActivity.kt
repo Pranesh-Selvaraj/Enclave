@@ -167,7 +167,6 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = Screen.Home }
                         SettingsScreen(
                             onBack = { screen = Screen.Home },
-                            onLock = lock,
                             onRestored = {
                                 notice = it
                                 screen = Screen.Vault

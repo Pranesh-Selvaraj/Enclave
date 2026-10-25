@@ -6,7 +6,7 @@ This directory is the repository side of Enclave's design work: the tokens, the 
 
 | Path | Purpose |
 | --- | --- |
-| [`tokens.json`](tokens.json) | Canonical colours, type scale, layout and radii. The Figma plugin is generated from this file; the Compose theme mirrors it. |
+| [`tokens.json`](tokens.json) | Canonical colours, type scale, layout and radii. The Figma plugin is generated from this file; the Compose theme mirrors it. The `monochrome` palette is the neutral dark theme (near-white primary, no accent). |
 | [`figma/`](figma/README.md) | Development plugin that writes the brand and current-UI pages into Figma, plus its build script. |
 | [`../brand/`](../brand/README.md) | The brand SVGs: mark, lockup, icon, watermark — the source of every logo in the product. |
 

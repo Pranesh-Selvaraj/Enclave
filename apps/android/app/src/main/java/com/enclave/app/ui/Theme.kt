@@ -97,6 +97,24 @@ private val DarkColors = darkColorScheme(
     error = Color(0xFFF2B8B5),
 )
 
+private val MonoColors = darkColorScheme(
+    primary = Color(0xFFE8E8E8),
+    onPrimary = Color(0xFF141414),
+    primaryContainer = Color(0xFF2A2A2A),
+    onPrimaryContainer = Color(0xFFF2F2F2),
+    secondary = Color(0xFFBDBDBD),
+    onSecondary = Color(0xFF141414),
+    background = Color(0xFF0E0E0E),
+    onBackground = Color(0xFFEDEDED),
+    surface = Color(0xFF1A1A1A),
+    onSurface = Color(0xFFEDEDED),
+    surfaceVariant = Color(0xFF242424),
+    onSurfaceVariant = Color(0xFFB5B5B5),
+    outline = Color(0xFF3A3A3A),
+    outlineVariant = Color(0xFF2A2A2A),
+    error = Color(0xFFF2B8B5),
+)
+
 @Composable
 fun EnclaveTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
@@ -104,25 +122,30 @@ fun EnclaveTheme(
     accentDark: Color = Accent.VIOLET.dark,
     content: @Composable () -> Unit,
 ) {
+    val mono = mode == ThemeMode.MONOCHROME
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
+        ThemeMode.DARK, ThemeMode.MONOCHROME -> true
     }
 
-    val base = if (dark) DarkColors else LightColors
-    val primary = if (dark) accentDark else accentLight
+    val base = when {
+        mono -> MonoColors
+        dark -> DarkColors
+        else -> LightColors
+    }
+    val primary = if (mono) base.primary else if (dark) accentDark else accentLight
     // Pick the label colour from the accent's luminance, not the theme mode:
     // a custom accent can be light in the light theme or dark in the dark one.
-    val onPrimary = if (primary.luminance() > 0.18f) Color(0xFF1B1A18) else Color.White
+    val onPrimary = if (mono) base.onPrimary else if (primary.luminance() > 0.18f) Color(0xFF1B1A18) else Color.White
     val opposite = if (dark) Color.White else Color.Black
 
     MaterialTheme(
         colorScheme = base.copy(
             primary = primary,
             onPrimary = onPrimary,
-            primaryContainer = lerp(primary, opposite, if (dark) 0.55f else 0.85f),
-            onPrimaryContainer = lerp(primary, if (dark) Color.White else Color.Black, if (dark) 0.85f else 0.55f),
+            primaryContainer = if (mono) base.primaryContainer else lerp(primary, opposite, if (dark) 0.55f else 0.85f),
+            onPrimaryContainer = if (mono) base.onPrimaryContainer else lerp(primary, if (dark) Color.White else Color.Black, if (dark) 0.85f else 0.55f),
         ),
         typography = EnclaveTypography,
         content = content,

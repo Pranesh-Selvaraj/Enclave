@@ -14,7 +14,8 @@ import androidx.compose.ui.unit.dp
 enum class ThemeMode(val id: String, val label: String) {
     SYSTEM("system", "System"),
     LIGHT("light", "Light"),
-    DARK("dark", "Dark");
+    DARK("dark", "Dark"),
+    MONOCHROME("monochrome", "Monochrome");
 
     companion object {
         fun fromId(id: String?): ThemeMode = entries.firstOrNull { it.id == id } ?: SYSTEM

@@ -5,9 +5,12 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,9 +55,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -87,7 +95,6 @@ private enum class SettingsSheet { THEME, ACCENT, AUTO_LOCK, TEXT_SIZE, PAGE_WID
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onLock: () -> Unit,
     onRestored: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -198,12 +205,14 @@ fun SettingsScreen(
             item {
                 SettingsRow("Theme", AppPrefs.themeMode.label) { sheet = SettingsSheet.THEME }
             }
-            item {
-                SettingsRow(
-                    title = "Accent",
-                    value = AppPrefs.accent.label,
-                    swatch = AppPrefs.accentLight,
-                ) { sheet = SettingsSheet.ACCENT }
+            if (AppPrefs.themeMode != ThemeMode.MONOCHROME) {
+                item {
+                    SettingsRow(
+                        title = "Accent",
+                        value = AppPrefs.accent.label,
+                        swatch = AppPrefs.accentLight,
+                    ) { sheet = SettingsSheet.ACCENT }
+                }
             }
             item {
                 SettingsRow("Editor text size", AppPrefs.editorTextSize.label) {
@@ -258,7 +267,6 @@ fun SettingsScreen(
                     }
                 }
             }
-            item { SettingsRow("Lock now", subtitle = "Requires your password to reopen.") { onLock() } }
 
             item { SectionTitle("Data") }
             item {
@@ -591,16 +599,40 @@ private fun CustomAccentDialog(
     onDismiss: () -> Unit,
     onSave: (Color) -> Unit,
 ) {
+    val initial = parseHexColor(initialHex) ?: Color(0xFF6C5CE7)
+    val hsv = remember {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(initial.toArgb(), it) }
+    }
+    var hue by remember { mutableStateOf(hsv[0]) }
+    var saturation by remember { mutableStateOf(hsv[1]) }
+    var value by remember { mutableStateOf(hsv[2].coerceAtLeast(0.05f)) }
     // Select the current value so typing replaces it instead of appending.
     var field by remember {
         mutableStateOf(TextFieldValue(initialHex, TextRange(0, initialHex.length)))
     }
-    val hex = field.text
-    val color = parseHexColor(hex)
+    val color = Color.hsv(hue, saturation, value)
+    val valid = parseHexColor(field.text) != null
+
+    fun applyState(next: Color) {
+        val channels = FloatArray(3)
+        android.graphics.Color.colorToHSV(next.toArgb(), channels)
+        hue = channels[0]
+        saturation = channels[1]
+        value = channels[2]
+        val hex = next.toHex()
+        field = TextFieldValue(hex, TextRange(0, hex.length))
+    }
+
+    fun syncField() {
+        val hex = Color.hsv(hue, saturation, value).toHex()
+        field = TextFieldValue(hex, TextRange(0, hex.length))
+    }
+
     val quick = listOf(
-        "#6C5CE7", "#4C6EF5", "#0F766E", "#B45309", "#BE123C",
-        "#2E7D32", "#C2410C", "#0E7490", "#7C3AED", "#DB2777",
+        "#6C5CE7", "#4C6EF5", "#0F766E", "#B45309",
+        "#BE123C", "#2E7D32", "#C2410C", "#0E7490",
     )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Custom accent") },
@@ -610,31 +642,112 @@ private fun CustomAccentDialog(
                     Box(
                         Modifier
                             .size(44.dp)
-                            .background(color ?: MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                            .background(color, CircleShape),
                     )
                     Spacer(Modifier.width(14.dp))
                     OutlinedTextField(
                         value = field,
-                        onValueChange = { field = it },
+                        onValueChange = {
+                            field = it
+                            parseHexColor(it.text)?.let(::applyState)
+                        },
                         label = { Text("Hex color") },
                         singleLine = true,
-                        isError = color == null,
+                        isError = !valid,
                         modifier = Modifier.weight(1f),
                     )
                 }
+
+                Spacer(Modifier.height(12.dp))
+                // Saturation / brightness square for the current hue.
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .pointerInput(hue) {
+                            awaitEachGesture {
+                                fun apply(position: Offset) {
+                                    saturation = (position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    value = (1f - position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                    syncField()
+                                }
+                                val down = awaitFirstDown()
+                                apply(down.position)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.pressed } ?: break
+                                    apply(change.position)
+                                    change.consume()
+                                }
+                            }
+                        },
+                ) {
+                    drawRect(Brush.horizontalGradient(listOf(Color.White, Color.hsv(hue, 1f, 1f))))
+                    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                    drawCircle(
+                        color = Color.White,
+                        radius = 9.dp.toPx(),
+                        center = Offset(saturation * size.width, (1f - value) * size.height),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // Hue bar.
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .clip(CircleShape)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                fun apply(position: Offset) {
+                                    hue = (position.x / size.width.toFloat() * 360f).coerceIn(0f, 360f)
+                                    syncField()
+                                }
+                                val down = awaitFirstDown()
+                                apply(down.position)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.pressed } ?: break
+                                    apply(change.position)
+                                    change.consume()
+                                }
+                            }
+                        },
+                ) {
+                    drawRect(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Red, Color.Yellow, Color.Green,
+                                Color.Cyan, Color.Blue, Color.Magenta, Color.Red,
+                            ),
+                        ),
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 10.dp.toPx(),
+                        center = Offset(hue / 360f * size.width, size.height / 2),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                }
+
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    quick.forEach { value ->
-                        val swatch = parseHexColor(value) ?: return@forEach
+                    quick.forEach { hexValue ->
+                        val swatch = parseHexColor(hexValue) ?: return@forEach
                         Box(
                             Modifier
-                                .size(26.dp)
+                                .size(24.dp)
                                 .background(swatch, CircleShape)
-                                .clickable { field = TextFieldValue(value, TextRange(value.length)) },
+                                .clickable { applyState(swatch) },
                         )
                     }
                 }
-                if (color == null) {
+                if (!valid) {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Use a six-digit hex value, like #6C5CE7.",
@@ -645,7 +758,7 @@ private fun CustomAccentDialog(
             }
         },
         confirmButton = {
-            TextButton(enabled = color != null, onClick = { color?.let(onSave) }) {
+            TextButton(enabled = valid, onClick = { parseHexColor(field.text)?.let(onSave) }) {
                 Text("Use color")
             }
         },
