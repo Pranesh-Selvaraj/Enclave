@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
+Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063 and can now restore a backup without creating a vault; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
 
 ## Where we are
 
@@ -20,6 +20,7 @@ Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PI
 
 - Vault gate: create (recovery phrase shown once with acknowledgement), unlock, lock.
 - **Branded gate**: the official lockup glides into the form; sliding PIN/Password switch; 4-digit PIN with repeat-to-confirm and an in-app keypad; centred 2-per-row recovery phrase; the selected accent drives the switch, dots, buttons and logo gradient.
+- **Restore from the gate**: register and login can pick a taken backup before any vault exists. A recovery-phrase restore sets a fresh PIN (a device that still holds the key file can restore with the password); the Settings restore remains.
 - Notes home: search pill with layout/sort controls, folder chips, **four layouts** (List / Gallery / Cards / Icons), three sort orders, create stack (Text / Checklist / Journal / Meeting notes / Folder) with templates shared with the web editor.
 - **Editable block editor** over the core's ProseMirror contract: marks kept per character, task toggles write through the core, debounced saves, golden-fixture round-trip test.
 - **Sync**: `SyncController` (device-local choice, re-arms on unlock), foreground `SyncService` with Wi-Fi/multicast locks and a live notification, sync screen (address, peers, add-peer), widget-refresh via the core's mutation revision (no JNI hook).
@@ -45,6 +46,10 @@ Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PI
 ## Desktop — parked
 
 ADR 0004 stays *Proposed* until the stack is settled. Phase 0's editor slice was spiked in Avalonia (evidence in `~/.enclave-dev/phase0-native-apps/`), and Qt has not been verified because it cannot be installed on the current dev machine (no passwordless sudo). **Do not merge PR #177** until the desktop decision is made on purpose.
+
+## Open work
+
+Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate) is implemented.
 
 ## Release and operations
 

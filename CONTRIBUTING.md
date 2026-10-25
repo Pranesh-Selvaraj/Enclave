@@ -150,6 +150,14 @@ enclave/
 5. Run type checks and tests (see above).
 6. Open a PR referencing the issue.
 
+## Work tracking
+
+Every bug, feature request, UX finding and contract or architecture change is tracked as a GitHub issue. Open or link the issue before or with the change, and reference it from the commit or PR (`Refs #N`, `Closes #N`). Chat threads, local notes and scratch documents are not the record.
+
+- Attach screenshots, recordings or the failing output to the issue.
+- Link the Figma file/page for design work.
+- A request that changes the architecture (for example multiple vaults in one app) gets an issue now and an ADR when it is taken up.
+
 ### Code Style
 
 - **TypeScript**: existing patterns in `packages/*/src/` and `apps/*/src/`. Use Svelte 5 runes (`$state`, `$effect`, `$derived`), not Svelte 4 stores. Runes must be in `.svelte.ts`/`.svelte.js` files — plain `.ts` files cannot use them.

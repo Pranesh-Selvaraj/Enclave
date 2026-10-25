@@ -124,7 +124,7 @@ fun SettingsScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            withContext(Dispatchers.IO) { runCatching { readUri(context, uri) } }
+            withContext(Dispatchers.IO) { runCatching { readBackupBytes(context, uri) } }
                 .onSuccess {
                     restoreBytes = it
                     restoreSecret = ""
@@ -539,25 +539,6 @@ private fun copyToUri(context: Context, path: String, uri: Uri): String = runCat
         ?: error("the chosen location could not be opened")
     "Backup saved (${bytes.size / 1024} KB)."
 }.getOrElse { "Could not save the backup: ${it.message}" }
-
-/** Reads a picked backup, refusing anything absurd before it reaches the core. */
-private fun readUri(context: Context, uri: Uri): ByteArray {
-    val maxBytes = 512L * 1024 * 1024
-    context.contentResolver.openInputStream(uri).use { input ->
-        requireNotNull(input) { "the chosen file could not be opened" }
-        val out = java.io.ByteArrayOutputStream()
-        val buffer = ByteArray(64 * 1024)
-        var total = 0L
-        while (true) {
-            val read = input.read(buffer)
-            if (read <= 0) break
-            total += read
-            require(total <= maxBytes) { "that file is too large to be a vault backup" }
-            out.write(buffer, 0, read)
-        }
-        return out.toByteArray()
-    }
-}
 
 /**
  * Hands a verified APK to the Android package installer. It over-installs the
