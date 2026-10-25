@@ -455,6 +455,7 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 - [SECURITY.md](SECURITY.md) — vulnerability reporting and security model
 - [docs/HISTORY.md](docs/HISTORY.md) — what the project was built with, why, and what changed
 - [docs/STATUS.md](docs/STATUS.md) — what is done and what comes next (the handoff tracker)
+- [docs/CONTRACT.md](docs/CONTRACT.md) — the four versioned surfaces every app must honour (vault schema, block JSON, sync protocol, FFI)
 - [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
 - [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
 - [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules

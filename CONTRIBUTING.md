@@ -185,6 +185,8 @@ Record a decision when it changes any of: the UI stack, shell or architecture, s
 
 Do it in the same change that makes the decision. Never delete an old ADR: mark it `Superseded by NNNN` and add the new record. A change that only implements an already-recorded decision does not need a new ADR, but it must update `docs/HISTORY.md` if it changes an era or a contract version.
 
+The four contract surfaces (vault schema, block JSON, sync protocol, FFI) are summarised in [`docs/CONTRACT.md`](docs/CONTRACT.md). A change to any of them updates the golden fixtures and that document in the same commit — the fixture tests fail otherwise, by design.
+
 ## Issue Labels
 
 - `bug` — something's broken

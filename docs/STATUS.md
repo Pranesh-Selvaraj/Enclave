@@ -2,15 +2,16 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-10-17 — native Android app is feature-complete for a first release (editor → sync → widgets → settings → backup → updater → restore); nothing has run on real hardware yet.
+Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063; the Phase 1 contract is complete; design tokens and the generated Figma documentation live in [`docs/design/`](design/README.md).
 
 ## Where we are
 
 | Area | State | Notes |
 | --- | --- | --- |
-| Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; its own workspace; 62 tests |
-| Contract (ADR 0006) | 🟡 Started | vault schema v1 + ordered migrations + golden block fixture; sync-frame fixtures and the contract doc pending |
-| Android app (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; no hardware run yet |
+| Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; its own workspace; 68 tests |
+| Contract (ADR 0006) | ✅ Complete | vault schema v1 + ordered migrations + golden block fixture; transport/app sync frames and handshake crypto locked by fixtures; [`CONTRACT.md`](CONTRACT.md) documents all four surfaces and the compatibility matrix |
+| Android app (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; the branded gate is verified on a real phone; the rest of the manual pass is pending |
+| Design system (`docs/design/`) | ✅ In use | canonical [`tokens.json`](design/tokens.json), the generated Figma documentation plugin, brand watermarks and curated gate screenshots |
 | Desktop app | ⏸ Parked | ADR 0004 is *Proposed* (Qt 6 leaning; per-OS trio an escalation; Avalonia a measured fallback). PR #177 is intentionally **unmerged** |
 | Tauri app (current desktop + Android) | ✅ Shipping | `v1.13.0`; `main` is migration code — see the README notice |
 | Web frontend (`apps/frontend`) | ✅ Used by Tauri | retired when the native apps replace it |
@@ -18,6 +19,7 @@ Last updated: 2026-10-17 — native Android app is feature-complete for a first 
 ## Android — done
 
 - Vault gate: create (recovery phrase shown once with acknowledgement), unlock, lock.
+- **Branded gate**: the official lockup glides into the form; sliding PIN/Password switch; 4-digit PIN with repeat-to-confirm and an in-app keypad; centred 2-per-row recovery phrase; the selected accent drives the switch, dots, buttons and logo gradient.
 - Notes home: search pill with layout/sort controls, folder chips, **four layouts** (List / Gallery / Cards / Icons), three sort orders, create stack (Text / Checklist / Journal / Meeting notes / Folder) with templates shared with the web editor.
 - **Editable block editor** over the core's ProseMirror contract: marks kept per character, task toggles write through the core, debounced saves, golden-fixture round-trip test.
 - **Sync**: `SyncController` (device-local choice, re-arms on unlock), foreground `SyncService` with Wi-Fi/multicast locks and a live notification, sync screen (address, peers, add-peer), widget-refresh via the core's mutation revision (no JNI hook).
@@ -28,7 +30,7 @@ Last updated: 2026-10-17 — native Android app is feature-complete for a first 
 
 ## Android — next (in order)
 
-1. **Real-device pass.** Install on a phone/emulator and run the manual checklist: unlock → edit → widget render + interactive checklist → background sync to desktop → share target → export → restore → update install. This is the biggest confidence gap: everything so far is build- and unit-tested only.
+1. **Real-device pass.** The gate (register → confirm → seed → login → unlock) is verified on a Nothing A063 with PIN `1234`. What remains: widget render + interactive checklist, background sync to desktop, share target, export → restore and update install. The emulator (no KVM) only proved build/install/render; screenshots from that run are in `~/.enclave-dev/emulator-pass-2026-10-17/`.
 2. **Cross-editor parity.** Edit the same vault from the native app and the web editor; confirm the JSON opens identically in both, including tables, tasks and marks.
 3. **Instrumented tests.** Vault flow and widget cache on-device; Compose UI tests for the editor and home.
 4. **Settings gaps** present in the Tauri app: page width, editor font size, auto-lock timeout.
@@ -36,8 +38,8 @@ Last updated: 2026-10-17 — native Android app is feature-complete for a first 
 
 ## Core — next
 
-1. **Sync-frame golden fixtures** — capture the handshake / digest / need / snapshot / ack frames and assert them in CI (ADR 0006).
-2. **Contract document** — a developer-facing summary of the four versioned surfaces (vault schema, block schema, sync protocol, FFI) plus the compatibility matrix.
+1. **App-side interop CI** — Phase 4: run the same core SHA and golden fixtures from the app builds (Tauri + native Android) so "desktop and Android can still sync" is a CI result, not an assumption.
+2. **C ABI** — only once ADR 0004 names the desktop stack; the contract doc marks it as planned, not implemented.
 3. Nothing pending for the widget projection; `widget_notes()` and the revision counter are covered by tests.
 
 ## Desktop — parked
@@ -52,7 +54,7 @@ ADR 0004 stays *Proposed* until the stack is settled. Phase 0's editor slice was
 
 ## Known gaps and limitations
 
-- **No hardware run yet** — the dev machine has no `/dev/kvm`, so no emulator; nothing has been installed on a phone.
+- **Full real-device pass pending** — the gate is verified on a Nothing A063; widgets, background sync, share/export/restore and update install still need the checklist. The emulator (no `/dev/kvm`) was only usable for launch/render checks.
 - **Foreign-vault restore** is deliberately out of scope (ADR 0007).
 - **Desktop updater orchestration** is still duplicated between the shell and the core; only the signature verifier and pinned key are shared.
 - **`feat/web-mobile-apps`** (remote) is an abandoned pre-restructure experiment ("split into desktop/web/mobile apps"); do not merge — delete when convenient.
