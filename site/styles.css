@@ -1149,7 +1149,7 @@ kbd {
 
 /* ---------- The scroll tour ---------- */
 
-@media (min-width: 1100px) and (min-height: 640px) {
+@media (min-width: 1100px) and (min-height: 700px) {
   .hero[data-scroll] .hero-live {
     --step: 52svh;
     --track-h: calc(100svh + (var(--views) - 1) * var(--step));
@@ -4747,6 +4747,8 @@ html.lightbox-open body {
     padding-bottom: 0.5rem;
     scroll-snap-type: x mandatory;
     scrollbar-width: thin;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
   }
 
   .phone-shot {
@@ -4826,6 +4828,18 @@ html.lightbox-open body {
 
   .lightbox img {
     max-height: calc(100vh - 7.5rem);
+  }
+}
+
+@media (max-width: 400px) {
+  .head-cta {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .head-inner {
+    gap: 0.5rem;
   }
 }
 

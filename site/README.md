@@ -35,7 +35,7 @@ small, self-contained views:
 | Graph | Hover or tap to focus a page, scroll to zoom, drag to pan |
 | Local AI | Pick a sample prompt; citations open the cited page in the graph |
 
-On screens at least 1100×640 the window pins and the tab strip becomes a step
+On screens at least 1100×700 the window pins and the tab strip becomes a step
 rail that advances with scroll. Everywhere else — and whenever the visitor
 prefers reduced motion — the tabs stay above the window and switch views in
 place. Prev/next and a `01 / 05` counter sit under the window; `1`–`5` switch

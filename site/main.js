@@ -222,7 +222,7 @@
   var tourCounter = document.querySelector('[data-tour-counter]');
   var tourPrev = document.querySelector('[data-tour-prev]');
   var tourNext = document.querySelector('[data-tour-next]');
-  var scrollMedia = window.matchMedia ? window.matchMedia('(min-width: 1100px) and (min-height: 640px)') : null;
+  var scrollMedia = window.matchMedia ? window.matchMedia('(min-width: 1100px) and (min-height: 700px)') : null;
   var current = 0;
   var held = 0;
   var frame = 0;
