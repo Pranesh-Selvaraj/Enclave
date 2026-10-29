@@ -24,6 +24,7 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 | [0005](0005-android-ui-stack.md) | Android UI stack: Kotlin + Jetpack Compose | Accepted | Stack |
 | [0006](0006-shared-contract-versioning.md) | Shared contract: vault, block schema, sync protocol, FFI | Accepted | Compatibility |
 | [0007](0007-vault-restore-semantics.md) | Vault restore semantics | Accepted | Security |
+| [0009](0009-public-homepage-github-pages.md) | Public homepage as a static GitHub Pages site | Accepted | Distribution |
 
 ## Decision map
 

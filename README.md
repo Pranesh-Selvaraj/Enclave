@@ -458,6 +458,7 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 - [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
 - [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
 - [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules
+- [site/](site/README.md) — the public homepage (static, deployed to GitHub Pages)
 
 ## License
 
