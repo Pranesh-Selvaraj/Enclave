@@ -50,6 +50,13 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   with scroll; elsewhere, and under reduced motion, the tabs switch views in
   place. The demos use fixed sample data; they do not open a vault, fetch or
   persist anything.
+- **The tour is guided and stateful.** A Try row performs one action per view;
+  prev/next, a step counter and the `1`–`5` keys move through the views. The
+  editor has an editable title, a block menu and a live Markdown view; the
+  phone sync accepts typed items; the whiteboard supports double-click and
+  delete; the graph zooms, pans and focuses; and AI answers cite pages that
+  open in the graph. State stays in the page; the Markdown copy touches the
+  clipboard only on an explicit click.
 - **The roadmap is a rendering of the plan, not a promise list.** A small
   Now/Next/Then panel pulls its features and exit criteria from
   `docs/plans/dedicated-native-apps.md` and `docs/STATUS.md`, and a
@@ -113,6 +120,9 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   reduced-motion testing, and its sample content can drift from the app. It is
   deliberately scoped to five thin demos, not a second editor and not a real
   vault.
+- The guided actions, Markdown generator, graph zoom and citations are demo
+  code. Adding a block type, graph node or Try action means updating the
+  matching generator or id, and the keyboard and no-JS paths need retesting.
 - The roadmap can drift from the plan and STATUS; those documents stay
   canonical and the panel links to them. Adding a section or a tour view means
   updating the palette's action map as well as the markup.

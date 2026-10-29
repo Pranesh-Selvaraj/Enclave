@@ -62,6 +62,12 @@
       <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="m8.2 8.1 2.8 7.4"/><path d="m15.8 8.1-2.8 7.4"/></symbol>
       <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+      <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
       <symbol id="i-cursor" viewBox="0 0 24 24"><path d="m4 3 7.5 7.5"/><path d="M4 3v7l2.5-2.5"/><path d="m11.5 10.5 6.5 3.5-3 1.5-1.5 3z"/></symbol>
       <symbol id="i-square" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></symbol>
       <symbol id="i-sticky" viewBox="0 0 24 24"><path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/></symbol>
@@ -166,7 +172,7 @@
               <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
               <span class="window-brand"><img src="assets/brand/logo-tile.svg" width="16" height="16" alt=""> Enclave</span>
               <span class="window-title" data-app-title>Roadmap Q4</span>
-              <span class="window-chip"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg> Encrypted</span>
+              <span class="window-chip" data-window-status><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span data-window-status-text>Encrypted</span></span>
             </div>
 
             <div class="app-stage" data-stage>
@@ -177,27 +183,45 @@
                 </header>
                 <div class="demo editor-demo" data-demo="editor">
                   <div class="ed-bar">
-                    <span class="ed-crumb"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg> Projects <span>/</span> Roadmap Q4</span>
+                    <span class="ed-crumb"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg> Projects <span>/</span> <span data-ed-crumb-title>Roadmap Q4</span></span>
+                    <div class="ed-modes" role="group" aria-label="Editor view">
+                      <button class="ed-mode" type="button" data-ed-mode="page" aria-pressed="true">Page</button>
+                      <button class="ed-mode" type="button" data-ed-mode="markdown" aria-pressed="false">Markdown</button>
+                    </div>
                     <span class="ed-status" data-ed-status><i></i> Saved · encrypted</span>
                   </div>
                   <div class="ed-grid">
                     <div class="ed-doc">
-                      <h3 class="ed-title">Roadmap Q4</h3>
-                      <div class="ed-tags"><span class="tag">#product</span><span class="tag">#planning</span><span class="tag tag-add" aria-hidden="true">+</span></div>
-                      <div class="ed-callout"><span class="ed-callout-icon" aria-hidden="true">✦</span><div><strong>Ship the encrypted search index.</strong><br>Everything stays inside the vault.</div></div>
-                      <p class="ed-kicker">This week</p>
-                      <ul class="ed-tasks">
-                        <li><button class="ed-check" type="button" aria-pressed="false" aria-label="Mark Ship encrypted local search as done"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></button><span>Ship encrypted local search</span></li>
-                        <li><button class="ed-check" type="button" aria-pressed="false" aria-label="Mark Background sync across devices as done"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></button><span>Background sync across devices</span></li>
-                        <li><button class="ed-check" type="button" aria-pressed="false" aria-label="Mark Split-view polish as done"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></button><span>Split-view polish</span></li>
-                      </ul>
-                      <div class="ed-lines" data-ed-lines>
-                        <p>Next: the graph touch targets and a final pass on the editor toolbar.</p>
+                      <div class="ed-page" data-ed-page>
+                        <h3 class="ed-title" contenteditable="true" role="textbox" aria-label="Page title" spellcheck="false" data-ed-title>Roadmap Q4</h3>
+                        <div class="ed-tags"><span class="tag">#product</span><span class="tag">#planning</span><span class="tag tag-add" aria-hidden="true">+</span></div>
+                        <div class="ed-callout"><span class="ed-callout-icon" aria-hidden="true">✦</span><div><strong>Ship the encrypted search index.</strong><br>Everything stays inside the vault.</div></div>
+                        <p class="ed-kicker">This week</p>
+                        <ul class="ed-tasks">
+                          <li><button class="ed-check" type="button" aria-pressed="false" aria-label="Mark Ship encrypted local search as done"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></button><span>Ship encrypted local search</span></li>
+                          <li><button class="ed-check" type="button" aria-pressed="false" aria-label="Mark Background sync across devices as done"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></button><span>Background sync across devices</span></li>
+                          <li><button class="ed-check" type="button" aria-pressed="false" aria-label="Mark Split-view polish as done"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></button><span>Split-view polish</span></li>
+                        </ul>
+                        <div class="ed-lines" data-ed-lines>
+                          <p>Next: the graph touch targets and a final pass on the editor toolbar.</p>
+                        </div>
+                        <div class="ed-form-wrap">
+                          <form class="ed-form" data-ed-form>
+                            <input class="ed-input" type="text" name="line" placeholder="Add a line — press Enter" aria-label="Add a line to the page" autocomplete="off" maxlength="120">
+                            <button class="ed-submit" type="button" aria-label="Insert a block" aria-haspopup="menu" aria-expanded="false" data-ed-blocks><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+                          </form>
+                          <div class="ed-menu" data-ed-menu role="menu" aria-label="Insert a block" hidden>
+                            <button type="button" role="menuitem" data-ed-block="task"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> To-do</button>
+                            <button type="button" role="menuitem" data-ed-block="callout"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg> Callout</button>
+                            <button type="button" role="menuitem" data-ed-block="heading"><svg class="icon" aria-hidden="true"><use href="#i-text"/></svg> Heading</button>
+                            <button type="button" role="menuitem" data-ed-block="divider"><svg class="icon" aria-hidden="true"><use href="#i-minus"/></svg> Divider</button>
+                          </div>
+                        </div>
                       </div>
-                      <form class="ed-form" data-ed-form>
-                        <input class="ed-input" type="text" name="line" placeholder="Add a line — press Enter" aria-label="Add a line to the page" autocomplete="off" maxlength="120">
-                        <button class="ed-submit" type="submit" aria-label="Add line"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
-                      </form>
+                      <div class="ed-markdown" data-ed-markdown hidden>
+                        <div class="ed-md-head"><span>Markdown source</span><button class="ed-copy" type="button" data-ed-copy><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg> Copy</button></div>
+                        <pre tabindex="0" aria-label="Markdown source"><code data-ed-code></code></pre>
+                      </div>
                     </div>
                     <aside class="ed-side">
                       <p class="ed-side-label">Backlinks <span>3</span></p>
@@ -246,12 +270,16 @@
                       <div class="device-note">
                         <span class="device-note-title">Packing list</span>
                         <ul data-sync-list="phone"><li>Passport</li><li>Charger</li><li>Boarding pass</li></ul>
+                        <form class="sync-add" data-sync-form>
+                          <input class="sync-input" type="text" name="item" placeholder="Add an item…" aria-label="Add an item on the phone" autocomplete="off" maxlength="40">
+                          <button class="sync-send" type="submit" aria-label="Send item to the desktop"><svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+                        </form>
                       </div>
                       <div class="device-foot"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg> same vault key</div>
                     </article>
                   </div>
                   <div class="sync-controls">
-                    <button class="btn btn-primary btn-small" type="button" data-sync-send><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> Add on the phone</button>
+                    <button class="btn btn-primary btn-small" type="button" data-sync-send><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> Add a sample</button>
                     <p class="sync-status" data-sync-status aria-live="polite">Peers found on this network. Both hold the same vault key.</p>
                   </div>
                 </div>
@@ -268,7 +296,7 @@
                     <button class="board-tool" type="button" data-board-add aria-label="Add sticky note"><svg class="icon" aria-hidden="true"><use href="#i-sticky"/></svg></button>
                     <span class="board-tool" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-square"/></svg></span>
                     <span class="board-tool" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-                    <span class="board-hint" data-board-hint>Drag the note · add another</span>
+                    <span class="board-hint" data-board-hint>Drag · double-click to add · Delete removes</span>
                   </div>
                   <div class="board-canvas" data-board>
                     <span class="board-frame-label">Product launch</span>
@@ -277,7 +305,8 @@
                       <path d="M330 155 C 395 170, 435 148, 500 188"/>
                       <path d="M325 178 C 350 240, 400 260, 455 286"/>
                     </svg>
-                    <div class="board-sticky" data-board-sticky tabindex="0" role="button" aria-label="Sticky note: validate the sync flow. Drag it or use arrow keys.">
+                    <div class="board-sticky" data-board-sticky tabindex="0" role="group" aria-roledescription="draggable sticky note" aria-label="Sticky note: validate the sync flow. Drag it, use arrow keys, or press Delete to remove.">
+                      <button class="sticky-remove" type="button" aria-label="Remove sticky note"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>
                       <strong>Validate the sync flow</strong>
                       <span>with two real devices</span>
                       <small>drag me</small>
@@ -296,6 +325,7 @@
                 </header>
                 <div class="demo graph-demo" data-demo="graph">
                   <div class="graph-map" data-graph>
+                    <div class="graph-canvas" data-graph-canvas>
                     <svg class="graph-lines" viewBox="0 0 600 360" preserveAspectRatio="none" aria-hidden="true">
                       <line data-edge="design meeting" x1="300" y1="70" x2="140" y2="110"/>
                       <line data-edge="design sync" x1="300" y1="70" x2="460" y2="110"/>
@@ -312,6 +342,12 @@
                     <button class="graph-node gn-roadmap is-active" type="button" data-node="roadmap">Roadmap Q4</button>
                     <button class="graph-node gn-editor" type="button" data-node="editor">Editor</button>
                     <button class="graph-node gn-board" type="button" data-node="board">Whiteboard</button>
+                    </div>
+                    <div class="graph-controls" role="group" aria-label="Graph view controls">
+                      <button type="button" data-graph-out aria-label="Zoom out"><svg class="icon" aria-hidden="true"><use href="#i-minus"/></svg></button>
+                      <button type="button" data-graph-in aria-label="Zoom in"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+                      <button type="button" data-graph-reset aria-label="Reset graph view"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+                    </div>
                   </div>
                   <aside class="graph-detail" aria-live="polite">
                     <p class="label">Selected page</p>
@@ -320,7 +356,7 @@
                     <ul class="graph-links" data-graph-links>
                       <li>Meeting notes</li><li>Sync design</li><li>Editor</li>
                     </ul>
-                    <p class="graph-key"><i></i> Hover or tap a page to follow its links</p>
+                    <p class="graph-key"><i></i> Hover or tap a page · scroll to zoom · drag to pan</p>
                   </aside>
                 </div>
               </section>
@@ -334,11 +370,13 @@
                   <div class="ai-head">
                     <span class="chip"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg> 127.0.0.1:11434</span>
                     <span class="chip"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg> Local endpoint</span>
+                    <span class="chip chip-context"><svg class="icon" aria-hidden="true"><use href="#i-page"/></svg> Context · Roadmap Q4</span>
                     <span class="chip chip-quiet">Opt-in</span>
                   </div>
                   <div class="ai-chat" data-ai-chat>
                     <div class="ai-msg ai-user">Summarise this page</div>
                     <div class="ai-msg ai-bot" data-ai-answer>Roadmap Q4 is about shipping encrypted local search, background sync and the split-view polish. Three tasks are still open.</div>
+                    <div class="ai-cites"><span>Cited</span><button type="button" data-cite="roadmap">Roadmap Q4</button></div>
                   </div>
                   <p class="sr-only" data-ai-live aria-live="polite"></p>
                   <div class="ai-suggestions">
@@ -355,9 +393,24 @@
               </section>
             </div>
           </div>
+          <div class="tour-try" role="group" aria-label="Try the demo">
+            <span class="tour-try-label">Try</span>
+            <button type="button" data-try="task"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Tick a task</button>
+            <button type="button" data-try="sync"><svg class="icon" aria-hidden="true"><use href="#i-network"/></svg> Send a change</button>
+            <button type="button" data-try="board"><svg class="icon" aria-hidden="true"><use href="#i-sticky"/></svg> Add a sticky</button>
+            <button type="button" data-try="graph"><svg class="icon" aria-hidden="true"><use href="#i-graph"/></svg> Follow a link</button>
+            <button type="button" data-try="ai"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg> Ask local AI</button>
+          </div>
           <div class="hero-fine">
-            <span class="fine-live"><span class="live-dot" aria-hidden="true"></span> Live preview — tick a task, send a change, drag a note.</span>
-            <span class="fine-scroll">Scroll to walk through the views.</span>
+            <span class="fine-live"><span class="live-dot" aria-hidden="true"></span> Live preview — try it, or take the controls.</span>
+            <div class="tour-meta">
+              <span class="tour-counter" data-tour-counter>01 / 05 · Editor</span>
+              <span class="fine-keys">1–5 keys</span>
+              <div class="tour-nav">
+                <button class="icon-btn" type="button" data-tour-prev aria-label="Previous view" disabled><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"/></svg></button>
+                <button class="icon-btn" type="button" data-tour-next aria-label="Next view"><svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+              </div>
+            </div>
           </div>
           <noscript><p class="noscript-note">The interactive tour needs JavaScript. The first view is shown; downloads, security details and docs still work.</p></noscript>
         </div>
@@ -849,6 +902,8 @@
       </div>
     </div>
   </dialog>
+
+  <div class="toast" role="status" aria-live="polite" data-toast></div>
 
   <script src="main.js" defer></script>
 </body>

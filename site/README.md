@@ -29,17 +29,27 @@ small, self-contained views:
 
 | View | What you can try |
 | --- | --- |
-| Editor | Tick tasks, add a line, watch the saved/encrypted status react |
-| Sync | Add a note on the phone and watch it cross the encrypted wire to the desktop |
-| Whiteboard | Drag the sticky note, add another, move one with the keyboard |
-| Graph | Hover or tap a page to light up its links and update the detail panel |
-| Local AI | Pick a sample prompt and watch a local-endpoint answer type out |
+| Editor | Edit the title, insert a block, tick tasks, switch to Markdown and copy the source |
+| Sync | Type an item on the phone and watch the encrypted frame reach the desktop |
+| Whiteboard | Drag a sticky, double-click the canvas to add one, or press Delete to remove it |
+| Graph | Hover or tap to focus a page, scroll to zoom, drag to pan |
+| Local AI | Pick a sample prompt; citations open the cited page in the graph |
 
 On screens at least 1100×640 the window pins and the tab strip becomes a step
 rail that advances with scroll. Everywhere else — and whenever the visitor
 prefers reduced motion — the tabs stay above the window and switch views in
-place. Without JavaScript the first view is visible and every link, screenshot
-and download still works.
+place. Prev/next and a `01 / 05` counter sit under the window; `1`–`5` switch
+views while the tour is on screen.
+
+A **Try** row above the fine print runs one guided action per view: tick a
+task, send a phone change, add a sticky, follow a graph link, ask the local
+assistant. The window's status chip reflects demo actions (`Saved locally`,
+`Synced · 2 devices`) and returns to `Encrypted`. These are local demo events,
+not a real vault or network indicator.
+
+Without JavaScript the tour tabs, Try row, prev/next and keyboard hint are
+hidden; the first view remains visible, and every link, screenshot and
+download still works.
 
 The demos use **sample data only**. They do not open a vault, do not read or
 write files, do not call a model and do not persist anything. Do not put real
@@ -67,9 +77,9 @@ phase tabs are hidden because they would be inert.
 | --- | --- |
 | `index.html` | Hero, live tour, facts, features, Android, security, roadmap, FAQ, downloads and docs |
 | `404.html` | Self-contained Pages fallback: inline CSS and the shared lockup injected at build, so it renders at any path and in local preview |
-| `styles.css` | Design tokens shared with the app, layout, tour and demos, roadmap, command palette, themes and lightbox |
+| `styles.css` | Design tokens shared with the app, layout, tour and demos, editor Markdown/graph controls, roadmap, command palette, themes and lightbox |
 | `theme-boot.js` | Synchronous in `<head>` so the first paint has the right theme |
-| `main.js` | Theme, mobile menu, scroll tour, the five demos, roadmap tabs, command palette, OS detection, reveals and lightbox |
+| `main.js` | Theme, mobile menu, scroll tour, guided Try actions, editor blocks/Markdown, sync, whiteboard, graph zoom/focus, AI citations, roadmap tabs, command palette, OS detection, reveals and lightbox |
 | `robots.txt`, `sitemap.xml` | Crawler hints for the single public page |
 
 Brand vectors and screenshots are **not** copied into this directory. Edit
@@ -108,7 +118,11 @@ it has no scripts. All other pages keep the strict `style-src 'self'` /
 - **Do not add tracking or runtime requests.** No analytics, external fonts,
   embeds or API calls. The main page's CSP should keep `default-src 'none'`.
 - **Keep the demos local.** Sample data only; no fetch, no vault access, no
-  persistence.
+  persistence. The window status chip is demo feedback, not a real sync signal.
+- **Keep guided actions wired.** Every `data-try` action targets a `tab-*` id or
+  a demo selector; prev/next and the counter depend on the tab list. The editor
+  Markdown generator, whiteboard double-click/delete, graph zoom/focus and AI
+  `data-cite` ids all need to move with the markup.
 - **Test reduced motion and no-JS.** The tour must fall back to tabs, the first
   view and the first roadmap phase must remain readable, and the palette must
   be inert without scripting.
