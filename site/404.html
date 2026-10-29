@@ -3,50 +3,119 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self'; form-action 'none'">
-  <meta name="theme-color" content="#16130f">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1ede5">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16130f">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'">
   <meta name="robots" content="noindex">
   <title>Page not found — Enclave</title>
-  <link rel="icon" href="https://pranesh-selvaraj.github.io/Enclave/assets/brand/logo-tile.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="https://pranesh-selvaraj.github.io/Enclave/styles.css">
-  <script src="https://pranesh-selvaraj.github.io/Enclave/theme-boot.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f1ede5;
+      --surface: #faf7f1;
+      --text: #211d17;
+      --muted: #5d5549;
+      --faint: #675f52;
+      --border: #ddd6c9;
+      --border-strong: #c8c0b0;
+      --accent: #645aad;
+      --on-accent: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #16130f;
+        --surface: #201c17;
+        --text: #ece7df;
+        --muted: #a39b90;
+        --faint: #8e8678;
+        --border: #2f2a23;
+        --border-strong: #403931;
+        --accent: #9386f6;
+        --on-accent: #17130e;
+      }
+      .lockup svg { filter: invert(1); }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: clamp(24px, 6vw, 72px);
+      background-color: var(--bg);
+      background-image: radial-gradient(900px 480px at 50% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
+      background-repeat: no-repeat;
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { width: min(680px, 100%); margin-block: auto; padding-block: 2rem; }
+    .lockup { margin-bottom: clamp(40px, 7vw, 72px); }
+    .lockup svg { display: block; width: 190px; height: auto; }
+    .label {
+      color: var(--faint);
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 14px 0 0;
+      font-size: clamp(2.7rem, 1.4rem + 5.2vw, 4.6rem);
+      font-weight: 650;
+      letter-spacing: -0.045em;
+      line-height: 1;
+      text-wrap: balance;
+    }
+    p {
+      max-width: 48ch;
+      margin: 20px 0 0;
+      color: var(--muted);
+      font-size: clamp(1rem, 0.95rem + 0.35vw, 1.18rem);
+      line-height: 1.62;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0.7rem 1.05rem;
+      border: 1px solid var(--text);
+      border-radius: 7px;
+      background: var(--text);
+      color: var(--bg);
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .button:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .secondary { background: transparent; border-color: var(--border-strong); color: var(--text); }
+    .secondary:hover { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
+    footer { padding-top: clamp(40px, 7vw, 72px); color: var(--faint); font-size: 0.78rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+    @media (max-width: 520px) {
+      .actions .button { flex: 1 1 auto; }
+    }
+  </style>
 </head>
 <body>
-  <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0">
-    <defs>
-      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
-      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
-    </defs>
-  </svg>
-
-  <header class="site-head">
-    <div class="wrap head-inner">
-      <a class="brand" href="https://pranesh-selvaraj.github.io/Enclave/" aria-label="Enclave home">
-        <img class="logo logo-dark" src="https://pranesh-selvaraj.github.io/Enclave/assets/brand/lockup-dark.svg" width="174" height="24" alt="Enclave">
-        <img class="logo logo-light" src="https://pranesh-selvaraj.github.io/Enclave/assets/brand/lockup.svg" width="174" height="24" alt="Enclave">
-      </a>
-      <div class="head-actions">
-        <button class="icon-btn theme-toggle" type="button" aria-label="Toggle color theme">
-          <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
-          <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
-        </button>
-        <a class="btn btn-primary btn-small" href="https://pranesh-selvaraj.github.io/Enclave/">Back to the homepage</a>
-      </div>
+  <main>
+    <div class="lockup">
+<!-- INLINE_LOCKUP -->
     </div>
-  </header>
-
-  <main class="wrap not-found">
-    <div>
-      <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> 404</p>
-      <h1>This page is not here.</h1>
-      <p class="lead">The link may be old, or the page may have moved. The notes are still safe.</p>
-      <div class="hero-ctas">
-        <a class="btn btn-primary" href="https://pranesh-selvaraj.github.io/Enclave/">Go to the homepage</a>
-        <a class="btn btn-secondary" href="https://github.com/Pranesh-Selvaraj/Enclave#readme">Read the README</a>
-      </div>
+    <p class="label">404 · not found</p>
+    <h1>This page is not here.</h1>
+    <p>The link may be old, or the page may have moved. The notes are still safe.</p>
+    <div class="actions">
+      <a class="button" href="https://pranesh-selvaraj.github.io/Enclave/">Go to the homepage</a>
+      <a class="button secondary" href="https://github.com/Pranesh-Selvaraj/Enclave#readme">Read the README</a>
     </div>
   </main>
-
-  <script src="https://pranesh-selvaraj.github.io/Enclave/main.js" defer></script>
+  <footer>
+    Enclave · MIT licensed · <a href="https://github.com/Pranesh-Selvaraj/Enclave">github.com/Pranesh-Selvaraj/Enclave</a>
+  </footer>
 </body>
 </html>

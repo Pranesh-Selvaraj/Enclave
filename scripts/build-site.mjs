@@ -67,6 +67,29 @@ for (const screenshot of screenshots) {
   await copyInto(`docs/screenshots/${screenshot}`, `assets/screenshots/${screenshot}`);
 }
 
+/*
+ * The 404 must work at any GitHub Pages path, so it cannot link the shared
+ * styles or lockup. Its styles are inline by design; the lockup is injected
+ * here from docs/brand so the source of truth is not duplicated.
+ */
+const notFoundPath = path.join(output, '404.html');
+const notFound = await readFile(notFoundPath, 'utf8');
+const lockupMarker = '<!-- INLINE_LOCKUP -->';
+
+if (!notFound.includes(lockupMarker)) {
+  throw new Error('404.html is missing the INLINE_LOCKUP marker');
+}
+
+const lockup = (await readFile(path.join(root, 'docs/brand/lockup.svg'), 'utf8'))
+  .replace(/^<\?xml[^>]*>\s*/, '')
+  .trim();
+
+if (!lockup.startsWith('<svg')) {
+  throw new Error('docs/brand/lockup.svg did not contain an <svg> root');
+}
+
+await writeFile(notFoundPath, notFound.replace(lockupMarker, lockup));
+
 /* Verify every local asset referenced by the homepage actually exists. */
 const html = await readFile(path.join(output, 'index.html'), 'utf8');
 const references = new Set(
