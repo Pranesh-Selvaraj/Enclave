@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; img-src 'self'; style-src 'self'; script-src 'self' 'sha256-3kx1JOvAgcSSWLKAX/3WPKgqwC87XlTJRdULoCrMIJg='; font-src 'self'; connect-src 'self'; form-action 'none'">
   <meta name="theme-color" content="#16130f">
   <title>Enclave — your notes, your device, your key</title>
   <meta name="description" content="Enclave is a local-first, end-to-end encrypted knowledge base for desktop and Android. No cloud, no account, no telemetry. Sync directly over your own Wi‑Fi.">
@@ -14,6 +14,7 @@
   <meta property="og:description" content="A local-first, end-to-end encrypted knowledge base. No cloud, no account, no telemetry. Sync directly between your devices over your own Wi‑Fi.">
   <meta property="og:url" content="https://pranesh-selvaraj.github.io/Enclave/">
   <meta property="og:image" content="https://pranesh-selvaraj.github.io/Enclave/assets/brand/social-preview.png">
+  <meta property="og:image:type" content="image/png">
   <meta property="og:image:alt" content="The Enclave lockup on a warm charcoal background.">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
@@ -22,8 +23,33 @@
   <meta name="twitter:description" content="A local-first, end-to-end encrypted knowledge base. No cloud, no account, no telemetry.">
   <meta name="twitter:image" content="https://pranesh-selvaraj.github.io/Enclave/assets/brand/social-preview.png">
   <meta name="twitter:image:alt" content="The Enclave lockup on a warm charcoal background.">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Enclave",
+  "url": "https://pranesh-selvaraj.github.io/Enclave/",
+  "description": "A local-first, end-to-end encrypted knowledge base for desktop and Android. No cloud, no account, no telemetry; sync directly over your own Wi-Fi.",
+  "applicationCategory": "ProductivityApplication",
+  "operatingSystem": "Linux, Windows, macOS, Android",
+  "downloadUrl": "https://github.com/Pranesh-Selvaraj/Enclave/releases/latest",
+  "license": "https://github.com/Pranesh-Selvaraj/Enclave/blob/main/LICENSE",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "image": "https://pranesh-selvaraj.github.io/Enclave/assets/brand/social-preview.png",
+  "sameAs": [
+    "https://github.com/Pranesh-Selvaraj/Enclave"
+  ]
+}
+</script>
+
   <link rel="icon" href="assets/brand/logo-tile.svg" type="image/svg+xml">
-  <link rel="preload" href="assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/InterVariable-site.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <script src="theme-boot.js"></script>
 </head>
@@ -63,6 +89,8 @@
       <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
       <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
       <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></symbol>
       <symbol id="i-code" viewBox="0 0 24 24"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></symbol>
       <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
@@ -371,7 +399,8 @@
                   <div class="ai-head">
                     <span class="chip"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg> 127.0.0.1:11434</span>
                     <span class="chip"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg> Local endpoint</span>
-                    <span class="chip chip-context"><svg class="icon" aria-hidden="true"><use href="#i-page"/></svg> Context · Roadmap Q4</span>
+                    <span class="chip chip-context"><svg class="icon" aria-hidden="true"><use href="#i-page"/></svg> Context · <span data-ai-context>Roadmap Q4</span></span>
+                    <span class="chip" data-ai-open><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> <span data-ai-open-text>3 open tasks</span></span>
                     <span class="chip chip-quiet">Opt-in</span>
                   </div>
                   <div class="ai-chat" data-ai-chat>
@@ -405,6 +434,7 @@
           <div class="hero-fine">
             <span class="fine-live"><span class="live-dot" aria-hidden="true"></span> Live preview — try it, or take the controls.</span>
             <div class="tour-meta">
+              <button class="tour-play" type="button" data-tour-play aria-pressed="false"><svg class="icon icon-fill" aria-hidden="true"><use href="#i-play"/></svg><span data-tour-play-label>Play the tour</span></button>
               <span class="tour-counter" data-tour-counter>01 / 05 · Editor</span>
               <span class="fine-keys">1–5 keys</span>
               <div class="tour-nav">
@@ -416,6 +446,7 @@
           <noscript><p class="noscript-note">The interactive tour needs JavaScript. The first view is shown; downloads, security details and docs still work.</p></noscript>
         </div>
       </div>
+      <p class="sr-only" data-tour-live aria-live="polite" aria-atomic="true"></p>
     </section>
 
     <section class="facts" aria-label="Enclave in four facts">
@@ -800,6 +831,17 @@
           </div>
         </div>
         <p class="migration-note" data-reveal><strong>Building the next Enclave.</strong> The latest stable release above is the supported product while the dedicated native apps are built. <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/plans/dedicated-native-apps.md">Read the plan <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></p>
+
+        <details class="install-help" data-reveal>
+          <summary>Installing and verifying</summary>
+          <div class="install-grid">
+            <div><h3>Linux</h3><p>Make the <code>.AppImage</code> executable and run it, or install the <code>.deb</code> with your package manager. The build is x86_64.</p></div>
+            <div><h3>Windows</h3><p>Run the <code>.exe</code> installer or the <code>.msi</code>. If SmartScreen appears, verify the checksum before choosing to run it.</p></div>
+            <div><h3>macOS</h3><p>Open the <code>.dmg</code> and drag Enclave into Applications. If Gatekeeper blocks the first launch, use Open from the context menu. Apple Silicon.</p></div>
+            <div><h3>Android</h3><p>Download the signed <code>.apk</code> on the phone, allow installs from that app when Android asks, then open the file. arm64; no Play Store.</p></div>
+          </div>
+          <p class="install-verify">Download <code>SHA256SUMS</code> from the release to verify a manual install: <code>sha256sum -c SHA256SUMS</code> on Linux, or <code>shasum -a 256 -c SHA256SUMS</code> on macOS. Updates are separately checked against the pinned Ed25519 signature before installation.</p>
+        </details>
       </div>
     </section>
 
@@ -854,6 +896,7 @@
             <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/decisions/README.md">Decisions</a>
             <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/STATUS.md">Status</a>
             <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/HISTORY.md">History</a>
+            <a href="privacy.html">Privacy</a>
           </div>
         </nav>
       </div>

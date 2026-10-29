@@ -41,8 +41,8 @@ The `site/` directory, a small build script and a Pages workflow are the result.
 
 ## Decision
 
-- **Hand-written static files in `site/`.** One `index.html`, one `styles.css`,
-  a theme-boot script and a progressive-enhancement script. No framework, no
+- **Hand-written static files in `site/`.** One `index.html`, one `privacy.html`,
+  one `styles.css`, a theme-boot script and a progressive-enhancement script. No framework, no
   templating, no npm dependencies for the site itself. It is still a document,
   not a SPA: the only application-like part is a five-view product tour
   (Editor, Sync, Whiteboard, Graph, Local AI) built from the same HTML, CSS and
@@ -56,8 +56,13 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   phone sync accepts typed items; the whiteboard supports double-click and
   delete; the graph zooms, pans and focuses; and AI answers cite pages that
   open in the graph. Each view is addressable with a `?view=` query derived from
-  its tab id, and the palette can copy that link. State stays in the page; the
-  Markdown and link copies touch the clipboard only on an explicit click.
+  its tab id, and the palette can copy that link. The title and open-task count
+  are a small shared state: they drive the assistant context/chips/summary and
+  the graph node/citation labels. A visually hidden live region announces only
+  explicit view and guided-action changes, never scroll-driven ones, and an
+  opt-in Play tour steps the views through the same actions, stops on any
+  trusted input and is disabled under reduced motion. State stays in the page;
+  the Markdown and link copies touch the clipboard only on an explicit click.
 - **The roadmap is a rendering of the plan, not a promise list.** A small
   Now/Next/Then panel pulls its features and exit criteria from
   `docs/plans/dedicated-native-apps.md` and `docs/STATUS.md`, and a
@@ -71,10 +76,11 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   phase tabs are hidden rather than left inert.
 - **Shared assets are copied at build time, never duplicated in git.**
   `scripts/build-site.mjs` assembles `site-dist/` from `site/` plus
-  `docs/brand/*`, `docs/screenshots/*.png` and
-  `apps/frontend/static/fonts/InterVariable.woff2` (with its OFL licence). It
-  fails if a required source is missing or if `index.html` references a local
-  asset that was not produced.
+  `docs/brand/*`, `docs/screenshots/*.png` and the OFL for the site's Inter
+  subset. The 115 KB subset is generated from the app's 344 KB variable font and
+  committed under `site/assets/fonts/`; the full font remains the app's. The
+  build fails if a required source is missing, the subset is absent, or
+  `index.html` references a local asset that was not produced.
 - **`site-dist/` is a disposable artifact.** It is git-ignored. The workflow
   builds it on every relevant push and uploads it with the official
   `upload-pages-artifact` action; `deploy-pages` publishes it.
@@ -90,8 +96,19 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   self-hosted, screenshots and vectors are local, there is no analytics, no
   cookies and no runtime fetch. The tour is sample data only and persists
   nothing. A `Content-Security-Policy` meta tag sets `default-src 'none'` and
-  allows only same-origin images, styles, scripts and fonts. The theme follows
-  the system and can be toggled; the choice is stored in `localStorage` only.
+  allows only same-origin images, styles, scripts, fonts and connects. The
+  theme follows the system and can be toggled; the choice is stored in
+  `localStorage` only.
+- **The privacy page and security.txt are part of the trust surface.**
+  `privacy.html` states the site, demo and app data practices in plain language;
+  `/.well-known/security.txt` and a convenience copy at `/security.txt` point to
+  GitHub's private advisory flow and SECURITY.md. The well-known path is served
+  under `/Enclave/` because this is a project site, not a domain root.
+- **Structured data is inline JSON-LD with a build-checked CSP hash.** The
+  `SoftwareApplication` schema is allowed by a SHA-256 hash in `script-src`;
+  because hash drift would silently block it, the build recomputes the hash and
+  fails if the CSP copy is stale. The page allows `connect-src 'self'` for
+  same-origin audits but makes no fetch of its own.
 - **Download links target `releases/latest`.** The page never hard-codes a
   version, so a release does not require a homepage change. The migration
   notice and the Android "Beta" label keep the page honest while `main` is
@@ -121,9 +138,20 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   reduced-motion testing, and its sample content can drift from the app. It is
   deliberately scoped to five thin demos, not a second editor and not a real
   vault.
-- The guided actions, Markdown generator, graph zoom and citations are demo
-  code. Adding a block type, graph node or Try action means updating the
-  matching generator or id, and the keyboard and no-JS paths need retesting.
+- The guided actions, Markdown generator, graph zoom, citations and shared
+  title/task events are demo code. Adding a block type, graph node or Try
+  action means updating the matching generator or id, and the keyboard and
+  no-JS paths need retesting.
+- The Inter subset covers the page's Latin and punctuation ranges; adding a new
+  glyph outside them means regenerating the subset (or accepting the system
+  fallback). The build catches a missing subset, not a missing glyph.
+- The JSON-LD hash is a build-time contract; editing the schema without
+  updating the CSP fails the build rather than silently losing the structured
+  data. The `security.txt` Expires field and project-site path are maintenance
+  obligations, documented in `site/README.md`.
+- The auto-play and live announcements add another interaction path to test:
+  trusted input must stop the sequence, reduced motion must disable it, and
+  scroll-driven view changes must stay out of the live region.
 - The `?view=` values are part of shared URLs; renaming a tab id changes the
   deep-link contract and the palette's copy command.
 - The roadmap can drift from the plan and STATUS; those documents stay

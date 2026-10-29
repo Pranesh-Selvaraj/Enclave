@@ -222,6 +222,11 @@
   var tourCounter = document.querySelector('[data-tour-counter]');
   var tourPrev = document.querySelector('[data-tour-prev]');
   var tourNext = document.querySelector('[data-tour-next]');
+  var tourLive = document.querySelector('[data-tour-live]');
+  var playButton = document.querySelector('[data-tour-play]');
+  var playLabel = document.querySelector('[data-tour-play-label]');
+  var autoPlaying = false;
+  var autoTimer = 0;
   var scrollMedia = window.matchMedia ? window.matchMedia('(min-width: 1100px) and (min-height: 700px)') : null;
   var current = 0;
   var held = 0;
@@ -230,6 +235,10 @@
 
   function scrolling() {
     return !!(hero && hero.hasAttribute('data-scroll'));
+  }
+
+  function announceTour(text) {
+    if (tourLive) tourLive.textContent = text;
   }
 
   function centreTab(tab) {
@@ -311,6 +320,7 @@
   function go(index, focus, smooth) {
     show(index, focus);
     persistView(index);
+    announceTour((tabs[index].getAttribute('aria-label') || 'View') + ' view.');
     if (!scrolling() || !track || !pin) return;
     var last = tabs.length - 1;
     if (last <= 0) return;
@@ -370,14 +380,22 @@
 
         if (action === 'task') {
           var task = document.querySelector('.ed-check[aria-pressed="false"]');
-          if (task) task.click();
-          else showToast('All three tasks are done.');
+          if (task) {
+            task.click();
+            announceTour('Task ticked.');
+          } else {
+            showToast('All three tasks are done.');
+            announceTour('All three tasks are done.');
+          }
         } else if (action === 'sync') {
           var send = document.querySelector('[data-sync-send]');
           if (send && !send.disabled) send.click();
         } else if (action === 'board') {
           var add = document.querySelector('[data-board-add]');
-          if (add) add.click();
+          if (add) {
+            add.click();
+            announceTour('Sticky added.');
+          }
         } else if (action === 'graph') {
           var node = document.querySelector('.gn-sync');
           if (node) node.click();
@@ -387,6 +405,116 @@
         }
       });
     });
+
+    function setPlayState(on) {
+      autoPlaying = on;
+      if (playButton) {
+        playButton.setAttribute('aria-pressed', String(on));
+        playButton.classList.toggle('is-playing', on);
+        var use = playButton.querySelector('use');
+        if (use) use.setAttribute('href', on ? '#i-stop' : '#i-play');
+      }
+      if (playLabel) playLabel.textContent = on ? 'Stop the tour' : 'Play the tour';
+    }
+
+    function performAutoStep(index) {
+      if (index === 0) {
+        var task = document.querySelector('.ed-check[aria-pressed="false"]');
+        if (task) {
+          task.click();
+          announceTour('Task ticked.');
+        }
+      } else if (index === 1) {
+        var send = document.querySelector('[data-sync-send]');
+        if (send && !send.disabled) send.click();
+      } else if (index === 2) {
+        var add = document.querySelector('[data-board-add]');
+        if (add) {
+          add.click();
+          announceTour('Sticky added.');
+        }
+      } else if (index === 3) {
+        var node = document.querySelector('.gn-sync');
+        if (node) node.click();
+      } else if (index === 4) {
+        var prompt = document.querySelector('[data-ai-prompt="Find related notes"]');
+        if (prompt) prompt.click();
+      }
+    }
+
+    function runAutoStep(index) {
+      if (!autoPlaying) return;
+      if (index >= tabs.length) {
+        stopAuto(false);
+        announceTour('Tour finished.');
+        return;
+      }
+      go(index, false);
+      autoTimer = window.setTimeout(function () {
+        if (!autoPlaying) return;
+        performAutoStep(index);
+        var pause = index === 1 ? 1900 : index === 4 ? 1800 : 700;
+        autoTimer = window.setTimeout(function () {
+          runAutoStep(index + 1);
+        }, pause);
+      }, 600);
+    }
+
+    function removeAutoListeners() {
+      document.removeEventListener('pointerdown', autoUserStop, true);
+      document.removeEventListener('keydown', autoUserStop, true);
+      document.removeEventListener('wheel', autoUserStop);
+      document.removeEventListener('touchstart', autoUserStop);
+    }
+
+    function stopAuto(announce) {
+      window.clearTimeout(autoTimer);
+      autoTimer = 0;
+      if (!autoPlaying) return;
+      setPlayState(false);
+      removeAutoListeners();
+      if (announce) announceTour('Tour stopped.');
+    }
+
+    function autoUserStop(event) {
+      if (!event.isTrusted) return;
+      if (playButton && playButton.contains(event.target)) return;
+      stopAuto(true);
+    }
+
+    function startAuto() {
+      if (!playButton || reducedMotion) return;
+      if (autoPlaying) stopAuto(false);
+      setPlayState(true);
+      announceTour('Playing the tour.');
+      document.addEventListener('pointerdown', autoUserStop, true);
+      document.addEventListener('keydown', autoUserStop, true);
+      document.addEventListener('wheel', autoUserStop, { passive: true });
+      document.addEventListener('touchstart', autoUserStop, { passive: true });
+      runAutoStep(0);
+    }
+
+    if (playButton) {
+      playButton.disabled = reducedMotion;
+      if (reducedMotion) playButton.title = 'Auto-play is off when reduced motion is preferred.';
+      playButton.addEventListener('click', function () {
+        if (autoPlaying) stopAuto(true);
+        else startAuto();
+      });
+    }
+
+    if (still && still.addEventListener) {
+      still.addEventListener('change', function (event) {
+        if (!playButton) return;
+        playButton.disabled = event.matches;
+        if (event.matches) {
+          stopAuto(false);
+          playButton.title = 'Auto-play is off when reduced motion is preferred.';
+        } else {
+          playButton.removeAttribute('title');
+        }
+      });
+    }
 
     document.addEventListener('keydown', function (event) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -495,11 +623,24 @@
       setWindowStatus('Saved locally', 'local');
     };
 
+    var notifyTasks = function () {
+      var checks = editor.querySelectorAll('.ed-check');
+      var open = Array.prototype.filter.call(checks, function (check) {
+        return check.getAttribute('aria-pressed') !== 'true';
+      }).length;
+      try {
+        document.dispatchEvent(new CustomEvent('enclave:demo-tasks', { detail: { open: open, total: checks.length } }));
+      } catch (error) {
+        /* CustomEvent is available in every supported browser. */
+      }
+    };
+
     var wireCheck = function (check) {
       check.addEventListener('click', function () {
         var on = check.getAttribute('aria-pressed') === 'true';
         check.setAttribute('aria-pressed', String(!on));
         saved();
+        notifyTasks();
       });
     };
 
@@ -513,6 +654,11 @@
       if (tab) tab.setAttribute('data-window-title', title);
       if (appTitle && document.getElementById('view-editor') && document.getElementById('view-editor').classList.contains('is-active')) {
         appTitle.textContent = title;
+      }
+      try {
+        document.dispatchEvent(new CustomEvent('enclave:demo-title', { detail: { title: title } }));
+      } catch (error) {
+        /* CustomEvent is available in every supported browser. */
       }
       return title;
     };
@@ -584,6 +730,7 @@
           li.appendChild(span);
           edTasks.appendChild(li);
           wireCheck(check);
+          notifyTasks();
         } else if (type === 'callout') {
           var callout = document.createElement('div');
           callout.className = 'ed-inline-callout';
@@ -1166,6 +1313,21 @@
       });
     });
 
+    document.addEventListener('enclave:demo-title', function (event) {
+      var title = event.detail && event.detail.title;
+      if (!title) return;
+      var previous = graphData.roadmap.title;
+      graphData.roadmap.title = title;
+      Object.keys(graphData).forEach(function (key) {
+        graphData[key].links = graphData[key].links.map(function (label) {
+          return label === previous ? title : label;
+        });
+      });
+      var node = graph.querySelector('[data-node="roadmap"]');
+      if (node) node.textContent = title;
+      if (graphSelected) select(graphSelected);
+    });
+
     select(graphSelected);
   }
 
@@ -1174,10 +1336,13 @@
   var aiDemo = document.querySelector('[data-demo="ai"]');
   if (aiDemo) {
     var aiChat = aiDemo.querySelector('[data-ai-chat]');
+    var aiInitial = aiDemo.querySelector('[data-ai-answer]');
     var aiForm = aiDemo.querySelector('[data-ai-form]');
     var aiInput = aiDemo.querySelector('.ai-input');
     var aiSuggestions = Array.prototype.slice.call(aiDemo.querySelectorAll('[data-ai-prompt]'));
     var aiLive = aiDemo.querySelector('[data-ai-live]');
+    var aiContext = aiDemo.querySelector('[data-ai-context]');
+    var aiOpen = aiDemo.querySelector('[data-ai-open-text]');
     var aiTimer = 0;
     var aiTyping = null;
     var aiTypingText = '';
@@ -1233,11 +1398,31 @@
       }
     };
 
+    var currentTitle = function () {
+      var title = document.querySelector('[data-ed-title]');
+      return title ? (title.textContent || '').replace(/\s+/g, ' ').trim() || 'Untitled' : 'Roadmap Q4';
+    };
+
+    var openTaskText = function () {
+      var open = document.querySelectorAll('.ed-check[aria-pressed="false"]').length;
+      if (open === 0) return 'All tasks are done.';
+      if (open === 1) return 'One task is still open.';
+      if (open === 2) return 'Two tasks are still open.';
+      if (open === 3) return 'Three tasks are still open.';
+      return open + ' tasks are still open.';
+    };
+
+    var setOpenTasks = function (open) {
+      if (!aiOpen) return;
+      aiOpen.textContent = open === 0 ? 'All tasks done' : open + (open === 1 ? ' open task' : ' open tasks');
+    };
+
+    var renderInitial = function () {
+      if (!aiInitial) return;
+      aiInitial.textContent = currentTitle() + ' is about shipping encrypted local search, background sync and the split-view polish. ' + openTaskText();
+    };
+
     var aiAnswers = {
-      'Summarise this page': {
-        text: 'Roadmap Q4 is about shipping encrypted local search, background sync and the split-view polish. Three tasks are still open.',
-        cites: [['roadmap', 'Roadmap Q4']]
-      },
       'Find related notes': {
         text: 'Two pages mention this work: Meeting notes — design sync, and Sync design. Both are linked from this page.',
         cites: [['meeting', 'Meeting notes'], ['sync', 'Sync design']]
@@ -1259,6 +1444,13 @@
     };
 
     var answerFor = function (prompt) {
+      if (prompt.toLowerCase().indexOf('summar') !== -1) {
+        var title = currentTitle();
+        return {
+          text: title + ' is about shipping encrypted local search, background sync and the split-view polish. ' + openTaskText(),
+          cites: [['roadmap', title]]
+        };
+      }
       var exact = aiAnswers[prompt];
       if (exact) return exact;
       var key = Object.keys(aiAnswers).find(function (item) {
@@ -1267,7 +1459,7 @@
       if (key) return aiAnswers[key];
       return {
         text: 'This is a sample answer. In the app, the assistant would answer through the endpoint you configured — with no request leaving the local network unless you choose one that does.',
-        cites: [['roadmap', 'Roadmap Q4']]
+        cites: [['roadmap', currentTitle()]]
       };
     };
 
@@ -1277,6 +1469,9 @@
       finishTyping();
       addMessage(text, 'user');
       var answer = answerFor(text);
+      answer.cites = answer.cites.map(function (cite) {
+        return cite[0] === 'roadmap' ? ['roadmap', currentTitle()] : cite;
+      });
       var reply = addMessage('', 'bot');
       if (!reply) return;
       reply.classList.add('is-typing');
@@ -1327,6 +1522,22 @@
     }
 
     aiChat.querySelectorAll('.ai-cites').forEach(wireCites);
+
+    document.addEventListener('enclave:demo-title', function (event) {
+      var title = event.detail && event.detail.title;
+      if (!title) return;
+      if (aiContext) aiContext.textContent = title;
+      aiChat.querySelectorAll('[data-cite="roadmap"]').forEach(function (button) {
+        button.textContent = title;
+      });
+      renderInitial();
+    });
+
+    document.addEventListener('enclave:demo-tasks', function (event) {
+      if (!event.detail) return;
+      setOpenTasks(event.detail.open);
+      renderInitial();
+    });
   }
 
   /* ---------- Roadmap ---------- */

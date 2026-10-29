@@ -11,6 +11,7 @@
  * references a local asset that was not produced, so a broken image cannot
  * reach the deployed site unnoticed.
  */
+import { createHash } from 'node:crypto';
 import { copyFile, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -25,7 +26,6 @@ const copies = [
   ['docs/brand/lockup-dark.svg', 'assets/brand/lockup-dark.svg'],
   ['docs/brand/logo-tile.svg', 'assets/brand/logo-tile.svg'],
   ['docs/brand/social-preview.png', 'assets/brand/social-preview.png'],
-  ['apps/frontend/static/fonts/InterVariable.woff2', 'assets/fonts/InterVariable.woff2'],
   ['apps/frontend/static/fonts/Inter-OFL.txt', 'assets/fonts/Inter-OFL.txt'],
 ];
 
@@ -100,6 +100,25 @@ for (const reference of references) {
   if (!existsSync(path.join(output, reference))) {
     throw new Error(`index.html references a missing local file: ${reference}`);
   }
+}
+
+/* The inline SoftwareApplication JSON-LD is allowed by a CSP hash. Keep the
+ * hash in step with the schema; a stale hash silently blocks the script. */
+const schema = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+if (!schema) {
+  throw new Error('index.html is missing the SoftwareApplication JSON-LD');
+}
+
+const schemaHash = createHash('sha256').update(schema[1]).digest('base64');
+if (!html.includes(`'sha256-${schemaHash}'`)) {
+  throw new Error(
+    `The CSP schema hash is stale; expected 'sha256-${schemaHash}' in the script-src directive`,
+  );
+}
+
+const siteFont = path.join(output, 'assets/fonts/InterVariable-site.woff2');
+if (!existsSync(siteFont)) {
+  throw new Error('Missing site font: assets/fonts/InterVariable-site.woff2');
 }
 
 /* GitHub Pages otherwise runs Jekyll over the uploaded artifact. */

@@ -8,7 +8,7 @@
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('assets/fonts/InterVariable.woff2') format('woff2');
+  src: url('assets/fonts/InterVariable-site.woff2') format('woff2');
 }
 
 /* ---------- Tokens ---------- */
@@ -1061,6 +1061,44 @@ kbd {
   margin-left: auto;
 }
 
+.tour-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 28px;
+  padding: 0 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.tour-play .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.tour-play:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tour-play.is-playing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tour-play:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .tour-counter {
   color: var(--muted);
   font-family: var(--font-mono);
@@ -1668,8 +1706,8 @@ kbd {
 .ed-check {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   flex: none;
   padding: 0;
   border: 1.5px solid var(--border-strong);
@@ -4184,6 +4222,131 @@ html.palette-open body {
   height: 13px;
 }
 
+/* ---------- Install help ---------- */
+
+.install-help {
+  margin-top: 1.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.install-help summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.install-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.install-help summary::after {
+  content: '+';
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1;
+  transition: rotate 0.25s var(--ease);
+}
+
+.install-help[open] summary::after {
+  rotate: 45deg;
+}
+
+.install-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 0.2rem 0 1rem;
+}
+
+.install-grid h3 {
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
+}
+
+.install-grid p {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.install-verify {
+  padding: 0.8rem 0 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.install-verify code {
+  font-size: 0.92em;
+}
+
+/* ---------- Legal / privacy ---------- */
+
+.legal-page {
+  max-width: 760px;
+  padding-block: clamp(3rem, 7vw, 5.5rem) clamp(4rem, 8vw, 7rem);
+}
+
+.legal-page h1 {
+  margin-top: 1rem;
+  font-size: clamp(2.4rem, 1.5rem + 3.2vw, 4rem);
+  letter-spacing: -0.045em;
+}
+
+.legal-page h2 {
+  margin-top: 2.3rem;
+  font-size: clamp(1.3rem, 1.15rem + 0.7vw, 1.65rem);
+  letter-spacing: -0.02em;
+}
+
+.legal-page p,
+.legal-page li {
+  color: var(--muted);
+  font-size: 0.96rem;
+  line-height: 1.7;
+}
+
+.legal-page p {
+  margin-top: 0.9rem;
+}
+
+.legal-page ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.9rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.legal-page a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.legal-page a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.legal-meta {
+  margin-top: 1rem;
+  color: var(--faint) !important;
+  font-size: 0.78rem !important;
+}
+
+.legal-page .label {
+  margin-top: 0.5rem;
+}
+
 /* ---------- Docs ---------- */
 
 .docs-layout {
@@ -4553,6 +4716,10 @@ html.lightbox-open body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .install-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .download-card {
     min-height: 170px;
   }
@@ -4764,6 +4931,10 @@ html.lightbox-open body {
   }
 
   .download-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .install-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
