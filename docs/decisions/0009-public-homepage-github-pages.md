@@ -50,6 +50,17 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   with scroll; elsewhere, and under reduced motion, the tabs switch views in
   place. The demos use fixed sample data; they do not open a vault, fetch or
   persist anything.
+- **The roadmap is a rendering of the plan, not a promise list.** A small
+  Now/Next/Then panel pulls its features and exit criteria from
+  `docs/plans/dedicated-native-apps.md` and `docs/STATUS.md`, and a
+  "Deliberately not planned" row records the plan's non-goals. It adds no
+  dates, durations or features of its own.
+- **A command palette is the page's keyboard layer.** `/` or `Ctrl/⌘K` (or the
+  header search button) opens a filtered list of sections, tour views and the
+  theme. It drives the existing links and tab buttons, so it adds no content or
+  network requests. It is progressive enhancement; without scripting the
+  roadmap's first phase is still readable, while the palette trigger and the
+  phase tabs are hidden rather than left inert.
 - **Shared assets are copied at build time, never duplicated in git.**
   `scripts/build-site.mjs` assembles `site-dist/` from `site/` plus
   `docs/brand/*`, `docs/screenshots/*.png` and
@@ -102,6 +113,9 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   reduced-motion testing, and its sample content can drift from the app. It is
   deliberately scoped to five thin demos, not a second editor and not a real
   vault.
+- The roadmap can drift from the plan and STATUS; those documents stay
+  canonical and the panel links to them. Adding a section or a tour view means
+  updating the palette's action map as well as the markup.
 - `404.html` is the only page allowed inline CSS. Its styles are a small,
   deliberate duplicate so the fallback cannot break on a deep path or in local
   preview; the lockup itself is still injected from the one brand source.

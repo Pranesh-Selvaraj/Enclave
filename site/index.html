@@ -82,6 +82,7 @@
         <a href="#tour">Tour</a>
         <a href="#features">Features</a>
         <a href="#security">Security</a>
+        <a href="#roadmap">Roadmap</a>
         <a href="#faq">FAQ</a>
         <a href="#download">Download</a>
         <a href="#docs">Docs</a>
@@ -91,6 +92,9 @@
         <a class="icon-btn github-link" href="https://github.com/Pranesh-Selvaraj/Enclave" aria-label="Enclave on GitHub">
           <svg class="icon icon-fill" aria-hidden="true"><use href="#i-github"/></svg>
         </a>
+        <button class="icon-btn palette-trigger" type="button" aria-label="Open command palette" title="Command palette (/ or Ctrl/⌘K)" data-palette-open>
+          <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+        </button>
         <button class="icon-btn theme-toggle" type="button" aria-label="Toggle color theme">
           <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
           <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
@@ -123,7 +127,7 @@
           </a>
           <a class="btn btn-secondary" href="#app" data-tour-start>Take the tour <svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg></a>
         </div>
-        <p class="hero-note rise">Works offline · No account · MIT licensed</p>
+        <p class="hero-note rise">Works offline · No account · MIT licensed <span class="hero-kbd-hint">Press <kbd>/</kbd> to jump anywhere</span></p>
       </div>
 
       <div class="wrap hero-live" id="app" data-track data-views="5">
@@ -549,6 +553,107 @@
       </div>
     </section>
 
+
+    <section class="section" id="roadmap" aria-labelledby="roadmap-title">
+      <div class="wrap roadmap-layout">
+        <header class="roadmap-head" data-reveal>
+          <p class="label">Roadmap</p>
+          <h2 id="roadmap-title">The next Enclave is <span class="hl">being built in the open.</span></h2>
+          <p class="lead">No dates dressed up as deadlines. Each phase ends when its exit criteria are met, and the stable release stays supported while the native apps land.</p>
+          <ul class="roadmap-done" aria-label="Already in place">
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> One Rust core</li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Versioned contract</li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Native Android slice</li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Encrypted backup &amp; restore</li>
+          </ul>
+          <div class="roadmap-links">
+            <a class="text-link" href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/plans/dedicated-native-apps.md">Read the plan <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            <a class="text-link" href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/STATUS.md">Follow the status <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          </div>
+        </header>
+
+        <div class="roadmap-panel" data-roadmap data-reveal>
+          <div class="roadmap-tabs" role="tablist" aria-label="Roadmap phases">
+            <button class="roadmap-tab" type="button" role="tab" id="roadmap-tab-now" aria-controls="roadmap-now" aria-selected="true" tabindex="0">
+              <span class="phase-kicker">Now</span>
+              <span class="phase-name">Native Android</span>
+            </button>
+            <button class="roadmap-tab" type="button" role="tab" id="roadmap-tab-next" aria-controls="roadmap-next" aria-selected="false" tabindex="-1">
+              <span class="phase-kicker">Next</span>
+              <span class="phase-name">Native desktop</span>
+            </button>
+            <button class="roadmap-tab" type="button" role="tab" id="roadmap-tab-then" aria-controls="roadmap-then" aria-selected="false" tabindex="-1">
+              <span class="phase-kicker">Then</span>
+              <span class="phase-name">Parity &amp; rollout</span>
+            </button>
+          </div>
+
+          <div class="roadmap-stage">
+            <article class="roadmap-pane is-active" id="roadmap-now" role="tabpanel" aria-labelledby="roadmap-tab-now">
+              <header class="roadmap-pane-head">
+                <p class="phase-status"><i></i> In progress</p>
+                <h3>Android, release-ready.</h3>
+                <p>The Compose app runs on the same Rust core as the desktop app. The remaining work is confidence, not a rewrite.</p>
+              </header>
+              <ul class="phase-list">
+                <li>Real-device pass: widgets, background sync, share target, backup and restore.</li>
+                <li>Cross-editor parity with the web editor, including tables, tasks and marks.</li>
+                <li>Instrumented tests for the vault flow and the widget cache.</li>
+                <li>The last settings gaps and the polish pass on the primary screens.</li>
+              </ul>
+              <div class="phase-exit">
+                <p class="label">Exit criteria</p>
+                <p>A published parity checklist, background sync measured on a real phone, and a TalkBack pass on the primary flows.</p>
+              </div>
+            </article>
+
+            <article class="roadmap-pane" id="roadmap-next" role="tabpanel" aria-labelledby="roadmap-tab-next" inert>
+              <header class="roadmap-pane-head">
+                <p class="phase-status phase-status-gate"><i></i> Decision gate</p>
+                <h3>A native desktop, with no browser engine.</h3>
+                <p>Once the desktop stack gate closes, the native shell follows on the same core — with the platform integration a webview cannot give.</p>
+              </header>
+              <ul class="phase-list">
+                <li>Vault flow, sidebar, editor, whiteboard, databases, graph and split view.</li>
+                <li>Command palette, settings, tray and wallpaper widgets.</li>
+                <li>Native menus, file dialogs, drag-and-drop and notifications.</li>
+                <li>Signed installers and verified updates on Linux, Windows and macOS.</li>
+              </ul>
+              <div class="phase-exit">
+                <p class="label">Exit criteria</p>
+                <p>Feature parity with the desktop Tauri app, a screen-reader and keyboard-only pass, and signed updates verified on all three OSes.</p>
+              </div>
+            </article>
+
+            <article class="roadmap-pane" id="roadmap-then" role="tabpanel" aria-labelledby="roadmap-tab-then" inert>
+              <header class="roadmap-pane-head">
+                <p class="phase-status phase-status-gated"><i></i> Criteria-gated</p>
+                <h3>Two native apps, one vault.</h3>
+                <p>Parity is proven by interop tests, not manual demos. The native apps ship alongside the Tauri app until every surface matches, then the webview shell is retired.</p>
+              </header>
+              <ul class="phase-list">
+                <li>The cross-app interop matrix in CI: Tauri ↔ native Android ↔ native desktop.</li>
+                <li>Release pipelines for both native apps: signing, versioning, changelog.</li>
+                <li>Vault migrations tested against every released fixture.</li>
+                <li>Retire Tauri only when the parity checklist is green.</li>
+              </ul>
+              <div class="phase-exit">
+                <p class="label">Exit criteria</p>
+                <p>A v1.13 vault opens in both native apps, syncs with an unmodified Tauri app, and the Tauri app can be removed without losing features or data.</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="roadmap-not">
+            <p class="label">Deliberately not planned</p>
+            <p>iOS is not in this plan, though the versioned contract is designed not to preclude it. There is no cloud relay, account or telemetry, no shared UI framework between the apps, and no rewrite of the vault, crypto or sync protocol.</p>
+          </div>
+
+          <p class="roadmap-note"><strong>Criteria-driven, never calendar-driven.</strong> A phase ends when its exit criteria are met. <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/plans/dedicated-native-apps.md">Read the full plan <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></p>
+        </div>
+      </div>
+    </section>
+
     <section class="section section-alt" id="faq" aria-labelledby="faq-title">
       <div class="wrap faq-grid">
         <header class="section-head" data-reveal>
@@ -670,6 +775,7 @@
             <a href="#features">Features</a>
             <a href="#android">Android</a>
             <a href="#security">Security</a>
+            <a href="#roadmap">Roadmap</a>
             <a href="#download">Download</a>
           </div>
           <div>
@@ -706,6 +812,41 @@
       </button>
       <img id="lightbox-img" src="assets/screenshots/mobile-home.png" alt="">
       <p class="lightbox-caption" id="lightbox-caption"></p>
+    </div>
+  </dialog>
+
+
+  <dialog class="palette" id="palette" aria-labelledby="palette-title">
+    <div class="palette-inner">
+      <div class="palette-search">
+        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="palette-input" type="text" placeholder="Jump to a section or a demo…" aria-label="Command palette search" role="combobox" aria-expanded="false" aria-controls="palette-list" aria-autocomplete="list" autocomplete="off" spellcheck="false">
+        <kbd>Esc</kbd>
+      </div>
+      <p class="sr-only" id="palette-title">Command palette</p>
+      <ul class="palette-list" id="palette-list" role="listbox" aria-label="Commands">
+        <li><button type="button" role="option" tabindex="-1" data-command="tour" data-keywords="start live demo window"><svg class="icon" aria-hidden="true"><use href="#i-compass"/></svg><span>Take the tour</span><small>Start at the live window</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="editor" data-keywords="write blocks tasks note"><svg class="icon" aria-hidden="true"><use href="#i-pen"/></svg><span>Editor — write in blocks</span><small>Try the editor</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="sync" data-keywords="devices wifi p2p send"><svg class="icon" aria-hidden="true"><use href="#i-network"/></svg><span>Sync — send a change</span><small>Two devices, one change</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="board" data-keywords="whiteboard sticky canvas"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg><span>Whiteboard — drag a note</span><small>Try the canvas</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="graph" data-keywords="links backlinks map"><svg class="icon" aria-hidden="true"><use href="#i-graph"/></svg><span>Graph — follow links</span><small>Explore the map</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="ai" data-keywords="assistant local ollama model"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg><span>Local AI — ask a question</span><small>Sample answers</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="roadmap" data-keywords="next future plan native desktop rollout"><svg class="icon" aria-hidden="true"><use href="#i-compass"/></svg><span>What's next</span><small>Criteria-driven roadmap</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="features" data-keywords="local-first offline storage"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span>Features</span><small>Why Enclave</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="security" data-keywords="encryption vault crypto argon2"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span>Security model</span><small>Trust boundaries</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="android" data-keywords="phone beta apk mobile"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span>Android beta</span><small>The same vault, in your pocket</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="faq" data-keywords="questions answers offline phrase"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>FAQ</span><small>Answers before trust</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="download" data-keywords="install release linux windows mac android"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Go to downloads</span><small>Latest stable release</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="docs" data-keywords="documentation readme changelog decisions"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>Documentation</span><small>Built in the open</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="theme" data-keywords="dark light appearance toggle"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span>Toggle light/dark theme</span><small>Appearance</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="github" data-keywords="repository source code issues"><svg class="icon icon-fill" aria-hidden="true"><use href="#i-github"/></svg><span>Open the GitHub repository</span><small>Source · issues · releases</small></button></li>
+      </ul>
+      <p class="palette-empty" data-palette-empty hidden>No matching commands.</p>
+      <div class="palette-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> open</span>
+        <span><kbd>Esc</kbd> close</span>
+      </div>
     </div>
   </dialog>
 

@@ -19,6 +19,7 @@
   }
 
   root.setAttribute('data-theme', theme);
+  root.classList.add('has-js');
 
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {

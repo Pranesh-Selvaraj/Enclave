@@ -256,6 +256,22 @@ section[id] {
   stroke: none;
 }
 
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68em;
+  line-height: 1.45;
+  text-align: center;
+  vertical-align: 0.08em;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -415,6 +431,14 @@ section[id] {
   border-color: var(--border-strong);
 }
 
+.palette-trigger {
+  display: none;
+}
+
+.has-js .palette-trigger {
+  display: inline-grid;
+}
+
 .text-link {
   display: inline-flex;
   align-items: center;
@@ -545,7 +569,7 @@ section[id] {
 }
 
 .site-nav a {
-  padding: 0.4rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   border-radius: var(--r-sm);
   color: var(--muted);
   font-size: 0.9rem;
@@ -658,6 +682,19 @@ section[id] {
 .hero-note {
   color: var(--faint);
   font-size: 0.8rem;
+}
+
+.hero-kbd-hint {
+  display: none;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.65rem;
+  padding-left: 0.65rem;
+  border-left: 1px solid var(--border);
+}
+
+.has-js .hero-kbd-hint {
+  display: inline-flex;
 }
 
 .rise {
@@ -2897,6 +2934,459 @@ html.js [data-reveal].is-in {
   font-size: 0.68rem;
 }
 
+
+/* ---------- Roadmap ---------- */
+
+.roadmap-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: clamp(2rem, 5vw, 4.5rem);
+}
+
+.roadmap-head {
+  position: sticky;
+  top: 100px;
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+}
+
+.roadmap-head .lead {
+  margin-top: 0;
+}
+
+.roadmap-done {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roadmap-done li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.roadmap-done .icon {
+  width: 11px;
+  height: 11px;
+  color: var(--success);
+}
+
+.roadmap-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.3rem;
+}
+
+.roadmap-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+html:not(.has-js) .roadmap-tabs {
+  display: none;
+}
+
+.roadmap-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.roadmap-tab {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.8rem 0.95rem;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--faint);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.roadmap-tab:last-child {
+  border-right: 0;
+}
+
+.roadmap-tab:hover {
+  background: var(--well);
+  color: var(--text-2);
+}
+
+.roadmap-tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.phase-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.roadmap-tab[aria-selected='true'] .phase-kicker {
+  color: var(--accent);
+}
+
+.phase-name {
+  overflow: hidden;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roadmap-stage {
+  min-height: 360px;
+}
+
+.roadmap-pane {
+  display: none;
+  padding: 1.35rem 1.5rem 1.45rem;
+}
+
+.roadmap-pane.is-active {
+  display: block;
+  animation: pane-in 0.3s var(--ease);
+}
+
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.roadmap-pane-head {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.phase-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: start;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.phase-status i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.phase-status:not(.phase-status-gate):not(.phase-status-gated) i {
+  animation: status-pulse 2.8s var(--ease) infinite;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent);
+  }
+  55% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+.phase-status-gate {
+  color: var(--warning);
+}
+
+.phase-status-gated {
+  color: var(--faint);
+}
+
+.roadmap-pane-head h3 {
+  margin-top: 0.25rem;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.roadmap-pane-head p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.phase-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phase-list li {
+  display: flex;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.phase-list li::before {
+  content: '→';
+  flex: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.7;
+}
+
+.phase-exit {
+  margin-top: 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.phase-exit p:last-child {
+  margin-top: 0.25rem;
+  color: var(--text-2);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.roadmap-not {
+  padding: 1rem 1.5rem 1.2rem;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.roadmap-not p:last-child {
+  margin-top: 0.35rem;
+  color: var(--faint);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.roadmap-note {
+  padding: 0.85rem 1.5rem 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.roadmap-note strong {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.roadmap-note a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: 0.25rem;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roadmap-note a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.roadmap-note .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---------- Command palette ---------- */
+
+.palette {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(74vh, 680px);
+  margin: 0;
+  padding: 0;
+  translate: -50% 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 34px 90px -36px var(--shadow-color);
+}
+
+.palette::backdrop {
+  background: rgba(8, 7, 5, 0.72);
+}
+
+html.palette-open,
+html.palette-open body {
+  overflow: hidden;
+}
+
+.palette-inner {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+}
+
+.palette[open] .palette-inner {
+  animation: palette-in 0.18s var(--ease);
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.995);
+  }
+}
+
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-search .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--faint);
+}
+
+.palette-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.94rem;
+}
+
+.palette-search input::placeholder {
+  color: var(--faint);
+}
+
+.palette-search input:focus-visible {
+  outline: none;
+}
+
+.palette-search:focus-within {
+  background: var(--panel);
+}
+
+.palette-list {
+  margin: 0;
+  padding: 0.4rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.palette-list button {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette-list button .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--faint);
+}
+
+.palette-list button span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-list button small {
+  flex: none;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.palette-list button.is-active,
+.palette-list button:hover {
+  border-color: var(--border);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.palette-list button.is-active .icon {
+  color: var(--accent);
+}
+
+.palette-empty {
+  padding: 1rem;
+  color: var(--faint);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.palette-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 0.66rem;
+}
+
+.palette-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 /* ---------- FAQ ---------- */
 
 .faq-grid {
@@ -3430,6 +3920,22 @@ html.lightbox-open body {
   }
 }
 
+@media (max-width: 1100px) {
+  .head-cta {
+    padding-inline: 0.65rem;
+  }
+
+  .head-cta span {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .github-link {
+    display: none;
+  }
+}
+
 @media (max-width: 960px) {
   .menu-btn {
     display: inline-grid;
@@ -3468,14 +3974,16 @@ html.lightbox-open body {
   .android-grid,
   .security-layout,
   .faq-grid,
-  .docs-layout {
+  .docs-layout,
+  .roadmap-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 2.5rem;
   }
 
   .security-head,
   .faq-grid .section-head,
-  .docs-layout .section-head {
+  .docs-layout .section-head,
+  .roadmap-head {
     position: static;
   }
 
@@ -3533,6 +4041,10 @@ html.lightbox-open body {
 
   .hero-chip {
     white-space: normal;
+  }
+
+  .has-js .hero-kbd-hint {
+    display: none;
   }
 
   .hero-live {
@@ -3698,6 +4210,34 @@ html.lightbox-open body {
 
   .foot-mark img {
     width: 100%;
+  }
+
+  .roadmap-tab {
+    padding: 0.7rem;
+  }
+
+  .phase-name {
+    font-size: 0.78rem;
+    white-space: normal;
+  }
+
+  .roadmap-pane {
+    padding: 1.1rem 1rem 1.2rem;
+  }
+
+  .roadmap-not,
+  .roadmap-note {
+    padding-inline: 1rem;
+  }
+
+  .palette {
+    top: 8vh;
+    width: calc(100vw - 16px);
+    max-height: 78vh;
+  }
+
+  .palette-list button small {
+    display: none;
   }
 
   .lightbox {

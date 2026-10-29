@@ -270,6 +270,19 @@
       });
     }
 
+    var tourStart = document.querySelector('[data-tour-start]');
+    if (tourStart) {
+      tourStart.addEventListener('click', function (event) {
+        event.preventDefault();
+        var editorTab = document.getElementById('tab-editor');
+        if (editorTab) editorTab.click();
+        if (!scrolling()) {
+          var app = document.getElementById('app');
+          if (app) app.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+        }
+      });
+    }
+
     window.addEventListener('scroll', soon, { passive: true });
     window.addEventListener('resize', soon);
     if (scrollMedia) {
@@ -705,6 +718,245 @@
         ask(value);
       });
     }
+  }
+
+  /* ---------- Roadmap ---------- */
+
+  var roadmap = document.querySelector('[data-roadmap]');
+  if (roadmap) {
+    var roadmapTabs = Array.prototype.slice.call(roadmap.querySelectorAll('[role="tab"]'));
+    var roadmapPanes = roadmapTabs.map(function (tab) {
+      return document.getElementById(tab.getAttribute('aria-controls'));
+    });
+
+    var showPhase = function (index, focus) {
+      roadmapTabs.forEach(function (tab, i) {
+        var on = i === index;
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+        if (roadmapPanes[i]) {
+          roadmapPanes[i].classList.toggle('is-active', on);
+          if (on) roadmapPanes[i].removeAttribute('inert');
+          else roadmapPanes[i].setAttribute('inert', '');
+        }
+      });
+      if (focus) roadmapTabs[index].focus();
+    };
+
+    roadmapTabs.forEach(function (tab, i) {
+      tab.addEventListener('click', function () {
+        showPhase(i, false);
+      });
+    });
+
+    var roadmapStrip = roadmap.querySelector('.roadmap-tabs');
+    if (roadmapStrip) {
+      roadmapStrip.addEventListener('keydown', function (event) {
+        var current = roadmapTabs.findIndex(function (tab) {
+          return tab.getAttribute('aria-selected') === 'true';
+        });
+        var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+        var next;
+        if (step) next = (current + step + roadmapTabs.length) % roadmapTabs.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = roadmapTabs.length - 1;
+        else return;
+        event.preventDefault();
+        showPhase(next, true);
+      });
+    }
+
+    showPhase(0, false);
+  }
+
+  /* ---------- Command palette ---------- */
+
+  var palette = document.getElementById('palette');
+  if (palette) {
+    var paletteInput = document.getElementById('palette-input');
+    var paletteList = document.getElementById('palette-list');
+    var paletteEmpty = palette.querySelector('[data-palette-empty]');
+    var paletteItems = Array.prototype.slice.call(paletteList.querySelectorAll('li'));
+    var paletteActive = 0;
+    var paletteOrigin = null;
+
+    paletteItems.forEach(function (item, i) {
+      var option = item.querySelector('button');
+      if (option) option.id = 'palette-option-' + i;
+    });
+
+    var visibleOptions = function () {
+      return paletteItems.filter(function (item) {
+        return !item.hidden;
+      });
+    };
+
+    var setPaletteActive = function (index) {
+      var items = visibleOptions();
+      if (!items.length) {
+        paletteActive = -1;
+        paletteInput.removeAttribute('aria-activedescendant');
+        return;
+      }
+      paletteActive = (index + items.length) % items.length;
+      items.forEach(function (item, i) {
+        var option = item.querySelector('button');
+        var on = i === paletteActive;
+        option.classList.toggle('is-active', on);
+        option.setAttribute('aria-selected', String(on));
+        if (on) {
+          paletteInput.setAttribute('aria-activedescendant', option.id);
+          option.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    };
+
+    var filterPalette = function () {
+      var query = paletteInput.value.trim().toLowerCase();
+      paletteItems.forEach(function (item) {
+        var option = item.querySelector('button');
+        var haystack = (option.textContent + ' ' + (option.getAttribute('data-keywords') || '')).toLowerCase();
+        item.hidden = !!query && haystack.indexOf(query) === -1;
+      });
+      var any = visibleOptions().length > 0;
+      if (paletteEmpty) paletteEmpty.hidden = any;
+      setPaletteActive(0);
+    };
+
+    var openPalette = function (origin) {
+      paletteOrigin = origin && typeof origin.focus === 'function' ? origin : null;
+      paletteInput.value = '';
+      paletteItems.forEach(function (item) {
+        item.hidden = false;
+      });
+      if (paletteEmpty) paletteEmpty.hidden = true;
+      palette.showModal();
+      root.classList.add('palette-open');
+      paletteInput.setAttribute('aria-expanded', 'true');
+      setPaletteActive(0);
+      paletteList.scrollTop = 0;
+      paletteInput.focus();
+    };
+
+    var closePalette = function () {
+      if (palette.open) palette.close();
+    };
+
+    var scrollToId = function (id) {
+      var target = document.getElementById(id);
+      if (!target) return;
+      target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    };
+
+    var runCommand = function (command) {
+      var views = {
+        editor: 'tab-editor',
+        sync: 'tab-sync',
+        board: 'tab-board',
+        graph: 'tab-graph',
+        ai: 'tab-ai'
+      };
+      var sections = {
+        features: 'features',
+        security: 'security',
+        roadmap: 'roadmap',
+        android: 'android',
+        faq: 'faq',
+        download: 'download',
+        docs: 'docs'
+      };
+
+      if (command === 'tour') {
+        var tourTab = document.getElementById('tab-editor');
+        if (tourTab) tourTab.click();
+        if (!hero || !hero.hasAttribute('data-scroll')) scrollToId('app');
+        return;
+      }
+      if (views[command]) {
+        var tab = document.getElementById(views[command]);
+        if (tab) tab.click();
+        if (!hero || !hero.hasAttribute('data-scroll')) scrollToId('app');
+        return;
+      }
+      if (command === 'theme') {
+        var themeButton = document.querySelector('.theme-toggle');
+        if (themeButton) themeButton.click();
+        return;
+      }
+      if (command === 'github') {
+        window.location.href = 'https://github.com/Pranesh-Selvaraj/Enclave';
+        return;
+      }
+      if (sections[command]) scrollToId(sections[command]);
+    };
+
+    var executePalette = function (option) {
+      var command = option.getAttribute('data-command');
+      closePalette();
+      window.setTimeout(function () {
+        runCommand(command);
+      }, 0);
+    };
+
+    document.querySelectorAll('[data-palette-open]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        openPalette(button);
+      });
+    });
+
+    paletteInput.addEventListener('input', filterPalette);
+
+    paletteInput.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setPaletteActive(paletteActive + 1);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setPaletteActive(paletteActive - 1);
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        var visible = visibleOptions();
+        var item = visible[paletteActive];
+        if (item) executePalette(item.querySelector('button'));
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closePalette();
+      }
+    });
+
+    paletteItems.forEach(function (item) {
+      var option = item.querySelector('button');
+      if (!option) return;
+      option.addEventListener('click', function () {
+        executePalette(option);
+      });
+    });
+
+    palette.addEventListener('click', function (event) {
+      if (event.target === palette) closePalette();
+    });
+
+    palette.addEventListener('close', function () {
+      root.classList.remove('palette-open');
+      paletteInput.setAttribute('aria-expanded', 'false');
+      if (paletteOrigin) paletteOrigin.focus();
+      paletteOrigin = null;
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (palette.open) return;
+      var target = event.target;
+      var typing = target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]');
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openPalette(target);
+        return;
+      }
+      if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        openPalette(target);
+      }
+    });
   }
 
   /* ---------- Downloads for this computer ---------- */
