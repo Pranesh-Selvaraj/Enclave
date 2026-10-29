@@ -749,6 +749,11 @@ h1 {
 }
 
 .mobile-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(200px, 0.8fr) minmax(0, 3fr);
+  align-items: center;
+  gap: 1.5rem;
   padding: 1.35rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -769,12 +774,9 @@ h1 {
 
 .mobile-row {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 112px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.7rem;
-  margin-top: 1.1rem;
   padding-bottom: 0.4rem;
-  overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
@@ -1257,6 +1259,11 @@ html.lightbox-open body {
     padding-left: 1.25rem;
     border-left: 1px solid var(--border);
   }
+
+  .mobile-panel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1274,6 +1281,14 @@ html.lightbox-open body {
   .feature-grid,
   .docs-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mobile-row {
+    grid-auto-flow: column;
+    grid-auto-columns: 128px;
+    grid-template-columns: none;
+    margin-top: 0.25rem;
+    overflow-x: auto;
   }
 
   .shot-wide {
