@@ -579,7 +579,8 @@ kbd {
   transition: background 0.16s ease, color 0.16s ease;
 }
 
-.site-nav a:hover {
+.site-nav a:hover,
+.site-nav a.is-current {
   background: var(--well);
   color: var(--text);
 }
@@ -1024,7 +1025,7 @@ kbd {
   flex: none;
   align-items: center;
   gap: 0.3rem;
-  height: 26px;
+  height: 28px;
   padding: 0 0.5rem;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -1407,7 +1408,8 @@ kbd {
 }
 
 .ed-mode {
-  padding: 0.18rem 0.42rem;
+  min-height: 24px;
+  padding: 0.22rem 0.5rem;
   border: 0;
   border-radius: 4px;
   background: none;
@@ -2299,12 +2301,12 @@ button.board-tool:hover {
 
 .sticky-remove {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 3px;
+  right: 3px;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid rgba(51, 38, 7, 0.22);
   border-radius: 4px;
@@ -2320,8 +2322,8 @@ button.board-tool:hover {
 }
 
 .sticky-remove .icon {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
 }
 
 .board-sticky:hover .sticky-remove,
@@ -2491,8 +2493,8 @@ button.board-tool:hover {
 .graph-controls button {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -2508,8 +2510,8 @@ button.board-tool:hover {
 }
 
 .graph-controls .icon {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
 }
 
 .graph-node {
@@ -2692,7 +2694,8 @@ button.board-tool:hover {
 }
 
 .ai-cites button {
-  padding: 0.17rem 0.42rem;
+  min-height: 24px;
+  padding: 0.22rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
@@ -3318,6 +3321,12 @@ html.js [data-reveal].is-in {
 
 .android-copy .lead {
   margin-top: 0;
+}
+
+.android-source {
+  margin-top: -0.55rem;
+  color: var(--faint);
+  font-size: 0.72rem;
 }
 
 .android-copy .cta-row {
@@ -4011,6 +4020,7 @@ html.palette-open body {
 }
 
 .download-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 185px;
@@ -4030,6 +4040,23 @@ html.palette-open body {
 .download-card.is-you {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.download-card.is-you::after {
+  content: 'This device';
+  position: absolute;
+  top: 1.1rem;
+  right: 1.1rem;
+  padding: 0.16rem 0.42rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .os-tag {
@@ -4447,7 +4474,7 @@ html.lightbox-open body {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1150px) {
   .head-cta {
     padding-inline: 0.65rem;
   }
@@ -4576,6 +4603,12 @@ html.lightbox-open body {
 
   .fine-keys {
     display: none;
+  }
+
+  .tour-tabs,
+  .tour-try {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
   }
 
   .tour-try {

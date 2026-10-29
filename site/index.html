@@ -87,6 +87,7 @@
       <nav class="site-nav" id="site-nav" aria-label="Main">
         <a href="#tour">Tour</a>
         <a href="#features">Features</a>
+        <a href="#android">Android</a>
         <a href="#security">Security</a>
         <a href="#roadmap">Roadmap</a>
         <a href="#faq">FAQ</a>
@@ -523,6 +524,7 @@
             <a class="btn btn-secondary" href="https://github.com/Pranesh-Selvaraj/Enclave/issues">Known gaps <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
           </div>
           <p class="hero-note">arm64 · signed APK · beta</p>
+          <p class="android-source">Screenshots from the current Android build.</p>
         </div>
         <div class="phone-row" data-reveal>
           <a class="phone-shot" href="assets/screenshots/mobile-home.png" data-caption="Android — home in Cards layout">
@@ -739,6 +741,14 @@
             <summary>Why is Android still beta?</summary>
             <p>The native Android app is part of the move away from the old webview shell. It builds, signs and runs the same encrypted core, but real-device sync, widgets and a TalkBack pass are still tracked as open work.</p>
           </details>
+          <details>
+            <summary>What does the AI assistant send?</summary>
+            <p>Only the prompt and page context you ask it to use, and only to the endpoint you configure. With a local endpoint such as Ollama, nothing leaves your machine; Enclave has no cloud AI service. The homepage demo uses sample answers and sends nothing.</p>
+          </details>
+          <details>
+            <summary>Does sync work over the internet?</summary>
+            <p>No. There is no Enclave relay: devices discover each other on the same local network and sync directly. If mDNS is blocked, add a peer by address. Remote sync is not part of the current plan.</p>
+          </details>
         </div>
       </div>
     </section>
@@ -891,6 +901,7 @@
         <li><button type="button" role="option" tabindex="-1" data-command="faq" data-keywords="questions answers offline phrase"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>FAQ</span><small>Answers before trust</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="download" data-keywords="install release linux windows mac android"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Go to downloads</span><small>Latest stable release</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="docs" data-keywords="documentation readme changelog decisions"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>Documentation</span><small>Built in the open</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="copy-view" data-keywords="share url link current view"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy link to this view</span><small>Share the open demo</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="theme" data-keywords="dark light appearance toggle"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span>Toggle light/dark theme</span><small>Appearance</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="github" data-keywords="repository source code issues"><svg class="icon icon-fill" aria-hidden="true"><use href="#i-github"/></svg><span>Open the GitHub repository</span><small>Source · issues · releases</small></button></li>
       </ul>

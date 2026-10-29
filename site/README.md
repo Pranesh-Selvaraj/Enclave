@@ -39,7 +39,9 @@ On screens at least 1100×640 the window pins and the tab strip becomes a step
 rail that advances with scroll. Everywhere else — and whenever the visitor
 prefers reduced motion — the tabs stay above the window and switch views in
 place. Prev/next and a `01 / 05` counter sit under the window; `1`–`5` switch
-views while the tour is on screen.
+views while the tour is on screen. Each view is addressable: `?view=editor`,
+`?view=sync`, `?view=board`, `?view=graph` or `?view=ai` opens that step, and the
+command palette's "Copy link to this view" copies the current one.
 
 A **Try** row above the fine print runs one guided action per view: tick a
 task, send a phone change, add a sticky, follow a graph link, ask the local
@@ -65,11 +67,12 @@ records the plan's non-goals. It contains no dates or durations — a phase ends
 when its exit criteria are met.
 
 The **command palette** opens with `/`, `Ctrl/⌘K`, or the search button in the
-header. It filters sections, the five live views and the theme; arrow keys
-navigate, Enter runs, Escape closes. It is a keyboard layer over existing
-links and tab buttons, so it adds no new content or network requests. Without
-JavaScript, the first roadmap phase stays readable; the palette trigger and the
-phase tabs are hidden because they would be inert.
+header. It filters sections, the five live views, the theme and a **Copy link
+to this view** action; arrow keys navigate, Enter runs, Escape closes. It is a
+keyboard layer over existing links and tab buttons, so it adds no new content
+or network requests. Without JavaScript, the first roadmap phase stays
+readable; the palette trigger and the phase tabs are hidden because they would
+be inert.
 
 ## What lives where
 
@@ -131,6 +134,12 @@ it has no scripts. All other pages keep the strict `style-src 'self'` /
 - **Keep the palette in sync.** Every command maps to a section id or a `tab-*`
   id; adding a section or view means updating the list. `/` must never open the
   palette while the visitor is typing in a field.
+- **Keep view links stable.** `?view=` values are derived from the tab ids
+  (`tab-editor` → `editor`), and the copy command uses the current tab. Renaming
+  a tab id breaks shared links; update the deep-link test and docs with it.
+- **Keep the section nav honest.** The nav highlight uses the section ids and a
+  viewport-line scan; adding a section means adding the matching nav link (or
+  deliberately mapping it to another one).
 - **Link to `releases/latest`**, never a pinned version, so the download
   section does not go stale between releases.
 - **Mirror the product docs.** Security claims come from

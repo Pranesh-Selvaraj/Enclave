@@ -55,8 +55,9 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   editor has an editable title, a block menu and a live Markdown view; the
   phone sync accepts typed items; the whiteboard supports double-click and
   delete; the graph zooms, pans and focuses; and AI answers cite pages that
-  open in the graph. State stays in the page; the Markdown copy touches the
-  clipboard only on an explicit click.
+  open in the graph. Each view is addressable with a `?view=` query derived from
+  its tab id, and the palette can copy that link. State stays in the page; the
+  Markdown and link copies touch the clipboard only on an explicit click.
 - **The roadmap is a rendering of the plan, not a promise list.** A small
   Now/Next/Then panel pulls its features and exit criteria from
   `docs/plans/dedicated-native-apps.md` and `docs/STATUS.md`, and a
@@ -123,6 +124,8 @@ The `site/` directory, a small build script and a Pages workflow are the result.
 - The guided actions, Markdown generator, graph zoom and citations are demo
   code. Adding a block type, graph node or Try action means updating the
   matching generator or id, and the keyboard and no-JS paths need retesting.
+- The `?view=` values are part of shared URLs; renaming a tab id changes the
+  deep-link contract and the palette's copy command.
 - The roadmap can drift from the plan and STATUS; those documents stay
   canonical and the panel links to them. Adding a section or a tour view means
   updating the palette's action map as well as the markup.
