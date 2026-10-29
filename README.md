@@ -36,8 +36,8 @@ Android — a notes-first shell: card layouts with view/sort sheets, a FAB that 
   <img src="docs/screenshots/mobile-home.png" alt="Android home in Cards layout" width="19%" />
   <img src="docs/screenshots/mobile-views.png" alt="Android note-layout bottom sheet" width="19%" />
   <img src="docs/screenshots/mobile-create.png" alt="Android FAB creation stack" width="19%" />
-  <img src="docs/screenshots/mobile-drawer.png" alt="Android drawer with Enclave heading" width="19%" />
-  <img src="docs/screenshots/mobile-editor.png" alt="Android checklist editor" width="19%" />
+  <img src="docs/screenshots/mobile-drawer.png" alt="Android drawer with Home, folders and the bottom app actions" width="19%" />
+  <img src="docs/screenshots/mobile-editor.png" alt="Android block editor with a cover, tags and a product roadmap note" width="19%" />
 </p>
 
 ## Architecture
@@ -458,6 +458,7 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 - [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
 - [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
 - [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules
+- [site/](site/README.md) — the public homepage (static, deployed to GitHub Pages)
 
 ## License
 

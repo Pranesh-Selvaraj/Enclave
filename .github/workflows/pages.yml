@@ -1,0 +1,56 @@
+name: Homepage
+
+# Builds the static homepage in site/ and publishes it to GitHub Pages.
+# One-time repository setting: Settings → Pages → Build and deployment →
+# Source: "GitHub Actions". See site/README.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/brand/**'
+      - 'docs/screenshots/**'
+      - 'apps/frontend/static/fonts/**'
+      - 'scripts/build-site.mjs'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - uses: actions/configure-pages@v5
+
+      - name: Build static site
+        run: node scripts/build-site.mjs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

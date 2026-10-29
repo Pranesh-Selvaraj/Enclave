@@ -17,6 +17,7 @@
     "build:all": "npm run build && npm run build:android",
     "check": "npm run check -w @enclave/frontend",
     "audit:ui": "npm run build -w @enclave/frontend && node tools/ui-audit/run.mjs",
+    "site:build": "node scripts/build-site.mjs",
     "tauri": "tauri",
     "release:check": "bash scripts/release-check.sh"
   }
