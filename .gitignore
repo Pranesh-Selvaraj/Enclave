@@ -6,6 +6,8 @@ apps/*/build/
 apps/*/.svelte-kit/
 build/
 .svelte-kit/
+# Assembled by `npm run site:build` — deploy artifact, never committed
+site-dist/
 
 # Tauri / Rust
 src-tauri/target/

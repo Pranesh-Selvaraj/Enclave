@@ -45,14 +45,14 @@ graph LR
 
 **Deliverables**
 
-- A block-editor prototype in each leading desktop candidate (Qt 6 and Avalonia, per ADR 0004) covering: paragraphs, headings, lists, tables, images, code blocks, undo/redo, IME, keyboard navigation, Markdown paste, and a screen-reader pass.
-- A Rust-interop proof for each candidate (C ABI / bindings), plus packaging, signing and auto-update on Windows/macOS/Linux.
+- A Qt 6 block-editor prototype (the accepted desktop stack, ADR 0004) covering: paragraphs, headings, lists, tables, images, code blocks, undo/redo, IME, keyboard navigation, Markdown paste, and a screen-reader pass.
+- A Rust-interop proof for Qt (C ABI), plus packaging, signing and auto-update on Windows/macOS/Linux.
 - An Android vertical slice: Compose app + `core-api` via UniFFI, opening a vault, listing notes, editing one document, and running background sync through a foreground service; one Glance widget.
-- A written measurement table: build time, binary size, cold start, editor latency, memory, and developer effort per candidate.
+- A written measurement table: build time, binary size, cold start, editor latency, memory, and developer effort. Avalonia's measurements are already recorded under `~/.enclave-dev/phase0-native-apps/` and retained as the fallback.
 
 **Exit criteria**
 
-- ADR 0004 is superseded by an `Accepted` record naming the desktop stack, with the prototype evidence.
+- The Qt 6 toolchain is confirmed and the editor prototype meets a minimum usability bar (typing latency, IME, tables) on the accepted stack (ADR 0004); if it cannot, ADR 0004 is superseded with the managed fallback.
 - The editor prototype meets a minimum usability bar (typing latency, IME, tables) on the chosen stack.
 - The Android slice proves the UniFFI path end to end on a real device.
 - The contract tests exist as a skeleton (vault fixture, one sync frame fixture).
@@ -115,7 +115,7 @@ graph LR
 | --- | --- | --- |
 | Editor rebuild proves larger than planned | Highest — blocks both apps | Phase 0 prototype with a hard go/no-go; treat the editor as its own subproject with its own milestones. |
 | Contract drift between apps | Sync breakage, data loss | ADR 0006: versioned surfaces, golden fixtures, interop CI against one core SHA. |
-| Desktop stack choice is wrong | Costly rework | Spike both candidates before committing; record evidence in the ADR. |
+| Qt cannot be made to work | Costly rework | Verify the Qt toolchain and editor slice in Phase 0 before implementation; Avalonia is the measured managed fallback (ADR 0004). |
 | Vault migration failure | Data loss | One-way migrations tested against canonical fixtures from every released version; never ship a migration without a round-trip test. |
 | Parity gap (whiteboard, graph, database) | Native apps feel incomplete | Publish a parity checklist per app; do not deprecate Tauri until it is fully green. |
 | Three apps during transition | Maintenance load, confusion | Bound the transition by parity criteria; keep `main` as the source of truth and release Tauri from its own tags. |

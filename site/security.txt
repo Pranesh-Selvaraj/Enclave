@@ -1,0 +1,5 @@
+Contact: https://github.com/Pranesh-Selvaraj/Enclave/security/advisories/new
+Expires: 2027-10-29T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://pranesh-selvaraj.github.io/Enclave/.well-known/security.txt
+Policy: https://github.com/Pranesh-Selvaraj/Enclave/blob/main/SECURITY.md
