@@ -74,6 +74,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -87,7 +89,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val PIN_LENGTH = 4
 private const val LOCKUP_RATIO = 347.1f / 48f
 private val KEYPAD_HEIGHT = 310.dp
 
@@ -170,37 +171,9 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
     )
 
     fun onDigit(digit: Char) {
-        if (busy || mode != AuthMode.PIN || pin.length >= PIN_LENGTH) return
+        if (busy || mode != AuthMode.PIN || stage == PinStage.CONFIRMED) return
         error = null
-        val next = pin + digit
-        if (next.length < PIN_LENGTH) {
-            pin = next
-            return
-        }
-        if (initialized == true) {
-            pin = next
-            return
-        }
-        when (stage) {
-            PinStage.ENTER -> {
-                firstPin = next
-                pin = ""
-                stage = PinStage.CONFIRM
-            }
-            PinStage.CONFIRM -> {
-                if (next == firstPin) {
-                    pin = next
-                    stage = PinStage.CONFIRMED
-                    keypadOpen = false
-                } else {
-                    pin = ""
-                    firstPin = ""
-                    stage = PinStage.ENTER
-                    error = "PINs do not match. Try again."
-                }
-            }
-            PinStage.CONFIRMED -> Unit
-        }
+        pin = PinRules.append(pin, digit)
     }
 
     fun onBackspace() {
@@ -235,14 +208,18 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
     }
 
     fun createWithPin() {
-        if (busy || stage != PinStage.CONFIRMED || firstPin.length != PIN_LENGTH) return
+        if (busy || stage != PinStage.CONFIRMED || !PinRules.isValid(firstPin)) return
         scope.launch {
             busy = true
             error = null
             runCatching {
                 withContext(Dispatchers.IO) { Core.ffi.createVault(firstPin) }
             }
-                .onSuccess { mnemonic = it }
+                .onSuccess {
+                    mnemonic = it
+                    pin = ""
+                    firstPin = ""
+                }
                 .onFailure { error = "Could not create the vault: ${it.message}" }
             busy = false
         }
@@ -267,7 +244,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
 
     fun unlock() {
         if (busy) return
-        if (mode == AuthMode.PIN && pin.length != PIN_LENGTH) return
+        if (mode == AuthMode.PIN && !PinRules.isValid(pin)) return
         if (mode == AuthMode.PASSWORD && password.isEmpty()) return
         val secret = if (mode == AuthMode.PIN) pin else password
         scope.launch {
@@ -286,6 +263,41 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                     if (mode == AuthMode.PIN) pin = ""
                 }
             busy = false
+        }
+    }
+
+    /**
+     * Commit the entered PIN. A PIN may be 4–12 digits, so the gate cannot
+     * submit on a keystroke count the way it did when four was the only
+     * length: the keypad's confirm key and the primary button call this.
+     */
+    fun onConfirmPin() {
+        if (busy || mode != AuthMode.PIN) return
+        if (!PinRules.isValid(pin)) {
+            error = "Use at least ${PinRules.MIN_LENGTH} digits."
+            return
+        }
+        when {
+            initialized == true -> unlock()
+            stage == PinStage.ENTER -> {
+                firstPin = pin
+                pin = ""
+                stage = PinStage.CONFIRM
+                error = null
+            }
+            stage == PinStage.CONFIRM -> {
+                if (pin == firstPin) {
+                    stage = PinStage.CONFIRMED
+                    keypadOpen = false
+                    error = null
+                } else {
+                    pin = ""
+                    firstPin = ""
+                    stage = PinStage.ENTER
+                    error = "PINs do not match. Try again."
+                }
+            }
+            else -> Unit
         }
     }
 
@@ -316,6 +328,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                     lockup = lockup,
                     onDigit = ::onDigit,
                     onBackspace = ::onBackspace,
+                    onConfirm = ::onConfirmPin,
                     onOpenKeypad = ::openKeypad,
                     onRestore = {
                         restoreLauncher.launch(arrayOf("application/octet-stream", "*/*"))
@@ -325,12 +338,13 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                         showForgot = true
                     },
                     onAction = {
-                        if (initialized == true) {
-                            unlock()
-                        } else if (mode == AuthMode.PIN) {
-                            createWithPin()
-                        } else {
-                            createWithPassword()
+                        when {
+                            initialized == true -> unlock()
+                            // A PIN may be 4–12 digits, so the button continues
+                            // and confirms before it creates.
+                            mode == AuthMode.PIN && stage != PinStage.CONFIRMED -> onConfirmPin()
+                            mode == AuthMode.PIN -> createWithPin()
+                            else -> createWithPassword()
                         }
                     },
                 )
@@ -409,7 +423,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                                             pinSetupError = null
                                         } else {
                                             initialized = true
-                                            mode = if (secret.length == 4 && secret.all(Char::isDigit)) {
+                                            mode = if (PinRules.isValid(secret)) {
                                                 AuthMode.PIN
                                             } else {
                                                 AuthMode.PASSWORD
@@ -455,9 +469,9 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                     Column {
                         Text(
                             if (pendingUnlockAfterPin) {
-                                "Unlocked with your recovery phrase. Choose a new 4-digit PIN for this device."
+                                "Unlocked with your recovery phrase. Choose a new PIN (4–12 digits) for this device."
                             } else {
-                                "The vault is restored. Choose a 4-digit PIN so this device can open it."
+                                "The vault is restored. Choose a PIN (4–12 digits) so this device can open it."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -466,7 +480,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                         OutlinedTextField(
                             value = newPin,
                             onValueChange = {
-                                newPin = it.filter(Char::isDigit).take(4)
+                                newPin = PinRules.filter(it)
                                 pinSetupError = null
                             },
                             label = { Text("PIN") },
@@ -479,7 +493,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                         OutlinedTextField(
                             value = confirmNewPin,
                             onValueChange = {
-                                confirmNewPin = it.filter(Char::isDigit).take(4)
+                                confirmNewPin = PinRules.filter(it)
                                 pinSetupError = null
                             },
                             label = { Text("Confirm PIN") },
@@ -500,7 +514,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                 },
                 confirmButton = {
                     TextButton(
-                        enabled = !pinSetupBusy && newPin.length == 4 && newPin == confirmNewPin,
+                        enabled = !pinSetupBusy && PinRules.isValid(newPin) && newPin == confirmNewPin,
                         onClick = {
                             scope.launch {
                                 pinSetupBusy = true
@@ -639,6 +653,7 @@ private fun VaultGate(
     lockup: Painter,
     onDigit: (Char) -> Unit,
     onBackspace: () -> Unit,
+    onConfirm: () -> Unit,
     onOpenKeypad: () -> Unit,
     onRestore: () -> Unit,
     onForgot: () -> Unit,
@@ -684,8 +699,9 @@ private fun VaultGate(
     )
 
     val isRegister = !initialized
-    val pinConfirmed = stage == PinStage.CONFIRMED
-    val pinReady = pin.length == PIN_LENGTH
+    val pinFilled = pin.length
+    val pinSlots = PinRules.slots(pinFilled)
+    val pinReady = PinRules.isValid(pin)
     val passwordReady = password.isNotEmpty() && (!isRegister || password == confirmPassword)
 
     val pinLabel = when {
@@ -694,7 +710,6 @@ private fun VaultGate(
         stage == PinStage.CONFIRM -> "Confirm your PIN"
         else -> "PIN confirmed"
     }
-    val dots = if (pinConfirmed) PIN_LENGTH else pin.length
     val note = if (isRegister) {
         "A 12-word recovery phrase is generated next. It is the only way to recover the vault if you forget your ${if (mode == AuthMode.PIN) "PIN" else "password"} — write it down and keep it offline."
     } else {
@@ -705,12 +720,15 @@ private fun VaultGate(
         busy -> false
         initialized && mode == AuthMode.PIN -> pinReady
         initialized -> passwordReady
-        mode == AuthMode.PIN -> pinConfirmed
+        // Registering a PIN: the same button continues, confirms and creates.
+        mode == AuthMode.PIN -> pinReady
         else -> passwordReady
     }
     val actionLabel = when {
         busy && initialized -> "Unlocking…"
         busy -> "Creating…"
+        !initialized && mode == AuthMode.PIN && stage == PinStage.ENTER -> "Continue"
+        !initialized && mode == AuthMode.PIN && stage == PinStage.CONFIRM -> "Confirm PIN"
         initialized -> "Unlock"
         else -> "Create vault"
     }
@@ -817,7 +835,7 @@ private fun VaultGate(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(16.dp))
-                        PinDots(count = dots, error = error != null)
+                        PinDots(filled = pinFilled, slots = pinSlots, error = error != null)
                         error?.let {
                             Spacer(Modifier.height(12.dp))
                             Text(
@@ -915,6 +933,8 @@ private fun VaultGate(
                     .height(KEYPAD_HEIGHT),
                 onDigit = onDigit,
                 onBackspace = onBackspace,
+                onConfirm = onConfirm,
+                confirmEnabled = pinReady && !busy,
             )
         }
     }
@@ -970,20 +990,25 @@ private fun AuthSwitch(mode: AuthMode, onMode: (AuthMode) -> Unit) {
 }
 
 @Composable
-private fun PinDots(count: Int, error: Boolean) {
-    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-        repeat(PIN_LENGTH) { index ->
-            val filled = index < count
+private fun PinDots(filled: Int, slots: Int, error: Boolean) {
+    // Twelve dots at the comfortable size would be wider than a 360dp phone
+    // (12 x 14dp plus 11 gaps of 18dp is 366dp), so the row tightens up as the
+    // PIN grows instead of running off the edge.
+    val dotSize = if (slots <= 8) 14.dp else 10.dp
+    val gap = if (slots <= 6) 18.dp else 10.dp
+    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+        repeat(slots) { index ->
+            val isFilled = index < filled
             Box(
                 Modifier
-                    .size(14.dp)
+                    .size(dotSize)
                     .clip(CircleShape)
-                    .background(if (filled) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .background(if (isFilled) MaterialTheme.colorScheme.primary else Color.Transparent)
                     .border(
                         width = 1.5.dp,
                         color = when {
                             error -> MaterialTheme.colorScheme.error
-                            filled -> MaterialTheme.colorScheme.primary
+                            isFilled -> MaterialTheme.colorScheme.primary
                             else -> MaterialTheme.colorScheme.outline
                         },
                         shape = CircleShape,
@@ -998,8 +1023,12 @@ private fun PinKeypad(
     modifier: Modifier = Modifier,
     onDigit: (Char) -> Unit,
     onBackspace: () -> Unit,
+    onConfirm: () -> Unit,
+    confirmEnabled: Boolean,
 ) {
-    val rows = listOf("123", "456", "789", " 0⌫")
+    // Confirm takes the blank slot the old keypad had; delete keeps the
+    // bottom-right corner it has always had on a phone dialer.
+    val rows = listOf("123", "456", "789", "✓0⌫")
     Column(
         modifier = modifier.padding(horizontal = 28.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceEvenly,
@@ -1012,9 +1041,14 @@ private fun PinKeypad(
             ) {
                 row.forEach { key ->
                     when (key) {
-                        ' ' -> Spacer(Modifier.size(72.dp))
-                        '⌫' -> KeypadKey("⌫", onBackspace)
-                        else -> KeypadKey(key.toString()) { onDigit(key) }
+                        '⌫' -> KeypadKey("⌫", description = "Delete", onClick = onBackspace)
+                        '✓' -> KeypadKey(
+                            "✓",
+                            enabled = confirmEnabled,
+                            description = "Confirm PIN",
+                            onClick = onConfirm,
+                        )
+                        else -> KeypadKey(key.toString(), onClick = { onDigit(key) })
                     }
                 }
             }
@@ -1023,18 +1057,35 @@ private fun PinKeypad(
 }
 
 @Composable
-private fun KeypadKey(label: String, onClick: () -> Unit) {
+private fun KeypadKey(
+    label: String,
+    enabled: Boolean = true,
+    description: String? = null,
+    onClick: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .size(72.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick),
+            .then(
+                if (description == null) {
+                    Modifier
+                } else {
+                    Modifier.semantics { contentDescription = description }
+                },
+            )
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Medium,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+            },
         )
     }
 }

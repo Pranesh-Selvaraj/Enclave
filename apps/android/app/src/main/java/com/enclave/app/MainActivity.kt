@@ -2,6 +2,7 @@ package com.enclave.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -69,16 +70,23 @@ class MainActivity : ComponentActivity() {
                 // Auto-lock: remember when the app left the foreground, and on
                 // return past the configured timeout lock the vault (pausing
                 // sync first, exactly like the manual lock).
+                //
+                // The timestamps come from the monotonic clock: wall-clock
+                // time can jump (a manual change, NTP, a timezone-travelling
+                // user), which would either lock on return from a second in
+                // the background or never lock at all. elapsedRealtime keeps
+                // counting while the device sleeps, which is what "5 minutes
+                // in the background" means to the user.
                 val lifecycleOwner = LocalLifecycleOwner.current
                 var backgroundedAt by remember { mutableStateOf(0L) }
                 DisposableEffect(lifecycleOwner) {
                     val observer = LifecycleEventObserver { _, event ->
                         when (event) {
-                            Lifecycle.Event.ON_STOP -> backgroundedAt = System.currentTimeMillis()
+                            Lifecycle.Event.ON_STOP -> backgroundedAt = SystemClock.elapsedRealtime()
                             Lifecycle.Event.ON_START -> {
                                 val minutes = AppPrefs.autoLock.minutes
                                 if (minutes > 0 && backgroundedAt > 0 && Core.ffi.isUnlocked()) {
-                                    val elapsed = System.currentTimeMillis() - backgroundedAt
+                                    val elapsed = SystemClock.elapsedRealtime() - backgroundedAt
                                     if (elapsed >= minutes * 60_000L) lock()
                                 }
                                 backgroundedAt = 0
