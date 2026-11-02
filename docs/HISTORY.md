@@ -60,8 +60,8 @@ This is the narrative record of **what Enclave was built with, why, what changed
 
 ## Open questions
 
-- **Qt verification** — ADR 0004 is accepted, but Qt is not yet installed on the development machine. Phase 0 must confirm the toolchain, the editor slice, packaging/signing/update and accessibility before implementation; Avalonia is the measured fallback.
-- **Vault schema versioning** — the explicit version and formal migration chain required by ADR 0006 do not exist yet; Phase 1 delivers them.
+- **Qt verification** — ADR 0004 is accepted (Qt 6), but Qt is not installed on the development machine. Phase 0 must confirm the toolchain, the editor slice, packaging/signing/update and accessibility before implementation; Avalonia is the measured fallback.
+- **Desktop app** — does not exist; Phase 3/4 are unstarted and the Tauri shell keeps shipping from `core/` in the meantime.
 - **iOS** — out of scope for the current plan, but the contract must not preclude it.
 
 ## Notable corrections

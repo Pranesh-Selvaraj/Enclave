@@ -6,10 +6,12 @@ Companion to ADR 0002. This is the execution plan for moving Enclave from the sh
 
 Live tracker: [`docs/STATUS.md`](../STATUS.md).
 
-- **Phase 0** — the Android vertical slice is built; the desktop stack is parked (ADR 0004 *Proposed*, PR #177 unmerged) and Qt is unverified on the current machine.
-- **Phase 1** — vault schema versioning and the block golden fixture are in; sync-frame fixtures and the contract document remain.
-- **Phase 2** — the native Android app is feature-complete for a first release; the hardware pass is pending.
+- **Phase 0** — the Android vertical slice is built; the desktop decision is recorded (ADR 0004, Qt 6, *Accepted*) but its verification gate is still open because Qt is not installed on the current machine. No desktop implementation exists.
+- **Phase 1** — vault schema versioning and the block golden fixture are on `main`; the sync-frame fixtures and `docs/CONTRACT.md` exist unmerged on `feat/android-editor` (see [`docs/STATUS.md`](../STATUS.md)).
+- **Phase 2** — the native Android app is feature-complete for a first release (#180); the hardware pass (#188) is pending.
 - **Phase 3/4** — not started (desktop).
+
+Outside this plan, the public homepage ([ADR 0009](../decisions/0009-public-homepage-github-pages.md)) is live on GitHub Pages: it renders this plan's status, deploys on its own from `main`, and is not part of an app release.
 
 ## Goal
 
