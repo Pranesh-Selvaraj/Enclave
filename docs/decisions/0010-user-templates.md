@@ -26,7 +26,9 @@ Each entry is `{id, name, doc}`, where `doc` is the note's canonical `doc` block
 
 The UI is two taps each way: **Save as template** in a note's options sheet (name prefilled with the note's title) adds one; the create stack lists them under a `YOUR TEMPLATES` heading after the built-ins, and a long press deletes one after a confirmation that states the pages already made from it are untouched.
 
-The four built-ins stay. They are the cross-platform set — a Meeting notes page started on the phone opens identically on the desktop because both emit the same JSON — so replacing them with user templates would be a contract change dressed as a feature.
+Journal and Meeting notes are **no longer offered**, and Text, Checklist and Folder stay. The reasoning: once a user can author a template, a fixed "meeting" layout is a guess about someone else's meeting — this one keeps three headings and no attendees — and offering both a built-in and a user copy of the same thing makes the user wonder which one is theirs. What remains are the three *creation primitives* (a page, a page of checkboxes, a folder), not templates.
+
+That is a deliberate divergence from the desktop: `packages/editor/src/templates.ts` still offers Journal and Meeting notes in the Tauri app. The documents remain compatible — a Journal page made on the desktop opens on the phone unchanged, because the JSON format is the shared contract — but the native app's create stack no longer reproduces those two skeletons. If the desktop should follow, that is a change to the shared package, not to this decision.
 
 ## Consequences
 
@@ -36,6 +38,7 @@ The four built-ins stay. They are the cross-platform set — a Meeting notes pag
 - **Templates are user data, so they are the user's responsibility.** A template can contain anything a note can, including the twelve words of a recovery phrase if the user saves such a page as a template. It is stored encrypted like the rest of the vault, so the exposure is the same as the note it came from.
 - **The `doc` JSON is trusted only as far as the parser.** Loading validates that the entry is an object with `type: "doc"`; the editor's `EditorDocument.parse` remains the thing that turns it into blocks, so an older template whose node types have moved on degrades exactly like an older note would.
 - **The key is namespaced `android.`** because the setting is written by one app. A desktop template store would either read the same key (a small, explicit compatibility step) or get its own.
+- **Creating a template does not require a note.** The create stack has a "New template" entry that opens the same editor with no document behind it, so a user who wants to sketch a skeleton first can; "Save as template" on an existing page covers the other direction. Both write the same entry to the same store.
 
 ## Alternatives considered
 
@@ -44,7 +47,7 @@ The four built-ins stay. They are the cross-platform set — a Meeting notes pag
 | A `templates` table with a migration | The honest long-term shape if templates ever sync or grow a UI of their own, but it means `SCHEMA_VERSION` 2, a migration, a fixture update and a contract-document change for a list of at most 50 small JSON values. Not yet worth a vault upgrade. |
 | Templates as documents in a hidden folder | Reuses documents, blocks and folders — so it *would* sync — but templates would then appear in searches, widgets, exports and the note count unless every surface learns to exclude a folder, and "delete the template" becomes "delete a document", which is a different and much scarier action. |
 | App-private storage (`SharedPreferences`/files) | Loses the templates on reinstall, keeps user-authored content outside the encrypted vault, and contradicts ADR 0006's rule that user data lives in the vault. |
-| Ship more built-in templates | Cheap, but it cannot know that this user's "meeting" is a standup with three headings and no attendees. It also grows the shared cross-platform set that must stay identical on desktop, for something personal. |
+| Ship more built-in templates | Cheap, but it cannot know that this user's "meeting" is a standup with three headings and no attendees. It also grows the shared cross-platform set that must stay identical on desktop, for something personal — which is why Journal and Meeting notes were dropped in favour of user templates instead of adding a fifth. |
 | Let the user edit the built-in JSON directly | An editor for a data format, not a feature. The page editor already exists and is the natural place to author a template. |
 
 ## Prior art / what this replaces

@@ -11,8 +11,6 @@ import java.util.UUID
 enum class CreateKind(val label: String, val emoji: String) {
     TEXT("Text", "📝"),
     CHECKLIST("Checklist", "✅"),
-    JOURNAL("Journal", "✍️"),
-    MEETING("Meeting notes", "📋"),
     FOLDER("Folder", "📁"),
 }
 
@@ -26,36 +24,6 @@ object Templates {
 
     fun forKind(kind: CreateKind): Template = when (kind) {
         CreateKind.CHECKLIST -> Template("Checklist", doc(h1("Checklist"), task(), task(), task()))
-
-        CreateKind.JOURNAL -> Template(
-            "Journal",
-            doc(
-                h1("Journal"),
-                p(),
-                h2("What went well?"),
-                p(),
-                h2("What could be better?"),
-                p(),
-                h2("Tomorrow"),
-                task(),
-            ),
-        )
-
-        CreateKind.MEETING -> Template(
-            "Meeting notes",
-            doc(
-                h1("Meeting notes"),
-                p("Date:  •  Attendees: "),
-                h2("Agenda"),
-                bullet(),
-                bullet(),
-                h2("Discussion"),
-                p(),
-                h2("Action items"),
-                task(),
-                task(),
-            ),
-        )
 
         CreateKind.TEXT, CreateKind.FOLDER -> Template("", doc(p()))
     }
@@ -72,8 +40,6 @@ object Templates {
     }
 
     private fun h1(text: String) = heading(1, text)
-    private fun h2(text: String) = heading(2, text)
-
     private fun heading(level: Int, text: String): JSONObject = JSONObject()
         .put("type", "heading")
         .put("attrs", JSONObject().put("level", level))

@@ -126,6 +126,7 @@ fun HomeScreen(
     onOpenNote: (String) -> Unit,
     onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
+    onNewTemplate: () -> Unit,
     onLock: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -406,6 +407,7 @@ fun HomeScreen(
                 onToggle = { createOpen = !createOpen },
                 templates = templates,
                 onCreate = ::create,
+                onNewTemplate = onNewTemplate,
                 onDeleteTemplate = { templateToDelete = it },
             )
         },
@@ -1013,6 +1015,7 @@ private fun CreateStack(
     onToggle: () -> Unit,
     templates: List<com.enclave.app.editor.UserTemplate>,
     onCreate: (CreateTarget) -> Unit,
+    onNewTemplate: () -> Unit,
     onDeleteTemplate: (com.enclave.app.editor.UserTemplate) -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1020,6 +1023,7 @@ private fun CreateStack(
             CreateKind.entries.forEach { kind ->
                 CreatePill(kind.emoji, kind.label, onClick = { onCreate(CreateTarget.Builtin(kind)) })
             }
+            CreatePill("\uD83E\uDDE9", "New template", onClick = onNewTemplate)
             // The user's own templates sit after the built-ins, under one
             // heading, so a long list of them does not bury "Folder".
             if (templates.isNotEmpty()) {

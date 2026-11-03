@@ -30,6 +30,7 @@ import com.enclave.app.ui.EnclaveTheme
 import com.enclave.app.ui.HomeScreen
 import com.enclave.app.ui.NoteScreen
 import com.enclave.app.ui.SettingsScreen
+import com.enclave.app.ui.TemplateEditorScreen
 import com.enclave.app.ui.SyncScreen
 import com.enclave.app.ui.VaultScreen
 import kotlinx.coroutines.launch
@@ -41,6 +42,7 @@ sealed interface Screen {
     data class Note(val id: String) : Screen
     data object Sync : Screen
     data object Settings : Screen
+    data object TemplateEditor : Screen
 }
 
 class MainActivity : ComponentActivity() {
@@ -171,8 +173,24 @@ class MainActivity : ComponentActivity() {
                         onOpenNote = { screen = Screen.Note(it) },
                         onOpenSync = { screen = Screen.Sync },
                         onOpenSettings = { screen = Screen.Settings },
+                        onNewTemplate = { screen = Screen.TemplateEditor },
                         onLock = lock,
                     )
+
+                    Screen.TemplateEditor -> {
+                        BackHandler { screen = Screen.Home }
+                        TemplateEditorScreen(
+                            onBack = { screen = Screen.Home },
+                            onSaved = {
+                                android.widget.Toast.makeText(
+                                    this@MainActivity,
+                                    "Template saved — it is in the create stack",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                                screen = Screen.Home
+                            },
+                        )
+                    }
 
                     is Screen.Note -> {
                         BackHandler { screen = Screen.Home }
