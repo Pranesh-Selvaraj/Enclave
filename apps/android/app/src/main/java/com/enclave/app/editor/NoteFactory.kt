@@ -4,6 +4,7 @@ import com.enclave.app.core.Core
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import uniffi.core_api.Document
+import org.json.JSONObject
 import java.util.UUID
 
 /**
@@ -16,8 +17,25 @@ object NoteFactory {
         kind: CreateKind,
         folderId: String? = null,
         prefill: String? = null,
+    ): Document = create(template = Templates.forKind(kind), folderId = folderId, prefill = prefill)
+
+    /** Start a note from a template the user saved. */
+    suspend fun createFromTemplate(
+        template: UserTemplate,
+        folderId: String? = null,
+    ): Document = create(
+        template = Templates.Template(
+            title = template.name,
+            doc = JSONObject(template.doc),
+        ),
+        folderId = folderId,
+    )
+
+    private suspend fun create(
+        template: Templates.Template,
+        folderId: String? = null,
+        prefill: String? = null,
     ): Document = withContext(Dispatchers.IO) {
-        val template = Templates.forKind(kind)
         var doc = Core.ffi.createDocument(template.title)
 
         val seed = Core.ffi.getBlocks(doc.id).firstOrNull()

@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -59,6 +60,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +69,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
+import com.enclave.app.editor.TemplateStore
 import com.enclave.app.editor.EditableDocument
 import com.enclave.app.editor.EditorDocument
 import com.enclave.app.editor.EditableText
@@ -99,6 +103,8 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     var sheetOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
+    var templateOpen by remember { mutableStateOf(false) }
+    var templateName by remember { mutableStateOf("") }
     var widgetEnabled by remember { mutableStateOf(false) }
     var widgetEditable by remember { mutableStateOf(true) }
     var widgetBlockId by remember { mutableStateOf<String?>(null) }
@@ -265,54 +271,6 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 ),
             )
         },
-        bottomBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.background,
-                modifier = Modifier.imePadding(),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(999.dp),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 4.dp),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconButton(onClick = ::addBlock) {
-                                Icon(Icons.Filled.Add, contentDescription = "Add block")
-                            }
-                            IconButton(
-                                onClick = { updateWidget(enabled = !widgetEnabled, editable = true) },
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.List,
-                                    contentDescription = "Show in widgets",
-                                    tint = if (widgetEnabled) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                )
-                            }
-                            IconButton(onClick = ::shareNote) {
-                                Icon(Icons.Filled.Share, contentDescription = "Send note")
-                            }
-                            IconButton(onClick = { sheetOpen = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = "More options")
-                            }
-                        }
-                    }
-                }
-            }
-        },
     ) { padding ->
         val document = editor
         if (!loaded || document == null) {
@@ -386,6 +344,14 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             SheetAction(
+                icon = Icons.Filled.Add,
+                label = "Add block",
+                checked = false,
+            ) {
+                sheetOpen = false
+                addBlock()
+            }
+            SheetAction(
                 icon = Icons.AutoMirrored.Filled.List,
                 label = "Show in widgets",
                 checked = widgetEnabled,
@@ -408,6 +374,14 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 onClick = ::duplicateNote,
             )
             SheetAction(
+                icon = Icons.Filled.Star,
+                label = "Save as template",
+            ) {
+                sheetOpen = false
+                templateName = title.trim()
+                templateOpen = true
+            }
+            SheetAction(
                 icon = Icons.Filled.Share,
                 label = "Send",
             ) {
@@ -424,6 +398,49 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (templateOpen) {
+        val nameFocus = remember { FocusRequester() }
+        LaunchedEffect(templateOpen) { if (templateOpen) nameFocus.requestFocus() }
+        AlertDialog(
+            onDismissRequest = { templateOpen = false },
+            title = { Text("Save as template") },
+            text = {
+                Column {
+                    Text(
+                        "The create stack will start a new note from this page's blocks. The note itself stays where it is.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = templateName,
+                        onValueChange = { templateName = it },
+                        singleLine = true,
+                        label = { Text("Template name") },
+                        modifier = Modifier.fillMaxWidth().focusRequester(nameFocus),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = templateName.isNotBlank(),
+                    onClick = {
+                        val name = templateName.trim()
+                        val json = editor?.toJson() ?: return@TextButton
+                        templateOpen = false
+                        scope.launch {
+                            TemplateStore.add(name, json)
+                            Toast.makeText(context, "Template saved", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { templateOpen = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (deleteOpen) {
