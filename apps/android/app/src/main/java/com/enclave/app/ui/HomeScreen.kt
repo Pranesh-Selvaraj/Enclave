@@ -1,6 +1,7 @@
 package com.enclave.app.ui
 
 import androidx.compose.foundation.Image
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -117,6 +118,12 @@ fun HomeScreen(
     var createOpen by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<HomeSheet?>(null) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    // The drawer covers the screen, so Back closes it instead of leaving
+    // the vault: the system default would finish the activity and drop the
+    // user on the launcher with the drawer restored open next launch.
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
 
     suspend fun reload() {
         loading = true
