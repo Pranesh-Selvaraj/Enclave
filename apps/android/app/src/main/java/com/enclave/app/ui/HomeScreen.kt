@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +75,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -155,6 +157,7 @@ fun HomeScreen(
     BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
     }
+    BackHandler(enabled = createOpen) { createOpen = false }
 
     suspend fun reload() {
         loading = true
@@ -399,106 +402,130 @@ fun HomeScreen(
             }
         },
     ) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            floatingActionButton = {
+        Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                // The stack is an overlay rather than a FAB slot: while it is
+                // open the home blurs behind a scrim that swallows taps, so a
+                // stray tap cannot open a note hidden under the pills.
+                Column(
+                Modifier
+                    .fillMaxSize()
+                    .blur(if (createOpen) 8.dp else 0.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 6.dp, end = 8.dp, top = 8.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                    }
+                    Text(
+                        greeting(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onLock) {
+                        Icon(Icons.Filled.Lock, contentDescription = "Lock vault")
+                    }
+                }
+
+                SearchPill(
+                    query = query,
+                    onChange = { query = it },
+                    onLayout = { sheet = HomeSheet.LAYOUT },
+                    onSort = { sheet = HomeSheet.SORT },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+
+                if (folders.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                    ) {
+                        item { FolderChip("All", folderFilter == null) { folderFilter = null } }
+                        items(folders, key = { it.id }) { folder ->
+                            FolderChip(folder.name, folderFilter == folder.id) { folderFilter = folder.id }
+                        }
+                    }
+                }
+
+                if (loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+
+                if (visible.isNotEmpty() && !loading) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            sectionTitle(folders, folderFilter).uppercase(),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.6.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(999.dp),
+                        ) {
+                            Text(
+                                "${visible.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                            )
+                        }
+                    }
+                }
+
+                if (visible.isEmpty() && !loading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            if (query.isBlank()) "No notes yet — tap + to start." else "No notes match “$query”.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                } else {
+                    NotesContent(layout, visible, onOpenNote, onLongPressNote = ::openNoteMenu)
+                }
+            }
+
+            if (createOpen) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { createOpen = false },
+                )
+            }
+
             CreateStack(
                 open = createOpen,
                 onToggle = { createOpen = !createOpen },
                 templates = templates,
                 onCreate = ::create,
-                onNewTemplate = onNewTemplate,
+                onNewTemplate = {
+                    createOpen = false
+                    onNewTemplate()
+                },
                 onDeleteTemplate = { templateToDelete = it },
-            )
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 6.dp, end = 8.dp, top = 8.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                    Icon(Icons.Filled.Menu, contentDescription = "Menu")
-                }
-                Text(
-                    greeting(),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = onLock) {
-                    Icon(Icons.Filled.Lock, contentDescription = "Lock vault")
-                }
-            }
-
-            SearchPill(
-                query = query,
-                onChange = { query = it },
-                onLayout = { sheet = HomeSheet.LAYOUT },
-                onSort = { sheet = HomeSheet.SORT },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
             )
-
-            if (folders.isNotEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                ) {
-                    item { FolderChip("All", folderFilter == null) { folderFilter = null } }
-                    items(folders, key = { it.id }) { folder ->
-                        FolderChip(folder.name, folderFilter == folder.id) { folderFilter = folder.id }
-                    }
-                }
             }
-
-            if (loading) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-
-            if (visible.isNotEmpty() && !loading) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        sectionTitle(folders, folderFilter).uppercase(),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.6.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(999.dp),
-                    ) {
-                        Text(
-                            "${visible.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                        )
-                    }
-                }
-            }
-
-            if (visible.isEmpty() && !loading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        if (query.isBlank()) "No notes yet — tap + to start." else "No notes match “$query”.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else {
-                NotesContent(layout, visible, onOpenNote, onLongPressNote = ::openNoteMenu)
-            }
-        }
         }
     }
 
@@ -1017,8 +1044,13 @@ private fun CreateStack(
     onCreate: (CreateTarget) -> Unit,
     onNewTemplate: () -> Unit,
     onDeleteTemplate: (com.enclave.app.editor.UserTemplate) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         if (open) {
             CreateKind.entries.forEach { kind ->
                 CreatePill(kind.emoji, kind.label, onClick = { onCreate(CreateTarget.Builtin(kind)) })
