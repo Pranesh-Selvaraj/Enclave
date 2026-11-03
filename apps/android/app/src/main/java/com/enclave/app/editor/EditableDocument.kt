@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -111,6 +112,15 @@ private fun TextBlockField(block: TextBlock, onChanged: () -> Unit) {
         link = scheme.secondary,
     )
 
+    // An empty block has no glyphs, so on a phone it collapsed to nothing: the
+    // caret could not be put into the body and the only tappable text was the
+    // title. A placeholder makes the block visible and a minimum height makes
+    // it a finger-sized target, while real text keeps its natural line height.
+    val placeholder = when (block.type) {
+        "heading" -> null
+        "codeBlock" -> "Code"
+        else -> "Start writing…"
+    }
     val field: @Composable () -> Unit = {
         BasicTextField(
             value = block.content.text,
@@ -118,7 +128,24 @@ private fun TextBlockField(block: TextBlock, onChanged: () -> Unit) {
             textStyle = style.copy(color = scheme.onBackground),
             visualTransformation = transformation,
             cursorBrush = SolidColor(scheme.primary),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (block.content.text.isEmpty()) Modifier.heightIn(min = 44.dp) else Modifier,
+                ),
+            decorationBox = { inner ->
+                Box(Modifier.fillMaxWidth()) {
+                    if (block.content.text.isEmpty() && placeholder != null) {
+                        Text(
+                            placeholder,
+                            style = style.copy(
+                                color = scheme.onSurfaceVariant.copy(alpha = 0.45f),
+                            ),
+                        )
+                    }
+                    inner()
+                }
+            },
         )
     }
 
