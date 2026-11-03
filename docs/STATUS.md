@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup or recover a forgotten PIN with the recovery phrase without creating a vault, and Settings now has auto-lock, editor text size/page width, a visual custom-accent picker, a Monochrome theme and per-page widget sharing, and the home/note surfaces now use a Keep-inspired drawer, card previews and action sheet; the Phase 1 contract is complete; design tokens and the brand vectors live in [`docs/design/`](design/README.md).
+Last updated: 2026-11-03 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup or recover a forgotten PIN with the recovery phrase without creating a vault, and Settings now has auto-lock, editor text size/page width, a visual custom-accent picker, a Monochrome theme and per-page widget sharing, and the home/note surfaces now use a Keep-inspired drawer, card previews and action sheet; the Phase 1 contract is complete; the Figma documentation plugin and its token export were retired, and the brand vectors live in [`docs/brand/`](brand/README.md).
 
 ## Where we are
 
@@ -11,7 +11,6 @@ Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PI
 | Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; its own workspace; 68 tests |
 | Contract (ADR 0006) | ✅ Complete | vault schema v1 + ordered migrations + golden block fixture; transport/app sync frames and handshake crypto locked by fixtures; [`CONTRACT.md`](CONTRACT.md) documents all four surfaces and the compatibility matrix |
 | Android app (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; the branded gate is verified on a real phone; the rest of the manual pass is pending |
-| Design system (`docs/design/`) | ✅ In use | canonical [`tokens.json`](design/tokens.json) and brand vectors; the Figma documentation plugin and its “Current UI” page were retired (ADR 0008) |
 | Desktop app | ⏸ Parked | ADR 0004 is *Proposed* (Qt 6 leaning; per-OS trio an escalation; Avalonia a measured fallback). PR #177 is intentionally **unmerged** |
 | Tauri app (current desktop + Android) | ✅ Shipping | `v1.13.0`; `main` is migration code — see the README notice |
 | Web frontend (`apps/frontend`) | ✅ Used by Tauri | retired when the native apps replace it |
@@ -23,7 +22,10 @@ Last updated: 2026-10-25 — the branded gate (lockup → register → repeat PI
 - **Restore from the gate**: register and login can pick a taken backup before any vault exists. A recovery-phrase restore sets a fresh PIN (a device that still holds the key file can restore with the password); the Settings restore remains.
 - **Forgot PIN/password**: the login form offers a recovery-phrase path that unlocks the vault and then requires a new 4–12-digit PIN through `set_vault_password`, so the next unlock works. A wrong phrase leaves the vault locked.
 - Notes home: search pill with layout/sort controls, folder chips, **four layouts** (List / Gallery / Cards / Icons), three sort orders, create stack (Text / Checklist / Journal / Meeting notes / Folder) with templates shared with the web editor.
-- **Editable block editor** over the core's ProseMirror contract: marks kept per character, task toggles write through the core, debounced saves, golden-fixture round-trip test; the note screen has pin/share/overflow actions, a bottom action bar and a widget/copy/send/delete sheet.
+- **Folders you can actually manage**: creating one asks for a name (both entry points), long-pressing one in the drawer offers Rename and Delete, and deleting moves its pages back to the root list after saying so — the core's `delete_folder` never deletes documents.
+- **Long-press actions**: notes (all four layouts) open a sheet with Open, Pin/Unpin, Send, Show in widgets / Hide, Make a copy and Delete; folders get Rename and Delete. One reusable `ActionSheet` dims the actions that do not apply and tints the destructive one.
+- **User templates (ADR 0010)**: "Save as template" in a page's options sheet stores its `doc` blocks under a name, the create stack lists them under YOUR TEMPLATES, and a long press deletes one without touching pages made from it. They live in the vault's `settings` table, so the schema is unchanged.
+- **Editable block editor** over the core's ProseMirror contract: marks kept per character, task toggles write through the core, debounced saves, golden-fixture round-trip test, and a placeholder plus a 44dp target on empty blocks so a new page's body can be found and typed into; the note screen has pin/share/overflow actions and a widget/copy/send/save-as-template/delete sheet. The footer action bar was removed — it duplicated the toolbar, and its one unique control (add block) now opens from the sheet.
 - **Keep-inspired home**: a navigation drawer (lockup, Notes, New folder, folders, Sync, Settings, Lock now, Help), outlined cards with plain-text/checkbox previews, and full-width create pills with a close X.
 - **Sync**: `SyncController` (device-local choice, re-arms on unlock), foreground `SyncService` with Wi-Fi/multicast locks and a live notification, sync screen (address, peers, add-peer), widget-refresh via the core's mutation revision (no JNI hook).
 - **Widgets and entry points**: notes list, pinned note, quick capture, Quick Settings tile, launcher shortcuts, share target — over the Keystore-wrapped cache.
@@ -62,6 +64,7 @@ Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/iss
 ## Known gaps and limitations
 
 - **Full real-device pass pending** — the gate, share target, export, restore and update check are verified on a Nothing A063; widgets, the QS tile, background sync, TalkBack and a release-signed update install still need the checklist. The emulator (no `/dev/kvm`) was only usable for launch/render checks.
+- **Templates do not sync between devices.** They live in the vault's `settings` table, which the sync protocol does not carry (documents, blocks and folders only), so a template made on the phone reaches the desktop through backup/restore, not LAN sync (ADR 0010 records the trade-off).
 - **Foreign-vault restore** is deliberately out of scope (ADR 0007).
 - **Desktop updater orchestration** is still duplicated between the shell and the core; only the signature verifier and pinned key are shared.
 - **`feat/web-mobile-apps`** (remote) is an abandoned pre-restructure experiment ("split into desktop/web/mobile apps"); do not merge — delete when convenient.
