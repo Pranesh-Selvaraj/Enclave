@@ -6,7 +6,9 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +17,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
@@ -52,6 +57,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             EnclaveTheme(mode = AppPrefs.themeMode, accentLight = AppPrefs.accentLight, accentDark = AppPrefs.accentDark) {
+                val view = LocalView.current
+                val lightBars = MaterialTheme.colorScheme.background.luminance() > 0.5f
+                SideEffect {
+                    WindowCompat.getInsetsController(window, view).apply {
+                        isAppearanceLightStatusBars = lightBars
+                        isAppearanceLightNavigationBars = lightBars
+                    }
+                }
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Vault) }
                 var notice by remember { mutableStateOf<String?>(null) }

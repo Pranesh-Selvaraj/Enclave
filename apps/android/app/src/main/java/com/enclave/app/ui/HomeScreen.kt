@@ -1,6 +1,8 @@
 package com.enclave.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,12 +33,15 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -44,9 +49,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,14 +69,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.enclave.app.R
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
+import com.enclave.app.editor.EditorDocument
 import com.enclave.app.editor.NoteFactory
 import com.enclave.app.sync.SyncController
 import kotlinx.coroutines.Dispatchers
@@ -102,6 +116,7 @@ fun HomeScreen(
     var folderFilter by remember { mutableStateOf<String?>(null) }
     var createOpen by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<HomeSheet?>(null) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
 
     suspend fun reload() {
         loading = true
@@ -137,9 +152,113 @@ fun HomeScreen(
             .sortedWith(sort.comparator())
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
+    val drawerDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surface) {
+                Image(
+                    painter = painterResource(
+                        if (drawerDark) R.drawable.ic_enclave_lockup_paper else R.drawable.ic_enclave_lockup_ink,
+                    ),
+                    contentDescription = "Enclave",
+                    modifier = Modifier
+                        .padding(horizontal = 28.dp, vertical = 24.dp)
+                        .width(152.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Notes") },
+                    icon = { Icon(Icons.Filled.Create, contentDescription = null) },
+                    selected = folderFilter == null,
+                    onClick = {
+                        folderFilter = null
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    colors = drawerItemColors(),
+                )
+                NavigationDrawerItem(
+                    label = { Text("New folder") },
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            val folder = withContext(Dispatchers.IO) { Core.ffi.createFolder("New folder") }
+                            folders = folders + folder
+                            drawerState.close()
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                if (folders.isNotEmpty()) {
+                    Text(
+                        "FOLDERS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 28.dp, top = 18.dp, bottom = 4.dp),
+                    )
+                    folders.forEach { folder ->
+                        NavigationDrawerItem(
+                            label = { Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
+                            selected = folderFilter == folder.id,
+                            onClick = {
+                                folderFilter = folder.id
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            colors = drawerItemColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                NavigationDrawerItem(
+                    label = { Text("Sync") },
+                    icon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onOpenSync()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Settings") },
+                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onOpenSettings()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Lock now") },
+                    icon = { Icon(Icons.Filled.Lock, contentDescription = null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onLock()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Help & feedback") },
+                    icon = { Icon(Icons.Filled.Info, contentDescription = null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onOpenSettings()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        },
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            floatingActionButton = {
             CreateStack(
                 open = createOpen,
                 onToggle = { createOpen = !createOpen },
@@ -151,31 +270,18 @@ fun HomeScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 4.dp),
+                    .padding(start = 6.dp, end = 8.dp, top = 8.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                    Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                }
                 Text(
                     greeting(),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onOpenSync) {
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Sync")
-                        if (SyncController.enabled) {
-                            Box(
-                                Modifier
-                                    .padding(top = 3.dp, end = 3.dp)
-                                    .size(8.dp)
-                                    .background(Color(0xFF2E7D32), CircleShape),
-                            )
-                        }
-                    }
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                }
                 IconButton(onClick = onLock) {
                     Icon(Icons.Filled.Lock, contentDescription = "Lock vault")
                 }
@@ -247,6 +353,7 @@ fun HomeScreen(
                 NotesContent(layout, visible, onOpenNote)
             }
         }
+        }
     }
 
     when (sheet) {
@@ -277,6 +384,13 @@ fun HomeScreen(
         null -> Unit
     }
 }
+
+@Composable
+private fun drawerItemColors() = NavigationDrawerItemDefaults.colors(
+    selectedContainerColor = MaterialTheme.colorScheme.onSurface,
+    selectedTextColor = MaterialTheme.colorScheme.surface,
+    selectedIconColor = MaterialTheme.colorScheme.surface,
+)
 
 @Composable
 private fun SearchPill(
@@ -427,20 +541,38 @@ private fun NoteRow(doc: Document, onClick: () -> Unit) {
 
 @Composable
 private fun NoteCard(doc: Document, onClick: () -> Unit) {
+    var preview by remember(doc.id) { mutableStateOf("") }
+    LaunchedEffect(doc.id, doc.updatedAt) {
+        preview = notePreview(doc.id)
+    }
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 112.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 112.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
     ) {
-        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
                 doc.title.ifBlank { "Untitled note" },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 3,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(18.dp))
+            if (preview.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    preview,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     timeAgo(doc.updatedAt),
@@ -459,6 +591,13 @@ private fun NoteCard(doc: Document, onClick: () -> Unit) {
             }
         }
     }
+}
+
+/** Plain-text preview of a note, loaded lazily as cards become visible. */
+private suspend fun notePreview(id: String): String = withContext(Dispatchers.IO) {
+    val blocks = runCatching { Core.ffi.getBlocks(id) }.getOrDefault(emptyList())
+    val doc = blocks.firstOrNull { it.blockType == "doc" } ?: return@withContext ""
+    EditorDocument.parse(doc.contentJson).plainText()
 }
 
 @Composable
@@ -533,25 +672,20 @@ private fun CreateStack(open: Boolean, onToggle: () -> Unit, onCreate: (CreateKi
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (open) {
             CreateKind.entries.forEach { kind ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface,
-                        shape = RoundedCornerShape(20.dp),
-                        shadowElevation = 2.dp,
-                    ) {
-                        Text(
-                            kind.label,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    SmallFloatingActionButton(
-                        onClick = { onCreate(kind) },
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary,
+                Surface(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.clickable { onCreate(kind) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(kind.emoji, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.width(10.dp))
+                        Text(kind.label, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -585,7 +719,7 @@ private fun sectionTitle(folders: List<Folder>, folderFilter: String?): String =
     folders.firstOrNull { it.id == folderFilter }?.name ?: "Recent pages"
 
 /** `2026-10-17T09:00:00+00:00` -> `just now` / `12m ago` / `3h ago` / `2d ago` / `2026-10-17`. */
-private fun timeAgo(iso: String): String {
+internal fun timeAgo(iso: String): String {
     val then = parseIsoUtc(iso) ?: return iso.take(10)
     val seconds = ((System.currentTimeMillis() - then) / 1000).coerceAtLeast(0)
     return when {

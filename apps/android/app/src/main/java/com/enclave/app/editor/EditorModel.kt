@@ -194,6 +194,40 @@ class AtomBlock(
 /** The whole document, serialisable back to the ProseMirror contract. */
 class EditorDocument(val nodes: MutableList<EditorBlock>) {
 
+    /** Flat text for shares, widgets and card previews; lists keep their bullets/boxes. */
+    fun plainText(): String {
+        val builder = StringBuilder()
+        fun line(text: String) {
+            if (text.isBlank()) return
+            if (builder.isNotEmpty()) builder.append('\n')
+            builder.append(text)
+        }
+        fun walk(block: EditorBlock) {
+            when (block) {
+                is TextBlock -> line(block.content.text.trim())
+                is AtomBlock -> if (block.type == "horizontalRule") line("---")
+                is ContainerBlock -> when (block.type) {
+                    "taskItem" -> {
+                        val mark = if (block.attrs["checked"] == true) "☑ " else "☐ "
+                        val text = block.children.filterIsInstance<TextBlock>()
+                            .joinToString(" ") { it.content.text.trim() }
+                        if (text.isNotBlank()) line(mark + text)
+                        block.children.filterNot { it is TextBlock }.forEach(::walk)
+                    }
+                    "listItem" -> {
+                        val text = block.children.filterIsInstance<TextBlock>()
+                            .joinToString(" ") { it.content.text.trim() }
+                        if (text.isNotBlank()) line("• " + text)
+                        block.children.filterNot { it is TextBlock }.forEach(::walk)
+                    }
+                    else -> block.children.forEach(::walk)
+                }
+            }
+        }
+        nodes.forEach(::walk)
+        return builder.toString()
+    }
+
     fun toJson(): String {
         val content = JSONArray()
         nodes.forEach { content.put(it.toJson()) }

@@ -104,6 +104,12 @@ private val MonoColors = darkColorScheme(
     onPrimaryContainer = Color(0xFFF2F2F2),
     secondary = Color(0xFFBDBDBD),
     onSecondary = Color(0xFF141414),
+    secondaryContainer = Color(0xFF2A2A2A),
+    onSecondaryContainer = Color(0xFFEDEDED),
+    tertiary = Color(0xFFBDBDBD),
+    onTertiary = Color(0xFF141414),
+    tertiaryContainer = Color(0xFF2A2A2A),
+    onTertiaryContainer = Color(0xFFF2F2F2),
     background = Color(0xFF0E0E0E),
     onBackground = Color(0xFFEDEDED),
     surface = Color(0xFF1A1A1A),
@@ -113,6 +119,10 @@ private val MonoColors = darkColorScheme(
     outline = Color(0xFF3A3A3A),
     outlineVariant = Color(0xFF2A2A2A),
     error = Color(0xFFF2B8B5),
+    surfaceTint = Color(0xFFE8E8E8),
+    inverseSurface = Color(0xFFEDEDED),
+    inverseOnSurface = Color(0xFF1A1A1A),
+    inversePrimary = Color(0xFF2A2A2A),
 )
 
 @Composable

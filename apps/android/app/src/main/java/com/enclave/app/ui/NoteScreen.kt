@@ -1,27 +1,47 @@
 package com.enclave.app.ui
 
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -35,7 +55,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
@@ -44,6 +68,8 @@ import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.editor.EditableDocument
 import com.enclave.app.editor.EditorDocument
+import com.enclave.app.editor.EditableText
+import com.enclave.app.editor.TextBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -64,17 +90,21 @@ import java.util.UUID
 fun NoteScreen(documentId: String, onBack: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var savedTitle by remember { mutableStateOf<String?>(null) }
+    var updatedAt by remember { mutableStateOf("") }
+    var isFavorite by remember { mutableStateOf(false) }
     var editor by remember { mutableStateOf<EditorDocument?>(null) }
     var docBlockId by remember { mutableStateOf<String?>(null) }
     var sortOrder by remember { mutableStateOf(1.0) }
     var loaded by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
-    var menuOpen by remember { mutableStateOf(false) }
+    var sheetOpen by remember { mutableStateOf(false) }
+    var deleteOpen by remember { mutableStateOf(false) }
     var widgetEnabled by remember { mutableStateOf(false) }
     var widgetEditable by remember { mutableStateOf(true) }
     var widgetBlockId by remember { mutableStateOf<String?>(null) }
     var widgetSortOrder by remember { mutableStateOf(1.0) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(documentId) {
         withContext(Dispatchers.IO) {
@@ -89,7 +119,11 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
             if (widgetBlock != null) {
                 val widgetJson = runCatching { JSONObject(widgetBlock.contentJson) }.getOrNull()
                 widgetEnabled = widgetJson?.optBoolean("enabled", false) ?: false
-                widgetEditable = widgetJson?.optBoolean("editable", true) ?: true
+                widgetEditable = if (widgetEnabled) {
+                    widgetJson?.optBoolean("editable", true) ?: true
+                } else {
+                    false
+                }
             }
             val docBlock = blocks.firstOrNull { it.blockType == "doc" }
             if (docBlock != null) {
@@ -104,6 +138,8 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
             }
             title = document.title
             savedTitle = document.title
+            updatedAt = document.updatedAt
+            isFavorite = document.isFavorite
         }
         loaded = true
     }
@@ -147,6 +183,51 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
         }
     }
 
+    fun shareNote() {
+        val body = buildString {
+            if (title.isNotBlank()) append(title).append("\n\n")
+            append(editor?.plainText().orEmpty())
+        }.trim()
+        if (body.isBlank()) return
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            putExtra(Intent.EXTRA_TEXT, body)
+        }
+        context.startActivity(Intent.createChooser(send, "Send note"))
+    }
+
+    fun toggleFavorite() {
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { Core.ffi.toggleFavorite(documentId) }
+            }.onSuccess {
+                isFavorite = it.isFavorite
+                WidgetCacheBridge.requestRefresh()
+            }
+        }
+    }
+
+    fun duplicateNote() {
+        scope.launch {
+            sheetOpen = false
+            runCatching {
+                withContext(Dispatchers.IO) { Core.ffi.duplicateDocument(documentId) }
+            }.onSuccess {
+                Toast.makeText(context, "Copy created", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Could not copy the note", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun addBlock() {
+        val document = editor ?: return
+        document.nodes.add(TextBlock("paragraph", mutableMapOf(), EditableText()))
+        revision++
+        Toast.makeText(context, "Block added", Toast.LENGTH_SHORT).show()
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -158,47 +239,79 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Note options")
-                    }
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Show in widgets") },
-                            trailingIcon = {
-                                if (widgetEnabled) {
-                                    Icon(Icons.Filled.Check, contentDescription = null)
-                                }
-                            },
-                            onClick = {
-                                menuOpen = false
-                                updateWidget(
-                                    enabled = !widgetEnabled,
-                                    editable = if (!widgetEnabled) true else widgetEditable,
-                                )
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Allow editing from widgets") },
-                            enabled = widgetEnabled,
-                            trailingIcon = {
-                                if (widgetEditable) {
-                                    Icon(Icons.Filled.Check, contentDescription = null)
-                                }
-                            },
-                            onClick = {
-                                menuOpen = false
-                                updateWidget(enabled = true, editable = !widgetEditable)
-                            },
-                        )
-                    }
+                    CircleAction(
+                        icon = Icons.Filled.Star,
+                        description = if (isFavorite) "Unpin note" else "Pin note",
+                        tint = if (isFavorite) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        onClick = ::toggleFavorite,
+                    )
+                    CircleAction(
+                        icon = Icons.Filled.Share,
+                        description = "Send note",
+                        onClick = ::shareNote,
+                    )
+                    CircleAction(
+                        icon = Icons.Filled.MoreVert,
+                        description = "Note options",
+                        onClick = { sheetOpen = true },
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
             )
+        },
+        bottomBar = {
+            Surface(
+                color = MaterialTheme.colorScheme.background,
+                modifier = Modifier.imePadding(),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = ::addBlock) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add block")
+                            }
+                            IconButton(
+                                onClick = { updateWidget(enabled = !widgetEnabled, editable = true) },
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.List,
+                                    contentDescription = "Show in widgets",
+                                    tint = if (widgetEnabled) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                            IconButton(onClick = ::shareNote) {
+                                Icon(Icons.Filled.Share, contentDescription = "Send note")
+                            }
+                            IconButton(onClick = { sheetOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                            }
+                        }
+                    }
+                }
+            }
         },
     ) { padding ->
         val document = editor
@@ -223,31 +336,31 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                     modifier = Modifier
                         .widthIn(max = AppPrefs.editorWidth.maxWidth)
                         .fillMaxHeight(),
-                    contentPadding = PaddingValues(bottom = 64.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
                 ) {
-            item {
-                BasicTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    textStyle = MaterialTheme.typography.headlineMedium.copy(
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                    decorationBox = { inner ->
-                        if (title.isBlank()) {
-                            Text(
-                                "Untitled note",
-                                style = MaterialTheme.typography.headlineMedium,
+                    item {
+                        BasicTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            textStyle = MaterialTheme.typography.headlineMedium.copy(
+                                color = MaterialTheme.colorScheme.onBackground,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            )
-                        }
-                        inner()
-                    },
-                )
-            }
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                            decorationBox = { inner ->
+                                if (title.isBlank()) {
+                                    Text(
+                                        "Untitled note",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                    }
 
                     item {
                         EditableDocument(
@@ -258,6 +371,152 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+
+    if (sheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { sheetOpen = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Text(
+                if (updatedAt.isBlank()) "Note options" else "Edited ${timeAgo(updatedAt)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            SheetAction(
+                icon = Icons.AutoMirrored.Filled.List,
+                label = "Show in widgets",
+                checked = widgetEnabled,
+            ) {
+                sheetOpen = false
+                updateWidget(enabled = !widgetEnabled, editable = true)
+            }
+            SheetAction(
+                icon = Icons.AutoMirrored.Filled.List,
+                label = "Allow editing from widgets",
+                enabled = widgetEnabled,
+                checked = widgetEnabled && widgetEditable,
+            ) {
+                sheetOpen = false
+                updateWidget(enabled = true, editable = !widgetEditable)
+            }
+            SheetAction(
+                icon = Icons.Filled.Create,
+                label = "Make a copy",
+                onClick = ::duplicateNote,
+            )
+            SheetAction(
+                icon = Icons.Filled.Share,
+                label = "Send",
+            ) {
+                sheetOpen = false
+                shareNote()
+            }
+            SheetAction(
+                icon = Icons.Filled.Delete,
+                label = "Delete",
+                tint = MaterialTheme.colorScheme.error,
+            ) {
+                sheetOpen = false
+                deleteOpen = true
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (deleteOpen) {
+        AlertDialog(
+            onDismissRequest = { deleteOpen = false },
+            title = { Text("Delete note?") },
+            text = {
+                Text(
+                    "This deletes “${title.ifBlank { "Untitled note" }}” from this vault.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteOpen = false
+                        scope.launch {
+                            val deleted = runCatching {
+                                withContext(Dispatchers.IO) { Core.ffi.deleteDocument(documentId) }
+                            }.isSuccess
+                            if (deleted) {
+                                WidgetCacheBridge.requestRefresh()
+                                onBack()
+                            } else {
+                                Toast.makeText(context, "Could not delete the note", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteOpen = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CircleAction(
+    icon: ImageVector,
+    description: String,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .padding(end = 6.dp)
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun SheetAction(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean = true,
+    checked: Boolean? = null,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (enabled) tint else tint.copy(alpha = 0.38f),
+        )
+        Spacer(Modifier.size(16.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            },
+            modifier = Modifier.weight(1f),
+        )
+        if (checked == true) {
+            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
