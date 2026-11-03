@@ -1027,7 +1027,7 @@
 								<span class="tree-item-icon">
 									<Icon name="star" size={14} filled />
 								</span>
-								<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+								<span class="tree-item-label" title={doc.title || 'Untitled'}>{doc.title || 'Untitled'}</span>
 								<span class="tree-item-actions">
 									<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Unfavorite" aria-label="Remove from favorites">
 										<Icon name="star" size={13} filled />
@@ -1092,7 +1092,7 @@
 												<span class="tree-item-icon">
 													<Icon name="page" size={14} />
 												</span>
-												<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+												<span class="tree-item-label" title={doc.title || 'Untitled'}>{doc.title || 'Untitled'}</span>
 												<span class="tree-item-actions">
 													<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
 														<Icon name="star" size={13} />
@@ -1137,7 +1137,7 @@
 							<span class="tree-item-icon">
 								<Icon name="page" size={14} />
 							</span>
-							<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+							<span class="tree-item-label" title={doc.title || 'Untitled'}>{doc.title || 'Untitled'}</span>
 							<span class="tree-item-actions">
 								<button class="row-btn" onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(doc.id); }} title="Add to favorites">
 									<Icon name="star" size={13} />
@@ -1204,7 +1204,7 @@
 								<span class="tree-item-icon">
 									<Icon name="trash" size={14} />
 								</span>
-								<span class="tree-item-label">{doc.title || 'Untitled'}</span>
+								<span class="tree-item-label" title={doc.title || 'Untitled'}>{doc.title || 'Untitled'}</span>
 								<span class="tree-item-actions">
 									<button class="row-btn" onclick={() => restoreDocument(doc.id)} title="Restore">
 										<Icon name="upload" size={13} />
