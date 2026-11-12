@@ -4,53 +4,88 @@ All notable changes to Enclave are documented here. The format is based on [Keep
 
 Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change.
 
+## [1.15.0] - 2026-11-12
+
+A repository and interface release. The shipping Tauri desktop and Android builds are unchanged apart from being rebuilt, and the native Android app is still the next stable rather than part of this release — what this version records is the work that happened on a real device and in the repository since v1.14.0: the homepage now shows the native app, the README stopped duplicating it, the scheduled UI audit retired with the web UI it audited, and the app's home screen and create stack were reworked on the phone until they behaved.
+
+### ✨ Added
+
+- 🏷 **About shows the build that is actually installed.** The row read `BuildConfig.VERSION_NAME`, a compile-time constant with a hardcoded `versionCode = 1`, so every build claimed to be the same version and the update check compared a dev string against release tags — the reason it offered the Tauri APK instead of an update (#224). It now reads the package manager's answer, `0.1.0-native (1)`, and adds `Build <sha> · debug|release` so a build under test can be identified exactly.
+- ⚙️ **One source of truth for the native app's version.** `apps/android/version.properties` holds `versionName` and `versionCode`, Gradle reads it, and a build can be stamped from a tag with `-PappVersionName=… -PappVersionCode=…` (verified: `versionCode 7`, `1.15.0-native`). The native app moves to `0.2.0-native` (2) with this release's UI work, still unreleased.
+- 🎨 **`LocalMonochrome`, published by the theme.** Colour is allowed in the Light and Dark themes — accents, emoji, the coloured kind glyphs — but Monochrome now means no colour at all: emoji cannot be tinted, so the create pills and the layout sheet drop them, and the Icons layout shows a note's initial instead of its emoji.
+- 🧪 **An end-to-end core test for `home_notes`.** The projection had unit tests; the path that matters — a document row, its `doc` and `icon` blocks and the returned record — did not. It now fails in `cargo test` if the join or the block-type filter regresses, instead of showing blank cards on a phone.
+
+### 🔧 Changed
+
+- 🗂 **Cards pack instead of lining up.** A fixed two-column grid gave every card in a row the height of the tallest, leaving a hole beside a short note; the Cards layout is a staggered grid now, each card sized to its own preview.
+- 📌 **Pinned notes lead**, in every layout and ahead of the chosen sort, and their star moved from the footer to the card's top-right corner.
+- ➕ **The create stack grows out of the button.** A vertical slide read as arriving from the bottom of the screen; it now scales from the stack's own bottom-right corner — the FAB's corner — and the glyph crossfades rather than spinning. The backdrop blur is gone: toggling a full-screen blur allocates an offscreen layer on every tap and that pop is what looked like the background fighting the blur. The content settles back 2 % under a black scrim instead.
+- ⚡ **Toggling the stack no longer recomposes the note list.** The flag became a `State` object read only by the wrapper, the scrim and the button. Measured on the test device across eight open/close cycles: **p50 9 ms, p90 11 ms, p99 46 ms**, down from p50 15 / p90 31 / p99 109 with the blurred layer.
+- 🎨 **Theme-correct surfaces.** The create pills used Material's inverted `onSurface`/`surface` pair, which painted cream pills in a dark theme; they use `surfaceVariant`/`onSurface` now, and the drawer's selected row is an accent wash instead of an inverted bar. Dark themes stay dark, light stay light.
+- 🏠 **The homepage presents the native app.** The Android section is rewritten around it — fresh device captures (Cards with previews, the layout sheet, the create stack with saved templates, the drawer, the editor), a "Get the current release" CTA instead of "Get the Android beta", a Roadmap link to the milestones, and the compatibility boundary stated in the section rather than implied: pair the native app with a desktop from the same release train, not the previous stable (v1.13.0), while the vault and wire format are unchanged. Screenshots are 720 px and re-encoded, so the site's assets stay at 1.5 MB.
+- 📖 **The README links the homepage instead of embedding screenshots.** They were the most stale lines in the file — every UI change invalidated them and the Android set showed an app that is not released. ADR 0009 already made the homepage the front door; the README is the reference document, and it now says where the pictures live.
+- 🧹 **The scheduled UI audit is retired.** Its subject was `apps/frontend`, the web UI the plan retires, and it had been red on `main` for two weeks before #215 — a scheduled check nobody reads is worse than none. The harness stays as a local tool (`npm run audit:ui`), documented as such.
+
+### 🐛 Fixed
+
+- 🖐 **The create stack's scrim swallowed every tap on the list when closed.** The scrim was kept composed with a disabled `clickable` so its alpha could fade, and a disabled clickable still takes the pointer — an invisible full-screen layer sat on top of the notes and ate every tap while the FAB and drawer kept working. The tap handler is attached only while the stack is open, and the scrim is not composed once it has fully faded.
+- 🏷 **The version row could not identify a build.** It showed a constant that never changed, and the update check compared that constant; both now use the installed package version, which is what the user sees.
+
+### 📝 Notes
+
+- **The native Android app is not in this release.** Its version is `0.2.0-native` (2), unsigned and unshipped; the artifacts here are the Tauri desktop and Android builds, rebuilt against the same core.
+- **Screenshots live in `docs/screenshots/`** and are published by the homepage; the README deliberately has none.
+- **Compatibility is unchanged**: same vault schema (v1) and wire protocol (v3) as v1.13.0, but the native Android stable is not supported against the previous stable desktop — a support boundary, not a format break.
+- **The Android `versionCode` counter is committed after each release.** v1.14.0's build bumped the committed counter to 1012002 without committing it back, so this release carried 1012002 in the released APK and would have shipped it again; `scripts/release-check.sh` caught it and the counter is now committed at that value, with the next build shipping 1012003.
+- **#224 remains open**: `pick_asset` still cannot tell the native APK from the Tauri APK, which must be solved with the native app's release plumbing.
+
 ## [1.14.0] - 2026-11-12
 
 The release that puts the native Android app into the repository and rebuilds the shipping binaries on the updated core. Nothing changes visually in the Tauri desktop/Android app, and the native Android app is **not part of this release** — it is the next stable, and this entry records what it will carry.
 
 ### ✨ Added
 
-- 🧩 **One call for the home screen.** `core-api` gained `home_notes()`, which returns every note with the two app-level blocks that decorate it — the `icon` emoji and the `doc` JSON — so the phone's list is one FFI call in two SQL queries instead of `list_documents()` plus one `get_blocks()` per card for the preview and another for the emoji. On a 100-note vault that is one round trip instead of 201, each of which used to cross JNA and parse JSON in Kotlin.
+- 🧩 **One call for the home screen.** `core-api` gained `home_notes()`, which returns every note with the two app-level blocks that decorate it — the `icon` emoji and the `doc` JSON — so the phone's list is one FFI call in two SQL queries instead of `list_documents()` plus one `get_blocks()` per card for the preview and another for the emoji. On a 100-note vault that is one round trip instead of 201, each of which used to cross JNA and parse JSON in Kotlin — visible as an empty-looking first frame on a full vault. Measured cold start on the test device: 854 ms.
 - 📄 **The plain-text projection lives in the core.** `preview_text()` flattens an editor document to the text a card preview or a share body shows, with the editor's own rules (bullets, `☐`/`☑` task marks, `---` rules, images dropped). The Kotlin duplicate is deleted, so a card and a shared note can no longer disagree.
 - 📜 **The contract is written down.** `docs/CONTRACT.md` documents the four versioned surfaces (vault schema v1, block schema v1, sync protocol v3, FFI), the compatibility matrix, the operating rules, and the app-level block types (`widget`, `icon`) that a reader must ignore rather than render.
-- 🔒 **Sync-frame golden fixtures.** The transport frames (`auth`, `auth_proof`, `hello`, `session_failed`), the app frames (`digest`, `need`, `snapshot`, `ack`) and the handshake crypto now have checked-in fixtures generated from the real constructors and asserted by `cargo test`, including tamper rejection and "a wrong peer id does not verify".
-- 📱 **The native Android app's second wave** (unreleased, in the repository): a PIN/password gate with a branded lockup, a four-dot placeholder and a confirm key; vault settings for theme, accent, editor text size and page width, auto-lock and widget sharing; folders that can be named, renamed and deleted; long-press action sheets for notes and folders; user-authored templates beside the create primitives; a per-note emoji for the Icons layout; an adaptive icon with a monochrome layer and a themed launch window; and vault backup export through SAF.
+- 🔒 **Sync-frame golden fixtures.** The transport frames (`auth`, `auth_proof`, `hello`, `session_failed`), the app frames (`digest`, `need`, `snapshot`, `ack`) and the handshake crypto now have checked-in fixtures generated from the real constructors and asserted by `cargo test`, including tamper rejection and "a wrong peer id does not verify" (ADR 0006).
+- 📱 **The native Android app's second wave** (unreleased, in the repository; #183, #189–#192, #194–#197, #207, #217–#221): a PIN/password gate with a branded lockup, a four-dot placeholder and a confirm key; vault settings for theme, accent, editor text size and page width, auto-lock and widget sharing; folders that can be named, renamed and deleted; long-press action sheets for notes and folders; user-authored templates beside the create primitives; a per-note emoji for the Icons layout; an adaptive icon with a monochrome layer and a themed launch window; and vault backup export through SAF.
 - 🗂️ **Decision records 0009–0012** — the public homepage, user templates, the unlock-secret policy and multiple vaults with independent secrets — plus `docs/plans/multiple-vaults.md`, which states up front that its guarantee is coercion resistance and not forensic deniability.
 
 ### 🔧 Changed
 
-- 🔓 **The unlock secret has no length policy.** The native app enforced `/^\d{4,12}$/`, which refused vaults whose secret was created elsewhere (one character, or one containing a letter) and treated a length rule as a security control when the key is protected by Argon2id. Any non-empty string is now valid, with no minimum and no maximum; the keypad stays digits-only as an input method, and the Password tab and recovery dialogs accept arbitrary text.
+- 🔓 **The unlock secret has no length policy** (ADR 0011, #222 follow-up): The native app enforced `/^\d{4,12}$/`, which refused vaults whose secret was created elsewhere (one character, or one containing a letter) and treated a length rule as a security control when the key is protected by Argon2id. Any non-empty string is now valid, with no minimum and no maximum; the keypad stays digits-only as an input method, and the Password tab and recovery dialogs accept arbitrary text.
 - 🕶 **The gate does not reveal the length.** The dot row keeps four slots for any secret up to four characters and is hidden from accessibility services — announcing "5 characters entered" would tell anyone in the room the length — and grows only past four, as the user types.
-- 🎨 **The launcher icon follows the theme**, inverting between a paper tile with the ink mark and an ink tile with the paper mark, and the launch window shows the mark on the same background before handing over to the wordmark.
+- 🎨 **The launcher icon follows the theme** and is sized for the launcher mask rather than the icon canvas, inverting between a paper tile with the ink mark and an ink tile with the paper mark, and the launch window shows the mark on the same background before handing over to the wordmark.
 - 🏷 **The note screen lost its footer.** The bottom action bar duplicated the toolbar; its one unique control (add block) moved into the options sheet.
 - 🔎 **The home header is one row** — menu, search, lock — with the layout and sort pickers inside the search pill; the greeting line is gone.
-- ⚡ **The home list is cached for the unlocked session**, together with the chosen layout and sort, so returning from a page paints the finished screen instead of an empty grid in the wrong layout.
-- 🧰 **`release-check.sh` and the Android CI** now cover the native app's build: the `Android app` workflow compiles it, runs its JVM tests and fails if the committed Kotlin bindings drift from the core.
+- ⚡ **The home list is cached for the unlocked session**, and refreshes through the single `home_notes()` call after any change, together with the chosen layout and sort, so returning from a page paints the finished screen instead of an empty grid in the wrong layout.
+- 🧰 **CI covers the native app**: the `Android app` workflow (#210, #216) the `Android app` workflow compiles it, runs its JVM tests and fails if the committed Kotlin bindings drift from the core.
 
 ### 🐛 Fixed
 
-- 🔙 **Back quit the app while the drawer was open.** Nothing handled back for the modal drawer, so the system default finished the activity and returned to a drawer that was still open on the next launch. The home screen now closes the drawer first.
-- ⌨️ **A new note's body could not be focused.** An empty paragraph renders no glyphs, so the field collapsed to nothing and every tap under the title landed on the title field. Blank blocks now draw a placeholder ("Start writing…") and take a 44dp touch target.
-- 🕰 **Notes older than a week showed a raw ISO date.** `timeAgo`'s last branch printed `2026-11-03`, so a nine-day-old note read as an identifier rather than a date; it now reads "3 Nov 2026", treats a future timestamp (a clock that moved backwards) as "just now", and parses the exact RFC 3339 the core writes.
-- 🧮 **List markers were misaligned.** Bullets, numbers and checkboxes each had their own column and, once empty blocks gained a touch target, their markers floated into the middle of the row. All three now share one marker column pinned to the first text line.
-- ➕ **The create button covered the last card** in Gallery, Cards and Icons; every layout reserves clearance for it.
-- 💾 **A finished backup looked like nothing happened.** The result was printed in the Updates section far below the button that produced it; it now sits under the Data rows, and cancelling the picker says so.
-- 📁 **An empty folder claimed the vault was empty**, and **the Sync screen spun on "finding an address…" forever** while sync was off.
-- 🎨 **The launcher icon ignored its mask.** Night bitmaps shadow the adaptive icon (`night` outranks `anydpi`), so a dark-themed launcher drew the legacy bitmap on a white plate; and the mark was sized against the 108dp canvas rather than the 72dp a launcher shows, so it filled the visible circle. The icon is now an adaptive vector inside the safe zone, and the night bitmaps are gone.
+- 🔙 **Back quit the app while the drawer was open** (#207): Nothing handled back for the modal drawer, so the system default finished the activity and returned to a drawer that was still open on the next launch. The home screen now closes the drawer first.
+- ⌨️ **A new note's body could not be focused** (#188): An empty paragraph renders no glyphs, so the field collapsed to nothing and every tap under the title landed on the title field. Blank blocks now draw a placeholder ("Start writing…") and take a 44dp touch target.
+- 🕰 **Notes older than a week showed a raw ISO date** (#188): `timeAgo`'s last branch printed `2026-11-03`, so a nine-day-old note read as an identifier rather than a date; it now reads "3 Nov 2026", treats a future timestamp (a clock that moved backwards) as "just now", and parses the exact RFC 3339 the core writes.
+- 🧮 **List markers were misaligned** (#220 follow-up): Bullets, numbers and checkboxes each had their own column and, once empty blocks gained a touch target, their markers floated into the middle of the row. All three now share one marker column pinned to the first text line.
+- ➕ **The create button covered the last card** (#188) in Gallery, Cards and Icons; every layout reserves clearance for it.
+- 💾 **A finished backup looked like nothing happened** (#188): The result was printed in the Updates section far below the button that produced it; it now sits under the Data rows, and cancelling the picker says so.
+- 📁 **An empty folder claimed the vault was empty** (#217), and **the Sync screen spun on "finding an address…" forever** while sync was off.
+- 🎨 **The launcher icon ignored its mask and its theme.** Night bitmaps shadow the adaptive icon (`night` outranks `anydpi`), so a dark-themed launcher drew the legacy bitmap on a white plate; and the mark was sized against the 108dp canvas rather than the 72dp a launcher shows, so it filled the visible circle. The icon is now an adaptive vector inside the safe zone, and the night bitmaps are gone.
 
 ### 🔒 Security
 
-- ⏳ **Failed unlocks are throttled.** With no length policy, the time between attempts is the only barrier left against guessing a short secret. Consecutive failures are recorded device-locally (surviving a restart) and attempts are refused on a schedule — the first two free, then 1s, 3s, 10s, 30s, a minute, capped at five — with the button counting down. A successful unlock clears the counter.
-- 🚫 **Release builds block screenshots and the recents thumbnail** (`FLAG_SECURE`). Debug builds stay capturable so a device pass can take screenshots.
-- 🗑 **Deleting a note asks first**, everywhere, and says plainly that the content is removed and cannot be undone: the core tombstones the document row but deletes its blocks, embeddings and search rows on the spot.
-- 🧭 **The Help row sends people to the issue tracker** — report a problem, browse issues, or the security policy — instead of opening Settings and doing nothing.
+- ⏳ **Failed unlocks are throttled** (#188, ADR 0011): With no length policy, the time between attempts is the only barrier left against guessing a short secret. Consecutive failures are recorded device-locally (surviving a restart) and attempts are refused on a schedule — the first two free, then 1s, 3s, 10s, 30s, a minute, capped at five — with the button counting down. A successful unlock clears the counter.
+- 🚫 **Release builds block screenshots and the recents thumbnail** (`FLAG_SECURE`, #199). Debug builds stay capturable so a device pass can take screenshots.
+- 🗑 **Deleting a note asks first** (#204 covers a trash UI), everywhere, and says plainly that the content is removed and cannot be undone: the core tombstones the document row but deletes its blocks, embeddings and search rows on the spot.
+- 🧭 **The Help row sends people to the issue tracker** (#221) — report a problem, browse issues, or the security policy — instead of opening Settings and doing nothing.
 
 ### 📝 Notes
 
 - **Platform status.** The native Android app is the next stable and is **not** in this release; the native desktop app is in development. The shipping Tauri app is unchanged by this release beyond the core underneath it.
 - **Compatibility.** The supported pairing is two builds from the same release train. The native Android app is **not supported against the previous stable desktop build**: it is a different application on the same core, its sync has not been exercised against the Tauri desktop, and it stores app-level blocks (`icon`, `widget`) the older desktop ignores. Vaults and the sync wire format are unchanged (schema v1, protocol v3), so nothing is lost — it is a support statement, not a data-format break.
 - **Templates do not sync between devices.** They live in the vault's `settings` table, which the sync protocol does not carry; another device gets them through backup and restore (ADR 0010).
-- **Deletes are permanent in practice** (#204 tracks a trash UI), and **multiple vaults with independent secrets are planned, not present** (ADR 0012, #222).
+- **Deletes are permanent in practice** (#204 tracks a trash UI), and **multiple vaults with independent secrets are planned, not present** (ADR 0012, #222) — the plan states that its guarantee is coercion resistance, not forensic deniability.
 - Cross-checked on a real device (Nothing A063, Android 15) for the parts that ship in the repository: gate, folders, long-press actions, templates, icons, backup export, theme switching and the launch sequence.
 
 ## [1.13.0] - 2026-10-17
@@ -563,7 +598,7 @@ The first Enclave build: a SvelteKit + Tauri desktop app with a Notion-style blo
 - 🪟 **Windows CI + NSIS installer** — the first packaged desktop build.
 - 🏷️ **Project renamed** — from the working name “Aethernote” to Enclave.
 
-[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.15.0...HEAD
 [0.1.0]: https://github.com/Pranesh-Selvaraj/Enclave/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.1.0...v0.2.0
 [0.3.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v0.2.0...v0.3.0
@@ -584,5 +619,6 @@ The first Enclave build: a SvelteKit + Tauri desktop app with a Notion-style blo
 [1.10.1]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.0...v1.10.1
 [1.11.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.10.1...v1.11.0
 [1.12.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.11.0...v1.12.0
+[1.15.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/Pranesh-Selvaraj/Enclave/compare/v1.12.0...v1.13.0

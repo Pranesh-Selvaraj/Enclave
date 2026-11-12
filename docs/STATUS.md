@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-11-12 — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup or recover a forgotten PIN with the recovery phrase without creating a vault, and Settings now has auto-lock, editor text size/page width, a visual custom-accent picker, a Monochrome theme and per-page widget sharing, and the home/note surfaces now use a Keep-inspired drawer, card previews and action sheet; the Phase 1 contract is complete; the Figma documentation plugin and its token export were retired, and the brand vectors live in [`docs/brand/`](brand/README.md).
+Last updated: 2026-11-12 (v1.15.0) — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup or recover a forgotten PIN with the recovery phrase without creating a vault, and Settings now has auto-lock, editor text size/page width, a visual custom-accent picker, a Monochrome theme and per-page widget sharing, and the home/note surfaces now use a Keep-inspired drawer, card previews and action sheet; the Phase 1 contract is complete; the Figma documentation plugin and its token export were retired, and the brand vectors live in [`docs/brand/`](brand/README.md).
 
 ## Where we are
 
@@ -25,6 +25,7 @@ Last updated: 2026-11-12 — the branded gate (lockup → register → repeat PI
 - **Folders you can actually manage**: creating one asks for a name (both entry points), long-pressing one in the drawer offers Rename and Delete, and deleting moves its pages back to the root list after saying so — the core's `delete_folder` never deletes documents.
 - **Long-press actions**: notes (all four layouts) open a sheet with Open, Pin/Unpin, Send, Show in widgets / Hide, Make a copy and Delete; folders get Rename and Delete. One reusable `ActionSheet` dims the actions that do not apply and tints the destructive one.
 - **The gate does not count out loud.** The dot row is decorative and silent to screen readers (`clearAndSetSemantics`), because TalkBack speaking "5 characters entered" would tell anyone in the room the length and undo the four-dot placeholder. A screen-reader user still finds the field by its own label.
+- **About shows the installed build**: name and version code read from the package manager (`apps/android/version.properties`, overridable from a tag with `-PappVersionName/-PappVersionCode`), plus the commit and build type. The update check compares that installed version rather than a compile-time constant.
 - **Throttled unlock (ADR 0011)**: consecutive failures are counted device-locally (they survive a restart) and attempts are refused on a schedule — the first two cost nothing, then 1 s, 3 s, 10 s, 30 s, a minute, capped at five — with the button reading "Try again in 2s". A successful unlock clears the counter. With no length policy this is the only barrier left against guessing a short secret.
 - **Deleting a note asks first**, from the note's own screen and from the long-press sheet, and says plainly that the content is removed and cannot be undone (`delete_document` drops the blocks, embeddings and search rows; only the document row is tombstoned). Screenshots and the recents thumbnail are blocked in release builds (`FLAG_SECURE`); debug builds stay capturable so the device pass can take screenshots.
 - **One call for the home screen**: `home_notes()` returns every note with its emoji and plain-text preview, replacing `list_documents()` plus two `get_blocks()` calls *per card*. The preview projection lives in the core (`preview.rs`) and is the same code that builds a share body.
@@ -65,7 +66,7 @@ Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/iss
 | Platform | State |
 | --- | --- |
 | Android, Tauri | Shipping — `v1.14.0`; rebuilt against the updated core, no visual changes |
-| Android, native (Kotlin/Compose) | **Next stable, in development** — in the repository and used on a real device (Nothing A063, Android 15), not released; version stays `0.1.0-native`, unsigned, `versionCode` 1 |
+| Android, native (Kotlin/Compose) | **Next stable, in development** — in the repository and used on a real device (Nothing A063, Android 15), not released; `0.2.0-native`, unsigned, `versionCode` 2, About shows the installed version and build commit |
 | Desktop, Tauri | Shipping — `v1.14.0`; unchanged beyond the core |
 | Desktop, native (Qt 6) | **In development** — ADR 0004 accepted, verification gate still open, no code |
 
@@ -78,7 +79,7 @@ Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/iss
 ## Release and operations
 
 - Changelog and release conventions live on `main`; a release publishes the matching changelog entry as the release body (CI enforces it).
-- `v1.14.0` is the latest stable release and the supported product; `main` is migration code, and the README says so. Its artifacts are the Tauri desktop/Android builds — the native Android app is not in this release.
+- `v1.15.0` is the latest stable release and the supported product; `main` is migration code, and the README says so. Its artifacts are the Tauri desktop/Android builds — the native Android app is not in this release (it is at `0.2.0-native`, unsigned, `versionCode` 2).
 - **#180 is merged** into `main` (the Android app up to the restore work). The local `feat/android-editor` commits (contract fixtures, branded gate, design docs, gate restore + settings) are still local and need a PR.
 
 ## Known gaps and limitations
