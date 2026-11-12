@@ -38,14 +38,14 @@ if [[ -f "$HOST_ENV" ]]; then
     cargo build -p core-api --features uniffi
     cargo run -q -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
       generate --library target/debug/libcore_api.so \
-      --language kotlin --out-dir "$APP/src/main/java"
+      --language kotlin --out-dir "$APP/src/main/java" --no-format
   )
 else
   echo "== host cdylib + Kotlin bindings =="
   cargo build -p core-api --features uniffi
   cargo run -q -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
     generate --library target/debug/libcore_api.so \
-    --language kotlin --out-dir "$APP/src/main/java"
+    --language kotlin --out-dir "$APP/src/main/java" --no-format
 fi
 
 for abi in $ABIS; do
