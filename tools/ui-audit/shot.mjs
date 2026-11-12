@@ -417,6 +417,12 @@ async function domAudit(s, label) {
       if (!visible(el)) continue;
       const st = getComputedStyle(el);
       if (st.whiteSpace !== 'nowrap') continue;
+      // An ellipsised label truncates on purpose: text-overflow: ellipsis means
+      // it is cut legibly and the full value stays reachable through the
+      // element's title (sidebar tree labels carry one). This check exists to
+      // catch text cut with no ellipsis at all — a width, padding or flex bug —
+      // and such an element does not compute to 'ellipsis'.
+      if (st.textOverflow === 'ellipsis') continue;
       if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) out.issues.push({ type: 'clipped-text', tag: el.tagName, cls: (el.className || '').toString().slice(0, 40), text: (el.textContent || '').trim().slice(0, 30), scrollW: el.scrollWidth, clientW: el.clientWidth });
     }
     if (window.matchMedia('(max-width: 768px)').matches) {
