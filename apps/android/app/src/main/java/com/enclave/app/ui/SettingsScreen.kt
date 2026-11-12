@@ -102,6 +102,7 @@ fun SettingsScreen(
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
     var hideWidgets by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var pendingBackupPath by remember { mutableStateOf<String?>(null) }
 
@@ -131,7 +132,9 @@ fun SettingsScreen(
         val path = pendingBackupPath
         pendingBackupPath = null
         if (uri != null && path != null) {
-            message = copyToUri(context, path, uri)
+            backupMessage = copyToUri(context, path, uri)
+        } else if (path != null) {
+            backupMessage = "Backup cancelled."
         }
         // The private snapshot is a duplicate once copied (or abandoned).
         if (path != null) runCatching { File(path).delete() }
@@ -276,7 +279,7 @@ fun SettingsScreen(
                 ) {
                     scope.launch {
                         busy = true
-                        message = null
+                        backupMessage = null
                         val result = withContext(Dispatchers.IO) {
                             runCatching { Core.ffi.backupVault() }
                         }
@@ -286,7 +289,7 @@ fun SettingsScreen(
                                 pendingBackupPath = path
                                 exportLauncher.launch(File(path).name)
                             }
-                            .onFailure { message = "Could not create the backup: ${it.message}" }
+                            .onFailure { backupMessage = "Could not create the backup: ${it.message}" }
                     }
                 }
             }
@@ -296,15 +299,26 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // The result belongs next to the action: it used to be printed
+                // in the Updates section far below, so a finished backup looked
+                // like nothing had happened.
+                backupMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             item {
                 SettingsRow(
                     title = "Restore vault backup",
                     value = if (restoreBusy) "Restoring…" else null,
                 ) {
-                    message = null
+                    backupMessage = null
                     runCatching { restoreLauncher.launch(arrayOf("application/octet-stream", "*/*")) }
-                        .onFailure { message = "Could not open the file picker: ${it.message}" }
+                        .onFailure { backupMessage = "Could not open the file picker: ${it.message}" }
                 }
             }
             item {

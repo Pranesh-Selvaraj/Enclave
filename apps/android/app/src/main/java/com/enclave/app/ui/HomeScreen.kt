@@ -488,8 +488,17 @@ fun HomeScreen(
 
                 if (visible.isEmpty() && !loading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        // Distinguish the three reasons the list can be empty:
+                        // a search with no hits, an empty folder, and a vault
+                        // with no notes at all. "No notes yet" for a filtered
+                        // folder reads as if the notes had disappeared.
+                        val folderName = folders.firstOrNull { it.id == folderFilter }?.name
                         Text(
-                            if (query.isBlank()) "No notes yet — tap + to start." else "No notes match “$query”.",
+                            when {
+                                query.isNotBlank() -> "No notes match “$query”."
+                                folderName != null -> "No notes in “$folderName” yet — tap + to start."
+                                else -> "No notes yet — tap + to start."
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -819,7 +828,7 @@ private fun NotesContent(
 ) {
     when (layout) {
         NotesLayout.LIST -> LazyColumn(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FabClearance),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -830,7 +839,7 @@ private fun NotesContent(
 
         NotesLayout.CARDS -> LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FabClearance),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
@@ -842,7 +851,7 @@ private fun NotesContent(
 
         NotesLayout.GALLERY -> LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FabClearance),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
@@ -854,7 +863,7 @@ private fun NotesContent(
 
         NotesLayout.ICONS -> LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FabClearance),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),
@@ -957,6 +966,9 @@ private fun NoteCard(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit
         }
     }
 }
+
+/** Room under the last row so the floating create button never covers a note. */
+private val FabClearance = 96.dp
 
 /** Plain-text preview of a note, loaded lazily as cards become visible. */
 private suspend fun notePreview(id: String): String = withContext(Dispatchers.IO) {

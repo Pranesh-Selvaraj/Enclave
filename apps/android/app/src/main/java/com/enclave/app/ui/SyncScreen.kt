@@ -153,7 +153,10 @@ fun SyncScreen(onBack: () -> Unit) {
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        // With sync off nothing is resolving a host, so the
+                        // card used to sit on "finding an address…" forever.
                         val address = when {
+                            !enabled -> "Sync is off"
                             current == null -> "…"
                             current.localHost.isBlank() -> "finding an address…"
                             else -> "${current.localHost}:${current.port}"
