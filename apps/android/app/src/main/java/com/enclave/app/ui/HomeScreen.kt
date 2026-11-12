@@ -137,8 +137,10 @@ fun HomeScreen(
     var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
-    var layout by remember { mutableStateOf(NotesLayout.CARDS) }
-    var sort by remember { mutableStateOf(NotesSort.UPDATED) }
+    // Start from the last known choice so returning from a page does not paint
+    // the default layout first and then switch to the chosen one.
+    var layout by remember { mutableStateOf(NotesPrefs.layoutNow) }
+    var sort by remember { mutableStateOf(NotesPrefs.sortNow) }
     var folderFilter by remember { mutableStateOf<String?>(null) }
     var createOpen by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<HomeSheet?>(null) }

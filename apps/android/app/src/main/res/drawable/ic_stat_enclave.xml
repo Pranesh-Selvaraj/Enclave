@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Status-bar icon for the sync notification. A small icon is masked to a single
+  colour by the system, so it is the bare silhouette and it fills the 24dp
+  canvas: padding here would render a tiny mark in the status bar.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:translateX="0.6"
+        android:translateY="0.5"
+        android:scaleX="1.06"
+        android:scaleY="1.06">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M4.8,9 a7.2,7.2 0 1,0 14.4,0 a7.2,7.2 0 1,0 -14.4,0 Z M9.5,9 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M8.5,13.6 h7 l-0.9,6.4 Q14.6,21.6 13,21.6 h-2 Q9.4,21.6 9.4,20 Z" />
+    </group>
+</vector>
