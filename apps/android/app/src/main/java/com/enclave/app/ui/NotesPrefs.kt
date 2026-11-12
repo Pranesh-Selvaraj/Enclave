@@ -40,11 +40,34 @@ object NotesPrefs {
     private const val LAYOUT_KEY = "android.notes_layout"
     private const val SORT_KEY = "android.notes_sort"
 
-    fun loadLayout(): NotesLayout = NotesLayout.fromId(read(LAYOUT_KEY))
-    fun saveLayout(layout: NotesLayout) = write(LAYOUT_KEY, layout.id)
+    // Reading a setting goes through the vault, so the first composition after
+    // returning from a page used to start on the default layout and visibly
+    // flip to the chosen one. These caches let the home start on the right
+    // layout/sort; the vault stays the source of truth and refreshes them.
+    @Volatile
+    private var cachedLayout: NotesLayout? = null
 
-    fun loadSort(): NotesSort = NotesSort.fromId(read(SORT_KEY))
-    fun saveSort(sort: NotesSort) = write(SORT_KEY, sort.id)
+    @Volatile
+    private var cachedSort: NotesSort? = null
+
+    /** The last known choice, for a first frame that is already correct. */
+    val layoutNow: NotesLayout get() = cachedLayout ?: NotesLayout.CARDS
+
+    val sortNow: NotesSort get() = cachedSort ?: NotesSort.UPDATED
+
+    fun loadLayout(): NotesLayout = NotesLayout.fromId(read(LAYOUT_KEY)).also { cachedLayout = it }
+
+    fun saveLayout(layout: NotesLayout) {
+        cachedLayout = layout
+        write(LAYOUT_KEY, layout.id)
+    }
+
+    fun loadSort(): NotesSort = NotesSort.fromId(read(SORT_KEY)).also { cachedSort = it }
+
+    fun saveSort(sort: NotesSort) {
+        cachedSort = sort
+        write(SORT_KEY, sort.id)
+    }
 
     private fun read(key: String): String? = runCatching { Core.ffi.getSetting(key) }.getOrNull()
 

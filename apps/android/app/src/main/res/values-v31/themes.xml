@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android 12+ system splash: the mark on the themed background, then the app.
+      The activity switches to Theme.enclave in onCreate, which is the framework
+      equivalent of postSplashScreenTheme without pulling in the compat library.
+    -->
+    <style name="Theme.enclave.Splash" parent="@style/Theme.enclave">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_mark</item>
+    </style>
+</resources>

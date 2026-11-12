@@ -29,8 +29,18 @@ class TemplatesTest {
     @Test
     fun `templates carry their expected titles`() {
         assertTrue(Templates.forKind(CreateKind.CHECKLIST).title == "Checklist")
-        assertTrue(Templates.forKind(CreateKind.MEETING).title == "Meeting notes")
-        assertTrue(Templates.forKind(CreateKind.JOURNAL).title == "Journal")
         assertTrue(Templates.forKind(CreateKind.TEXT).title.isEmpty())
+    }
+
+    /**
+     * Journal and Meeting notes were removed from the create stack when users
+     * could make their own templates (#220): a fixed "meeting" layout cannot
+     * know this team's agenda, and the set is now Text / Checklist / Folder
+     * plus whatever the user saved.
+     */
+    @Test
+    fun `only the creation primitives are built in`() {
+        assertTrue(CreateKind.entries.map { it.name }.containsAll(listOf("TEXT", "CHECKLIST", "FOLDER")))
+        assertTrue(CreateKind.entries.none { it.name == "MEETING" || it.name == "JOURNAL" })
     }
 }

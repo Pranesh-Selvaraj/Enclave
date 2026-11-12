@@ -833,6 +833,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -890,6 +894,8 @@ fun uniffi_core_api_checksum_method_fficore_get_page_list(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_get_setting(
 ): Short
+fun uniffi_core_api_checksum_method_fficore_home_notes(
+): Short
 fun uniffi_core_api_checksum_method_fficore_init_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_is_unlocked(
@@ -909,6 +915,8 @@ fun uniffi_core_api_checksum_method_fficore_merge_snapshot(
 fun uniffi_core_api_checksum_method_fficore_move_document(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_network_status(
+): Short
+fun uniffi_core_api_checksum_method_fficore_preview_text(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_rename_folder(
 ): Short
@@ -1057,6 +1065,8 @@ fun uniffi_core_api_fn_method_fficore_get_page_list(`ptr`: Pointer,uniffi_out_er
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_get_setting(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_home_notes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_init_vault(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_core_api_fn_method_fficore_is_unlocked(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1077,6 +1087,8 @@ fun uniffi_core_api_fn_method_fficore_move_document(`ptr`: Pointer,`id`: RustBuf
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_network_status(`ptr`: Pointer,
 ): Long
+fun uniffi_core_api_fn_method_fficore_preview_text(`ptr`: Pointer,`docJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_rename_folder(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_core_api_fn_method_fficore_reset_vault(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1314,6 +1326,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_core_api_checksum_method_fficore_get_setting() != 7408.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_core_api_checksum_method_fficore_home_notes() != 32135.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_core_api_checksum_method_fficore_init_vault() != 56490.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1342,6 +1357,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_network_status() != 47908.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_preview_text() != 38185.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_rename_folder() != 16207.toShort()) {
@@ -1982,6 +2000,11 @@ public interface FfiCoreInterface {
     
     fun `getSetting`(`key`: kotlin.String): kotlin.String?
     
+    /**
+     * Every live note with its icon and preview, in one call.
+     */
+    fun `homeNotes`(): List<HomeNote>
+    
     fun `initVault`(`key`: kotlin.ByteArray)
     
     /**
@@ -2005,6 +2028,11 @@ public interface FfiCoreInterface {
     fun `moveDocument`(`id`: kotlin.String, `folderId`: kotlin.String?): Document
     
     suspend fun `networkStatus`(): NetworkStatus
+    
+    /**
+     * Flatten an editor document to the text a preview or a share body shows.
+     */
+    fun `previewText`(`docJson`: kotlin.String): kotlin.String
     
     fun `renameFolder`(`id`: kotlin.String, `name`: kotlin.String)
     
@@ -2498,6 +2526,22 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     
 
     
+    /**
+     * Every live note with its icon and preview, in one call.
+     */
+    @Throws(EnclaveException::class)override fun `homeNotes`(): List<HomeNote> {
+            return FfiConverterSequenceTypeHomeNote.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EnclaveException) { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_home_notes(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
     @Throws(EnclaveException::class)override fun `initVault`(`key`: kotlin.ByteArray)
         = 
     callWithPointer {
@@ -2644,6 +2688,21 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
         EnclaveException.ErrorHandler,
     )
     }
+
+    
+    /**
+     * Flatten an editor document to the text a preview or a share body shows.
+     */override fun `previewText`(`docJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_preview_text(
+        it, FfiConverterString.lower(`docJson`),_status)
+}
+    }
+    )
+    }
+    
 
     
     @Throws(EnclaveException::class)override fun `renameFolder`(`id`: kotlin.String, `name`: kotlin.String)
@@ -3317,6 +3376,47 @@ public object FfiConverterTypeFolder: FfiConverterRustBuffer<Folder> {
             FfiConverterString.write(value.`id`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterString.write(value.`createdAt`, buf)
+    }
+}
+
+
+
+/**
+ * One home-screen row: the document plus the two things the list draws from
+ * its blocks — the emoji and the plain-text preview. Returning them together
+ * turns an N+1 (one `get_blocks` per card) into a single call.
+ */
+data class HomeNote (
+    var `document`: Document, 
+    var `emoji`: kotlin.String?, 
+    var `preview`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHomeNote: FfiConverterRustBuffer<HomeNote> {
+    override fun read(buf: ByteBuffer): HomeNote {
+        return HomeNote(
+            FfiConverterTypeDocument.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HomeNote) = (
+            FfiConverterTypeDocument.allocationSize(value.`document`) +
+            FfiConverterOptionalString.allocationSize(value.`emoji`) +
+            FfiConverterString.allocationSize(value.`preview`)
+    )
+
+    override fun write(value: HomeNote, buf: ByteBuffer) {
+            FfiConverterTypeDocument.write(value.`document`, buf)
+            FfiConverterOptionalString.write(value.`emoji`, buf)
+            FfiConverterString.write(value.`preview`, buf)
     }
 }
 
@@ -3996,6 +4096,34 @@ public object FfiConverterSequenceTypeFolder: FfiConverterRustBuffer<List<Folder
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFolder.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHomeNote: FfiConverterRustBuffer<List<HomeNote>> {
+    override fun read(buf: ByteBuffer): List<HomeNote> {
+        val len = buf.getInt()
+        return List<HomeNote>(len) {
+            FfiConverterTypeHomeNote.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HomeNote>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHomeNote.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HomeNote>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHomeNote.write(it, buf)
         }
     }
 }

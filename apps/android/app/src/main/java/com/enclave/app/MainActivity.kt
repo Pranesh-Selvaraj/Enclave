@@ -2,15 +2,25 @@ package com.enclave.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.enclave.app.core.Core
 import com.enclave.app.editor.CreateKind
 import com.enclave.app.editor.NoteFactory
@@ -19,7 +29,9 @@ import com.enclave.app.ui.AppPrefs
 import com.enclave.app.ui.EnclaveTheme
 import com.enclave.app.ui.HomeScreen
 import com.enclave.app.ui.NoteScreen
+import com.enclave.app.ui.NotesCache
 import com.enclave.app.ui.SettingsScreen
+import com.enclave.app.ui.TemplateEditorScreen
 import com.enclave.app.ui.SyncScreen
 import com.enclave.app.ui.VaultScreen
 import kotlinx.coroutines.launch
@@ -31,6 +43,7 @@ sealed interface Screen {
     data class Note(val id: String) : Screen
     data object Sync : Screen
     data object Settings : Screen
+    data object TemplateEditor : Screen
 }
 
 class MainActivity : ComponentActivity() {
@@ -38,7 +51,17 @@ class MainActivity : ComponentActivity() {
     private var pendingEntryIntent by mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The manifest theme is the launch window; once the activity is up it
+        // hands over to the app theme. Framework-only equivalent of
+        // postSplashScreenTheme, so no compat library is needed.
+        setTheme(R.style.Theme_enclave)
         super.onCreate(savedInstanceState)
+        // Release builds keep the vault out of screenshots, the recents
+        // thumbnail and screen recording (#199). Debug builds stay capturable so
+        // the device pass can take screenshots.
+        if (!BuildConfig.DEBUG) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
         Core.init(this)
         WidgetCacheBridge.install(this)
         AppPrefs.load(this)
@@ -46,7 +69,15 @@ class MainActivity : ComponentActivity() {
         pendingEntryIntent = intent
 
         setContent {
-            EnclaveTheme(mode = AppPrefs.themeMode, accent = AppPrefs.accent) {
+            EnclaveTheme(mode = AppPrefs.themeMode, accentLight = AppPrefs.accentLight, accentDark = AppPrefs.accentDark) {
+                val view = LocalView.current
+                val lightBars = MaterialTheme.colorScheme.background.luminance() > 0.5f
+                SideEffect {
+                    WindowCompat.getInsetsController(window, view).apply {
+                        isAppearanceLightStatusBars = lightBars
+                        isAppearanceLightNavigationBars = lightBars
+                    }
+                }
                 val scope = rememberCoroutineScope()
                 var screen by remember { mutableStateOf<Screen>(Screen.Vault) }
                 var notice by remember { mutableStateOf<String?>(null) }
@@ -57,9 +88,44 @@ class MainActivity : ComponentActivity() {
                         // then let widgets switch to their lock placeholder.
                         SyncController.pause(this@MainActivity)
                         Core.ffi.lockVault()
+                        // Note titles, bodies and previews are vault data: the
+                        // session cache must not outlive the unlock.
+                        NotesCache.clear()
                         WidgetCacheBridge.requestRefresh()
                         screen = Screen.Vault
                     }
+                }
+
+                // Auto-lock: remember when the app left the foreground, and on
+                // return past the configured timeout lock the vault (pausing
+                // sync first, exactly like the manual lock).
+                //
+                // The timestamps come from the monotonic clock: wall-clock
+                // time can jump (a manual change, NTP, a timezone-travelling
+                // user), which would either lock on return from a second in
+                // the background or never lock at all. elapsedRealtime keeps
+                // counting while the device sleeps, which is what "5 minutes
+                // in the background" means to the user.
+                val lifecycleOwner = LocalLifecycleOwner.current
+                var backgroundedAt by remember { mutableStateOf(0L) }
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        when (event) {
+                            Lifecycle.Event.ON_STOP -> backgroundedAt = SystemClock.elapsedRealtime()
+                            Lifecycle.Event.ON_START -> {
+                                val minutes = AppPrefs.autoLock.minutes
+                                if (minutes > 0 && backgroundedAt > 0 && Core.ffi.isUnlocked()) {
+                                    val elapsed = SystemClock.elapsedRealtime() - backgroundedAt
+                                    if (elapsed >= minutes * 60_000L) lock()
+                                }
+                                backgroundedAt = 0
+                            }
+
+                            else -> Unit
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
 
                 LaunchedEffect(Unit) {
@@ -121,8 +187,24 @@ class MainActivity : ComponentActivity() {
                         onOpenNote = { screen = Screen.Note(it) },
                         onOpenSync = { screen = Screen.Sync },
                         onOpenSettings = { screen = Screen.Settings },
+                        onNewTemplate = { screen = Screen.TemplateEditor },
                         onLock = lock,
                     )
+
+                    Screen.TemplateEditor -> {
+                        BackHandler { screen = Screen.Home }
+                        TemplateEditorScreen(
+                            onBack = { screen = Screen.Home },
+                            onSaved = {
+                                android.widget.Toast.makeText(
+                                    this@MainActivity,
+                                    "Template saved — it is in the create stack",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                                screen = Screen.Home
+                            },
+                        )
+                    }
 
                     is Screen.Note -> {
                         BackHandler { screen = Screen.Home }
@@ -138,8 +220,9 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = Screen.Home }
                         SettingsScreen(
                             onBack = { screen = Screen.Home },
-                            onLock = lock,
                             onRestored = {
+                                // A restore replaces the vault behind the list.
+                                NotesCache.clear()
                                 notice = it
                                 screen = Screen.Vault
                             },

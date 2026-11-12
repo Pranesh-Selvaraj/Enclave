@@ -1,0 +1,14 @@
+{
+  "challenge_a": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+  "challenge_b": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+  "hello_ciphertext": "O7DHJphEHLGeb71twNIv1yyO292S0M5xwJp5JHEtjNCOx78lQ3oydhVGJBGgH7QvkzQsfHncvh2JUKG5sBMEXhWxKQ==",
+  "hello_nonce": "JCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+  "hello_plaintext": "{\"kind\":\"hello\",\"peer_id\":\"peer-a\",\"name\":\"Laptop\"}",
+  "peer_id_a": "peer-a",
+  "peer_id_b": "peer-b",
+  "proof_a": "5LBqD8TEoBCZ7T5nqZ1gVmHuQf0aYglTcAGzNV+rWmw=",
+  "proof_b": "QN33uVaIirlB4EIViipyFecLvepU03TQcYLZUouJNmc=",
+  "session_key": "md8bUEle2nCaPMcWUkS3AcTrydTBrODRB0ct/Z+8uCs=",
+  "sync_key": "1g6DLkiiuQnzLltKcwe59YRRHLCPGUV7MzcP/5qFwQ4=",
+  "vault_key": "Dw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8="
+}

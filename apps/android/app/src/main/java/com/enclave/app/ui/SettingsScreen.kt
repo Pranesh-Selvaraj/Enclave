@@ -5,14 +5,19 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,12 +55,25 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.enclave.app.BuildConfig
+import com.enclave.app.R
 import com.enclave.app.WidgetCacheBridge
 import com.enclave.app.core.Core
 import com.enclave.app.sync.SyncController
@@ -64,8 +82,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.core_api.UpdateInfo
 import java.io.File
+import java.util.Locale
 
-private enum class SettingsSheet { THEME, ACCENT }
+private enum class SettingsSheet { THEME, ACCENT, AUTO_LOCK, TEXT_SIZE, PAGE_WIDTH }
 
 /**
  * Settings: appearance (device-local), security (the widget-hide dial is vault
@@ -76,7 +95,6 @@ private enum class SettingsSheet { THEME, ACCENT }
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onLock: () -> Unit,
     onRestored: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -84,6 +102,7 @@ fun SettingsScreen(
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
     var hideWidgets by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var pendingBackupPath by remember { mutableStateOf<String?>(null) }
 
@@ -96,6 +115,8 @@ fun SettingsScreen(
     var restoreError by remember { mutableStateOf<String?>(null) }
     var showRestore by remember { mutableStateOf(false) }
     var restoreBusy by remember { mutableStateOf(false) }
+    var showCustomAccent by remember { mutableStateOf(false) }
+    var customHex by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         hideWidgets = withContext(Dispatchers.IO) {
@@ -111,7 +132,9 @@ fun SettingsScreen(
         val path = pendingBackupPath
         pendingBackupPath = null
         if (uri != null && path != null) {
-            message = copyToUri(context, path, uri)
+            backupMessage = copyToUri(context, path, uri)
+        } else if (path != null) {
+            backupMessage = "Backup cancelled."
         }
         // The private snapshot is a duplicate once copied (or abandoned).
         if (path != null) runCatching { File(path).delete() }
@@ -124,7 +147,7 @@ fun SettingsScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            withContext(Dispatchers.IO) { runCatching { readUri(context, uri) } }
+            withContext(Dispatchers.IO) { runCatching { readBackupBytes(context, uri) } }
                 .onSuccess {
                     restoreBytes = it
                     restoreSecret = ""
@@ -135,11 +158,16 @@ fun SettingsScreen(
         }
     }
 
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val lockup = painterResource(
+        if (dark) R.drawable.ic_enclave_lockup_paper else R.drawable.ic_enclave_lockup_ink,
+    )
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -156,19 +184,56 @@ fun SettingsScreen(
             contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(
+                        painter = lockup,
+                        contentDescription = "Enclave",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.width(170.dp).aspectRatio(347.1f / 48f),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Settings",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
             item { SectionTitle("Appearance") }
             item {
                 SettingsRow("Theme", AppPrefs.themeMode.label) { sheet = SettingsSheet.THEME }
             }
+            if (AppPrefs.themeMode != ThemeMode.MONOCHROME) {
+                item {
+                    SettingsRow(
+                        title = "Accent",
+                        value = AppPrefs.accent.label,
+                        swatch = AppPrefs.accentLight,
+                    ) { sheet = SettingsSheet.ACCENT }
+                }
+            }
             item {
-                SettingsRow(
-                    title = "Accent",
-                    value = AppPrefs.accent.label,
-                    swatch = AppPrefs.accent.light,
-                ) { sheet = SettingsSheet.ACCENT }
+                SettingsRow("Editor text size", AppPrefs.editorTextSize.label) {
+                    sheet = SettingsSheet.TEXT_SIZE
+                }
+            }
+            item {
+                SettingsRow("Page width", AppPrefs.editorWidth.label) {
+                    sheet = SettingsSheet.PAGE_WIDTH
+                }
             }
 
             item { SectionTitle("Security") }
+            item {
+                SettingsRow("Auto-lock", AppPrefs.autoLock.label) {
+                    sheet = SettingsSheet.AUTO_LOCK
+                }
+            }
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
@@ -182,7 +247,7 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
-                                "Widgets show a lock placeholder instead of note content.",
+                                "Widgets show a lock placeholder.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -205,7 +270,6 @@ fun SettingsScreen(
                     }
                 }
             }
-            item { SettingsRow("Lock now", "The password is required to open it again") { onLock() } }
 
             item { SectionTitle("Data") }
             item {
@@ -215,7 +279,7 @@ fun SettingsScreen(
                 ) {
                     scope.launch {
                         busy = true
-                        message = null
+                        backupMessage = null
                         val result = withContext(Dispatchers.IO) {
                             runCatching { Core.ffi.backupVault() }
                         }
@@ -225,30 +289,41 @@ fun SettingsScreen(
                                 pendingBackupPath = path
                                 exportLauncher.launch(File(path).name)
                             }
-                            .onFailure { message = "Could not create the backup: ${it.message}" }
+                            .onFailure { backupMessage = "Could not create the backup: ${it.message}" }
                     }
                 }
             }
             item {
                 Text(
-                    "The backup is the encrypted vault database — without your password or recovery phrase it stays unreadable.",
+                    "Encrypted; unreadable without your password.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // The result belongs next to the action: it used to be printed
+                // in the Updates section far below, so a finished backup looked
+                // like nothing had happened.
+                backupMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             item {
                 SettingsRow(
                     title = "Restore vault backup",
                     value = if (restoreBusy) "Restoring…" else null,
                 ) {
-                    message = null
+                    backupMessage = null
                     runCatching { restoreLauncher.launch(arrayOf("application/octet-stream", "*/*")) }
-                        .onFailure { message = "Could not open the file picker: ${it.message}" }
+                        .onFailure { backupMessage = "Could not open the file picker: ${it.message}" }
                 }
             }
             item {
                 Text(
-                    "Restoring replaces this device's vault and locks it. Only a backup of this vault opens with your password or recovery phrase.",
+                    "Replaces this vault and locks it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -287,7 +362,7 @@ fun SettingsScreen(
             }
             item {
                 Text(
-                    "Enclave never checks on its own — only when you ask. A download is verified against the pinned release key before the installer runs.",
+                    "Only when you ask; downloads are signature-verified.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -305,7 +380,15 @@ fun SettingsScreen(
             item { SettingsRow("Version", BuildConfig.VERSION_NAME, onClick = null) }
             item {
                 Text(
-                    "Your vault stays on this device. Enclave has no cloud, no accounts and no telemetry.",
+                    "Type: Inter · JetBrains Mono (OFL).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            item {
+                Text(
+                    "Local-only. No cloud, accounts or telemetry.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -327,12 +410,55 @@ fun SettingsScreen(
             title = "Accent",
             options = Accent.entries.map { it to it.label },
             selected = AppPrefs.accent,
-            onSelect = { AppPrefs.setAccent(context, it); sheet = null },
+            onSelect = {
+                if (it == Accent.CUSTOM) {
+                    customHex = (AppPrefs.customAccent ?: AppPrefs.accentLight).toHex()
+                    showCustomAccent = true
+                } else {
+                    AppPrefs.setAccent(context, it)
+                }
+                sheet = null
+            },
             onDismiss = { sheet = null },
-            swatch = { it.light },
+            swatch = { if (it == Accent.CUSTOM) AppPrefs.customAccent ?: it.light else it.light },
+        )
+
+        SettingsSheet.AUTO_LOCK -> OptionSheet(
+            title = "Auto-lock",
+            options = AutoLock.entries.map { it to it.label },
+            selected = AppPrefs.autoLock,
+            onSelect = { AppPrefs.setAutoLock(context, it); sheet = null },
+            onDismiss = { sheet = null },
+        )
+
+        SettingsSheet.TEXT_SIZE -> OptionSheet(
+            title = "Editor text size",
+            options = EditorTextSize.entries.map { it to it.label },
+            selected = AppPrefs.editorTextSize,
+            onSelect = { AppPrefs.setEditorTextSize(context, it); sheet = null },
+            onDismiss = { sheet = null },
+        )
+
+        SettingsSheet.PAGE_WIDTH -> OptionSheet(
+            title = "Page width",
+            options = EditorWidth.entries.map { it to it.label },
+            selected = AppPrefs.editorWidth,
+            onSelect = { AppPrefs.setEditorWidth(context, it); sheet = null },
+            onDismiss = { sheet = null },
         )
 
         null -> Unit
+    }
+
+    if (showCustomAccent) {
+        CustomAccentDialog(
+            initialHex = customHex,
+            onDismiss = { showCustomAccent = false },
+            onSave = {
+                AppPrefs.setCustomAccent(context, it)
+                showCustomAccent = false
+            },
+        )
     }
 
     updateInfo?.let { info ->
@@ -480,13 +606,197 @@ fun SettingsScreen(
     }
 }
 
+
+@Composable
+private fun CustomAccentDialog(
+    initialHex: String,
+    onDismiss: () -> Unit,
+    onSave: (Color) -> Unit,
+) {
+    val initial = parseHexColor(initialHex) ?: Color(0xFF6C5CE7)
+    val hsv = remember {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(initial.toArgb(), it) }
+    }
+    var hue by remember { mutableStateOf(hsv[0]) }
+    var saturation by remember { mutableStateOf(hsv[1]) }
+    var value by remember { mutableStateOf(hsv[2].coerceAtLeast(0.05f)) }
+    // Select the current value so typing replaces it instead of appending.
+    var field by remember {
+        mutableStateOf(TextFieldValue(initialHex, TextRange(0, initialHex.length)))
+    }
+    val color = Color.hsv(hue, saturation, value)
+    val valid = parseHexColor(field.text) != null
+
+    fun applyState(next: Color) {
+        val channels = FloatArray(3)
+        android.graphics.Color.colorToHSV(next.toArgb(), channels)
+        hue = channels[0]
+        saturation = channels[1]
+        value = channels[2]
+        val hex = next.toHex()
+        field = TextFieldValue(hex, TextRange(0, hex.length))
+    }
+
+    fun syncField() {
+        val hex = Color.hsv(hue, saturation, value).toHex()
+        field = TextFieldValue(hex, TextRange(0, hex.length))
+    }
+
+    val quick = listOf(
+        "#6C5CE7", "#4C6EF5", "#0F766E", "#B45309",
+        "#BE123C", "#2E7D32", "#C2410C", "#0E7490",
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom accent") },
+        text = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .background(color, CircleShape),
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    OutlinedTextField(
+                        value = field,
+                        onValueChange = {
+                            field = it
+                            parseHexColor(it.text)?.let(::applyState)
+                        },
+                        label = { Text("Hex color") },
+                        singleLine = true,
+                        isError = !valid,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                // Saturation / brightness square for the current hue.
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .pointerInput(hue) {
+                            awaitEachGesture {
+                                fun apply(position: Offset) {
+                                    saturation = (position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    value = (1f - position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                    syncField()
+                                }
+                                val down = awaitFirstDown()
+                                apply(down.position)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.pressed } ?: break
+                                    apply(change.position)
+                                    change.consume()
+                                }
+                            }
+                        },
+                ) {
+                    drawRect(Brush.horizontalGradient(listOf(Color.White, Color.hsv(hue, 1f, 1f))))
+                    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                    drawCircle(
+                        color = Color.White,
+                        radius = 9.dp.toPx(),
+                        center = Offset(saturation * size.width, (1f - value) * size.height),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // Hue bar.
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .clip(CircleShape)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                fun apply(position: Offset) {
+                                    hue = (position.x / size.width.toFloat() * 360f).coerceIn(0f, 360f)
+                                    syncField()
+                                }
+                                val down = awaitFirstDown()
+                                apply(down.position)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.pressed } ?: break
+                                    apply(change.position)
+                                    change.consume()
+                                }
+                            }
+                        },
+                ) {
+                    drawRect(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Red, Color.Yellow, Color.Green,
+                                Color.Cyan, Color.Blue, Color.Magenta, Color.Red,
+                            ),
+                        ),
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 10.dp.toPx(),
+                        center = Offset(hue / 360f * size.width, size.height / 2),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    quick.forEach { hexValue ->
+                        val swatch = parseHexColor(hexValue) ?: return@forEach
+                        Box(
+                            Modifier
+                                .size(24.dp)
+                                .background(swatch, CircleShape)
+                                .clickable { applyState(swatch) },
+                        )
+                    }
+                }
+                if (!valid) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Use a six-digit hex value, like #6C5CE7.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = { parseHexColor(field.text)?.let(onSave) }) {
+                Text("Use color")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+private fun parseHexColor(value: String): Color? {
+    val clean = value.trim().removePrefix("#")
+    if (!Regex("^[0-9A-Fa-f]{6}$").matches(clean)) return null
+    return Color(android.graphics.Color.parseColor("#$clean"))
+}
+
+private fun Color.toHex(): String = String.format(Locale.US, "#%06X", 0xFFFFFF and toArgb())
+
 @Composable
 private fun SectionTitle(text: String) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+        letterSpacing = 0.6.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
     )
 }
 
@@ -494,6 +804,7 @@ private fun SectionTitle(text: String) {
 private fun SettingsRow(
     title: String,
     value: String? = null,
+    subtitle: String? = null,
     swatch: Color? = null,
     onClick: (() -> Unit)? = null,
 ) {
@@ -509,11 +820,19 @@ private fun SettingsRow(
                 Box(Modifier.size(18.dp).background(swatch, CircleShape))
                 Spacer(Modifier.width(12.dp))
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                subtitle?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             value?.let {
                 Text(
                     it,
@@ -539,25 +858,6 @@ private fun copyToUri(context: Context, path: String, uri: Uri): String = runCat
         ?: error("the chosen location could not be opened")
     "Backup saved (${bytes.size / 1024} KB)."
 }.getOrElse { "Could not save the backup: ${it.message}" }
-
-/** Reads a picked backup, refusing anything absurd before it reaches the core. */
-private fun readUri(context: Context, uri: Uri): ByteArray {
-    val maxBytes = 512L * 1024 * 1024
-    context.contentResolver.openInputStream(uri).use { input ->
-        requireNotNull(input) { "the chosen file could not be opened" }
-        val out = java.io.ByteArrayOutputStream()
-        val buffer = ByteArray(64 * 1024)
-        var total = 0L
-        while (true) {
-            val read = input.read(buffer)
-            if (read <= 0) break
-            total += read
-            require(total <= maxBytes) { "that file is too large to be a vault backup" }
-            out.write(buffer, 0, read)
-        }
-        return out.toByteArray()
-    }
-}
 
 /**
  * Hands a verified APK to the Android package installer. It over-installs the

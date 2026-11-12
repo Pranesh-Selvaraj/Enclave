@@ -624,6 +624,64 @@ pub fn query_documents(db: &Connection) -> rusqlite::Result<Vec<Document>> {
     rows.collect()
 }
 
+/// A note as the home screen needs it: the document row plus the two
+/// app-level blocks that decorate it (`icon` for the emoji, `doc` for the
+/// preview).
+pub struct HomeNoteRow {
+    pub document: Document,
+    pub emoji: Option<String>,
+    pub doc_json: Option<String>,
+}
+
+/// Every live note with its decorations, in **two** queries rather than one per
+/// note: the documents, then every `icon`/`doc` block in one pass. The phone's
+/// home screen used to fetch blocks per card, which is an N+1 the core can
+/// answer in one go.
+pub fn home_notes(db: &Connection) -> rusqlite::Result<Vec<HomeNoteRow>> {
+    use std::collections::HashMap;
+
+    let mut stmt = db.prepare(&format!(
+        "{DOC_COLS} WHERE is_archived = 0 AND deleted_at IS NULL ORDER BY updated_at DESC"
+    ))?;
+    let documents: Vec<Document> = stmt.query_map([], row_to_document)?.collect::<rusqlite::Result<_>>()?;
+
+    let mut icons: HashMap<String, String> = HashMap::new();
+    let mut docs: HashMap<String, String> = HashMap::new();
+    let mut blocks = db.prepare(
+        "SELECT document_id, type, content FROM blocks WHERE type IN ('icon', 'doc')",
+    )?;
+    let rows = blocks.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    })?;
+    for row in rows {
+        let (document_id, block_type, content) = row?;
+        match block_type.as_str() {
+            "icon" => {
+                // {"emoji":"🎯"} — read leniently; a malformed icon is no icon.
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(emoji) = value.get("emoji").and_then(|v| v.as_str()) {
+                        if !emoji.is_empty() {
+                            icons.insert(document_id, emoji.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {
+                docs.insert(document_id, content);
+            }
+        }
+    }
+
+    Ok(documents
+        .into_iter()
+        .map(|document| HomeNoteRow {
+            emoji: icons.get(&document.id).cloned(),
+            doc_json: docs.get(&document.id).cloned(),
+            document,
+        })
+        .collect())
+}
+
 pub fn query_document(db: &Connection, id: &str) -> rusqlite::Result<Document> {
     db.query_row(
         &format!("{DOC_COLS} WHERE id = ?1"),

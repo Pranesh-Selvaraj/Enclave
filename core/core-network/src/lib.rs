@@ -5,8 +5,13 @@
 //! layer exchanges sync snapshots over the same socket.
 
 pub mod crypto;
+pub mod frames;
 mod mdns;
 mod ws;
+
+/// Wire protocol version spoken by this build (read by the handshake and by
+/// the contract document / fixtures).
+pub use ws::PROTOCOL_VERSION;
 
 /// Best-effort LAN address of this device (used for pairing + status).
 pub fn local_ip() -> Result<String, String> {

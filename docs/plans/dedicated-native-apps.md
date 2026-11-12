@@ -7,8 +7,8 @@ Companion to ADR 0002. This is the execution plan for moving Enclave from the sh
 Live tracker: [`docs/STATUS.md`](../STATUS.md).
 
 - **Phase 0** — the Android vertical slice is built; the desktop stack is parked (ADR 0004 *Proposed*, PR #177 unmerged) and Qt is unverified on the current machine.
-- **Phase 1** — vault schema versioning and the block golden fixture are in; sync-frame fixtures and the contract document remain.
-- **Phase 2** — the native Android app is feature-complete for a first release; the hardware pass is pending.
+- **Phase 1** — complete: vault schema versioning, the block golden fixture, sync-frame golden fixtures (transport frames, app frames and handshake crypto) and [`docs/CONTRACT.md`](../CONTRACT.md). What remains is the Phase 4 interop CI that runs the fixtures from the app builds.
+- **Phase 2** — the native Android app is feature-complete for a first release; the gate is verified on a real phone, the remaining hardware checklist is pending.
 - **Phase 3/4** — not started (desktop).
 
 ## Goal

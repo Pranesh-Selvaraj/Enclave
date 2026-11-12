@@ -34,12 +34,14 @@ import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.GlanceId
+import androidx.glance.LocalContext
 import androidx.glance.GlanceModifier
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.AppWidgetId
 import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -136,6 +138,7 @@ class PinResultReceiver : android.content.BroadcastReceiver() {
 
 @Composable
 private fun PinnedNoteContent(note: WidgetStore.WidgetNote?, hidden: Boolean = false) {
+    val context = LocalContext.current
     val bg = DayNightColorProvider(day = Color(0xFFFAF7F1), night = Color(0xFF201C17))
     val fg = DayNightColorProvider(day = Color(0xFF211D17), night = Color(0xFFECE7DF))
     val muted = DayNightColorProvider(day = Color(0xFF6E6557), night = Color(0xFFA39B90))
@@ -174,12 +177,16 @@ private fun PinnedNoteContent(note: WidgetStore.WidgetNote?, hidden: Boolean = f
             note.checklist.forEachIndexed { index, item ->
                 GlanceRow(
                     verticalAlignment = GlanceAlignment.CenterVertically,
-                    // Tap a row to tick it: toggles in place while the vault is
-                    // unlocked, opens the note otherwise.
+                    // Tap a row to tick it only when the page allows widget
+                    // editing; otherwise open the note in the app.
                     modifier = GlanceModifier.clickable(
-                        actionRunCallback<ToggleCheckAction>(
-                            actionParametersOf(DOC_ID_KEY to note.id, ITEM_INDEX_KEY to index),
-                        ),
+                        if (note.editable) {
+                            actionRunCallback<ToggleCheckAction>(
+                                actionParametersOf(DOC_ID_KEY to note.id, ITEM_INDEX_KEY to index),
+                            )
+                        } else {
+                            actionStartActivity(openNoteIntent(context, note.id))
+                        },
                     ),
                 ) {
                     GlanceText(
@@ -275,6 +282,11 @@ class ToggleCheckAction : ActionCallback {
         try {
             val core = FfiCore(context.applicationInfo.dataDir)
             if (!core.isUnlocked()) {
+                context.startActivity(openNoteIntent(context, docId))
+                return
+            }
+            // The page may be visible but read-only in widgets.
+            if (WidgetStore.notes(context).firstOrNull { it.id == docId }?.editable != true) {
                 context.startActivity(openNoteIntent(context, docId))
                 return
             }

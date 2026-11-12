@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -32,12 +33,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import com.enclave.app.ui.EnclaveMono
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 
@@ -97,7 +98,7 @@ private fun TextBlockField(block: TextBlock, onChanged: () -> Unit) {
             else -> typography.titleMedium
         }.copy(fontWeight = FontWeight.SemiBold)
 
-        "codeBlock" -> typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+        "codeBlock" -> typography.bodyMedium.copy(fontFamily = EnclaveMono)
         else -> typography.bodyLarge
     }
 
@@ -111,6 +112,15 @@ private fun TextBlockField(block: TextBlock, onChanged: () -> Unit) {
         link = scheme.secondary,
     )
 
+    // An empty block has no glyphs, so on a phone it collapsed to nothing: the
+    // caret could not be put into the body and the only tappable text was the
+    // title. A placeholder makes the block visible and a minimum height makes
+    // it a finger-sized target, while real text keeps its natural line height.
+    val placeholder = when (block.type) {
+        "heading" -> null
+        "codeBlock" -> "Code"
+        else -> "Start writing…"
+    }
     val field: @Composable () -> Unit = {
         BasicTextField(
             value = block.content.text,
@@ -118,7 +128,24 @@ private fun TextBlockField(block: TextBlock, onChanged: () -> Unit) {
             textStyle = style.copy(color = scheme.onBackground),
             visualTransformation = transformation,
             cursorBrush = SolidColor(scheme.primary),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (block.content.text.isEmpty()) Modifier.heightIn(min = 44.dp) else Modifier,
+                ),
+            decorationBox = { inner ->
+                Box(Modifier.fillMaxWidth()) {
+                    if (block.content.text.isEmpty() && placeholder != null) {
+                        Text(
+                            placeholder,
+                            style = style.copy(
+                                color = scheme.onSurfaceVariant.copy(alpha = 0.45f),
+                            ),
+                        )
+                    }
+                    inner()
+                }
+            },
         )
     }
 
@@ -166,7 +193,7 @@ private class MarkTransformation(
             if (style.strike) builder.addStyle(SpanStyle(textDecoration = TextDecoration.LineThrough), i, j)
             if (style.code) {
                 builder.addStyle(
-                    SpanStyle(fontFamily = FontFamily.Monospace, color = codeForeground, background = codeBackground),
+                    SpanStyle(fontFamily = EnclaveMono, color = codeForeground, background = codeBackground),
                     i,
                     j,
                 )
@@ -181,6 +208,28 @@ private class MarkTransformation(
     }
 }
 
+/** Width of the marker column, shared by bullets, numbers and checkboxes. */
+private val MarkerWidth = 26.dp
+
+/** Height of one body line, so a marker sits on the first line of its item. */
+private val MarkerLine = 24.dp
+
+/**
+ * The bullet, number or checkbox that starts a list item.
+ *
+ * It is drawn in a fixed-size box pinned to the top of the row: an empty item
+ * is taller than one line (44dp, so it can be tapped), and centring the marker
+ * on the row would float it into the middle of that empty space. Because all
+ * three list kinds share [MarkerWidth], their text always starts at the same x.
+ */
+@Composable
+private fun ListMarker(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.width(MarkerWidth).height(MarkerLine),
+        contentAlignment = Alignment.CenterStart,
+    ) { content() }
+}
+
 @Composable
 private fun ListBlock(block: ContainerBlock, ordered: Boolean, onChanged: () -> Unit) {
     var index = (block.attrs["start"] as? Number)?.toInt() ?: 1
@@ -189,13 +238,14 @@ private fun ListBlock(block: ContainerBlock, ordered: Boolean, onChanged: () -> 
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         block.children.forEach { child ->
-            Row {
-                Text(
-                    if (ordered) "$index." else "•",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(26.dp),
-                )
+            Row(verticalAlignment = Alignment.Top) {
+                ListMarker {
+                    Text(
+                        if (ordered) "$index." else "•",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -214,17 +264,18 @@ private fun TaskListBlock(block: ContainerBlock, onChanged: () -> Unit) {
     ) {
         block.children.forEach { child ->
             var checked by remember(child) { mutableStateOf(child.attrs["checked"] == true) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = checked,
-                    onCheckedChange = {
-                        checked = it
-                        child.attrs["checked"] = it
-                        onChanged()
-                    },
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(10.dp))
+            Row(verticalAlignment = Alignment.Top) {
+                ListMarker {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = {
+                            checked = it
+                            child.attrs["checked"] = it
+                            onChanged()
+                        },
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp),

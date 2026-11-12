@@ -15,7 +15,21 @@
 > [!IMPORTANT]
 > **Enclave is migrating to dedicated native apps for every platform.**
 > The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
-> **If you want to use Enclave today, download the latest stable release, currently [v1.13.0](https://github.com/Pranesh-Selvaraj/Enclave/releases/latest).** That release is the supported product while the native apps are built; build from `main` only if you are contributing to the migration.
+
+### Platform status
+
+| Platform | State |
+| --- | --- |
+| Android (Tauri) | Shipping — this release; rebuilds against the updated core, no visual changes |
+| Android (native, Kotlin/Compose) | **Next stable, in development** — in the repository and on a real device, not yet released |
+| Desktop (Tauri) | Shipping — this release; unchanged beyond the core |
+| Desktop (native, Qt 6) | **In development** (ADR 0004, verification gate still open) |
+
+### Compatibility
+
+The supported pairing is **two builds from the same release train**. The next native Android stable is **not supported against the previous stable desktop build** (v1.13.0): it is a different application on the same core, its sync has not been exercised against the Tauri desktop, and it writes app-level blocks (`icon`, `widget`) that the older desktop ignores. Nothing is lost by the mismatch — the vault schema (v1) and the sync wire format (v3) are unchanged — but do not pair a native Android build with a desktop app from an older release.
+
+**If you want to use Enclave today, download the latest stable release, currently [v1.14.0](https://github.com/Pranesh-Selvaraj/Enclave/releases/latest).** Build from `main` only if you are contributing to the migration.
 
 ## Screenshots
 
@@ -455,6 +469,7 @@ through frames; **PNG export** downloads a capture. Layout is persisted per page
 - [SECURITY.md](SECURITY.md) — vulnerability reporting and security model
 - [docs/HISTORY.md](docs/HISTORY.md) — what the project was built with, why, and what changed
 - [docs/STATUS.md](docs/STATUS.md) — what is done and what comes next (the handoff tracker)
+- [docs/CONTRACT.md](docs/CONTRACT.md) — the four versioned surfaces every app must honour (vault schema, block JSON, sync protocol, FFI)
 - [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
 - [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
 - [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules

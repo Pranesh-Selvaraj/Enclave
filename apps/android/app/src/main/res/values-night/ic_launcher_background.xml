@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher icon and launch window, dark system theme: an ink tile with the paper
+  mark. Both use the same pair of colours so the splash hands over to the app
+  without a visible change of background.
+-->
+<resources>
+  <color name="ic_launcher_background">#121211</color>
+  <color name="ic_launcher_mark">#FFFFFF</color>
+  <color name="splash_background">#121211</color>
+</resources>

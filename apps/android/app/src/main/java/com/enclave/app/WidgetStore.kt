@@ -41,6 +41,7 @@ internal object WidgetStore {
         val updatedAt: String,
         val checklist: List<ChecklistRow>,
         val text: String,
+        val editable: Boolean,
     )
 
     // Plaintext state dials — booleans only, no note data.
@@ -124,6 +125,16 @@ internal object WidgetStore {
         // what widgets render, instead of a getBlocks call per note plus a
         // ProseMirror walk here.
         val notes = core.widgetNotes().map { n ->
+            // The core decides visibility (only shared notes are returned);
+            // editability comes from the same per-page widget block so a page
+            // can be visible in widgets but read-only there.
+            val widget = runCatching {
+                core.getBlocks(n.id).firstOrNull { it.blockType == "widget" }
+            }.getOrNull()
+            val editable = widget?.let {
+                runCatching { JSONObject(it.contentJson).optBoolean("editable", true) }
+                    .getOrDefault(true)
+            } ?: true
             WidgetNote(
                 id = n.id,
                 title = n.title,
@@ -131,6 +142,7 @@ internal object WidgetStore {
                 updatedAt = n.updatedAt,
                 checklist = n.checklist,
                 text = n.text,
+                editable = editable,
             )
         }
         writeCache(context, serialize(notes))
@@ -204,6 +216,7 @@ internal object WidgetStore {
                     .put("updated_at", n.updatedAt)
                     .put("tags", JSONArray(n.tags))
                     .put("text", n.text)
+                    .put("editable", n.editable)
                     .put(
                         "checklist",
                         JSONArray().apply {
@@ -239,6 +252,7 @@ internal object WidgetStore {
                 updatedAt = n.optString("updated_at"),
                 checklist = checklist,
                 text = n.optString("text"),
+                editable = n.optBoolean("editable", true),
             )
         }
     }

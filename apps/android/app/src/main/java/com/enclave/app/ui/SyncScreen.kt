@@ -45,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enclave.app.core.Core
@@ -154,7 +153,10 @@ fun SyncScreen(onBack: () -> Unit) {
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        // With sync off nothing is resolving a host, so the
+                        // card used to sit on "finding an address…" forever.
                         val address = when {
+                            !enabled -> "Sync is off"
                             current == null -> "…"
                             current.localHost.isBlank() -> "finding an address…"
                             else -> "${current.localHost}:${current.port}"
@@ -163,7 +165,7 @@ fun SyncScreen(onBack: () -> Unit) {
                             Text(
                                 address,
                                 style = MaterialTheme.typography.titleMedium,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = EnclaveMono,
                                 modifier = Modifier.weight(1f),
                             )
                             TextButton(

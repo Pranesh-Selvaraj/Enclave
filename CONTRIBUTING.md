@@ -150,6 +150,14 @@ enclave/
 5. Run type checks and tests (see above).
 6. Open a PR referencing the issue.
 
+## Work tracking
+
+Every bug, feature request, UX finding and contract or architecture change is tracked as a GitHub issue. Open or link the issue before or with the change, and reference it from the commit or PR (`Refs #N`, `Closes #N`). Chat threads, local notes and scratch documents are not the record.
+
+- Attach screenshots, recordings or the failing output to the issue.
+- Attach screenshots for visual work. The repository tokens, brand vectors and app code are the record; a Figma file is optional exploration, not a design source.
+- A request that changes the architecture (for example multiple vaults in one app) gets an issue now and an ADR when it is taken up.
+
 ### Code Style
 
 - **TypeScript**: existing patterns in `packages/*/src/` and `apps/*/src/`. Use Svelte 5 runes (`$state`, `$effect`, `$derived`), not Svelte 4 stores. Runes must be in `.svelte.ts`/`.svelte.js` files — plain `.ts` files cannot use them.
@@ -184,6 +192,8 @@ Significant technical decisions are recorded in the repository, not only in chat
 Record a decision when it changes any of: the UI stack, shell or architecture, storage engine, crypto, sync protocol, vault or block schema, FFI/contract, repository layout, platform support, or distribution/update mechanism. An ADR states what was chosen, why, the alternatives, the consequences, and — when it replaces an earlier choice — what was wrong before.
 
 Do it in the same change that makes the decision. Never delete an old ADR: mark it `Superseded by NNNN` and add the new record. A change that only implements an already-recorded decision does not need a new ADR, but it must update `docs/HISTORY.md` if it changes an era or a contract version.
+
+The four contract surfaces (vault schema, block JSON, sync protocol, FFI) are summarised in [`docs/CONTRACT.md`](docs/CONTRACT.md). A change to any of them updates the golden fixtures and that document in the same commit — the fixture tests fail otherwise, by design.
 
 ## Issue Labels
 

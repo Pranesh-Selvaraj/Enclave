@@ -48,6 +48,16 @@ impl From<CoreError> for EnclaveError {
 
 // ── Records ─────────────────────────────────────────────────────────────────
 
+/// One home-screen row: the document plus the two things the list draws from
+/// its blocks — the emoji and the plain-text preview. Returning them together
+/// turns an N+1 (one `get_blocks` per card) into a single call.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HomeNote {
+    pub document: Document,
+    pub emoji: Option<String>,
+    pub preview: String,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Document {
     pub id: String,
@@ -429,6 +439,29 @@ impl FfiCore {
 
     pub fn list_documents(&self) -> Result<Vec<Document>, EnclaveError> {
         Ok(self.core.list_documents()?.into_iter().map(Document::from).collect())
+    }
+
+    /// Every live note with its icon and preview, in one call.
+    pub fn home_notes(&self) -> Result<Vec<HomeNote>, EnclaveError> {
+        Ok(self
+            .core
+            .home_notes()?
+            .into_iter()
+            .map(|row| HomeNote {
+                document: row.document.into(),
+                emoji: row.emoji,
+                preview: row
+                    .doc_json
+                    .as_deref()
+                    .map(crate::preview::plain_text)
+                    .unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    /// Flatten an editor document to the text a preview or a share body shows.
+    pub fn preview_text(&self, doc_json: String) -> String {
+        crate::preview::plain_text(&doc_json)
     }
 
     pub fn get_document(&self, id: String) -> Result<Document, EnclaveError> {
