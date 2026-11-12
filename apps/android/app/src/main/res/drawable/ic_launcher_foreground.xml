@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive-icon foreground: the Enclave mark on a 108dp canvas, drawn inside the
-  central 72dp safe zone so every launcher mask (circle, squircle, rounded
-  square) crops background, not the mark. The artwork is the same geometry as
-  docs/brand/mark.svg: a ring with a hole plus the rounded stem.
+  Adaptive-icon foreground: the Enclave mark on the 108dp canvas, sized for the
+  shape a launcher actually shows. Only the central 72dp of that canvas is
+  visible (the mask), so the mark is 38% of the canvas height — 57% of the
+  visible circle, which is where an app icon reads as a mark rather than as a
+  full-bleed blob.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,10 +12,10 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:translateX="13.4"
-        android:translateY="14.5"
-        android:scaleX="3.38"
-        android:scaleY="3.38">
+        android:translateX="29.12"
+        android:translateY="29.75"
+        android:scaleX="2.073"
+        android:scaleY="2.073">
         <path
             android:fillColor="#FFFFFFFF"
             android:fillType="evenOdd"

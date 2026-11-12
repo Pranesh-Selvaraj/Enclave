@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Themed-icon layer (Android 13+): a single-colour silhouette the launcher is
-  free to tint. Same geometry and safe zone as the foreground; without it a
-  launcher with themed icons enabled falls back to the full-colour icon or draws
-  an empty tile.
+  Themed-icon layer (Android 13+): the same geometry and the same 38% sizing as
+  the foreground, as a single-colour silhouette the launcher tints.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,10 +9,10 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:translateX="13.4"
-        android:translateY="14.5"
-        android:scaleX="3.38"
-        android:scaleY="3.38">
+        android:translateX="29.12"
+        android:translateY="29.75"
+        android:scaleX="2.073"
+        android:scaleY="2.073">
         <path
             android:fillColor="#FFFFFFFF"
             android:fillType="evenOdd"
