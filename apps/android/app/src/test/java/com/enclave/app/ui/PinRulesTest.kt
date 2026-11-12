@@ -51,10 +51,19 @@ class PinRulesTest {
     }
 
     @Test
-    fun `the dot row grows with the secret and stops at the display cap`() {
-        assertEquals(1, PinRules.slots(0))
-        assertEquals(1, PinRules.slots(1))
+    fun `four dots are drawn for anything up to four characters`() {
+        // The four-slot placeholder is a decoy: an onlooker cannot tell a
+        // one-character secret from a four-character one.
+        assertEquals(4, PinRules.slots(0))
+        assertEquals(4, PinRules.slots(1))
+        assertEquals(4, PinRules.slots(3))
         assertEquals(4, PinRules.slots(4))
+    }
+
+    @Test
+    fun `a longer secret grows the row, up to the display cap`() {
+        assertEquals(5, PinRules.slots(5))
+        assertEquals(9, PinRules.slots(9))
         assertEquals(PinRules.MAX_DOTS, PinRules.slots(PinRules.MAX_DOTS))
         assertEquals(PinRules.MAX_DOTS, PinRules.slots(PinRules.MAX_DOTS + 9))
     }

@@ -18,6 +18,15 @@ internal object PinRules {
     /** Shortest accepted secret. One character. */
     const val MIN_LENGTH = 1
 
+    /**
+     * Dots drawn for an empty field, and the floor while typing.
+     *
+     * Four is a deliberate decoy: an onlooker who glances at the screen sees the
+     * same four slots whether the secret is one digit or four, instead of a
+     * single dot that advertises "this vault opens with one digit".
+     */
+    const val MIN_DOTS = 4
+
     /** Dots drawn at most; longer secrets show a count instead of more dots. */
     const val MAX_DOTS = 12
 
@@ -30,6 +39,12 @@ internal object PinRules {
     /** Any non-empty secret is submittable. */
     fun isValid(pin: String): Boolean = pin.isNotEmpty()
 
-    /** Dot slots to draw: at least one target, at most [MAX_DOTS]. */
-    fun slots(length: Int): Int = length.coerceIn(MIN_LENGTH, MAX_DOTS)
+    /**
+     * Dot slots to draw: never fewer than [MIN_DOTS], at most [MAX_DOTS].
+     *
+     * A secret longer than four grows the row as it is typed — the user asked
+     * for that visibility — but the row never shrinks below the four-slot
+     * placeholder, so a short secret is not distinguishable at a glance.
+     */
+    fun slots(length: Int): Int = length.coerceIn(MIN_DOTS, MAX_DOTS)
 }

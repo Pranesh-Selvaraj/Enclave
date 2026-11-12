@@ -27,6 +27,7 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 | [0009](0009-public-homepage-github-pages.md) | Public homepage as a static GitHub Pages site | Accepted | Distribution |
 | [0010](0010-user-templates.md) | User-created note templates in the vault's settings table | Accepted | Data / Android |
 | [0011](0011-unlock-secret-has-no-length-policy.md) | The unlock secret has no length policy | Accepted | Security / Android |
+| [0012](0012-multiple-vaults.md) | Multiple vaults with independent unlock secrets | Proposed | Security / Architecture |
 
 ## Decision map
 
@@ -42,6 +43,7 @@ graph TD
     F --> G["0007 · Vault restore<br/>re-auth, same-vault only"]
     G --> H["0010 · User templates<br/>vault settings, 50 max"]
     H --> I["0011 · No unlock-secret policy<br/>any non-empty string"]
+    I --> J["0012 · Multiple vaults<br/>proposed: no discovery surface"]
 ```
 
 ## Adding a record
