@@ -74,6 +74,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -134,6 +135,14 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
     var restoreNotice by remember { mutableStateOf<String?>(null) }
     var pendingMnemonic by remember { mutableStateOf<String?>(null) }
     var pendingUnlockAfterPin by remember { mutableStateOf(false) }
+    // Milliseconds left on the attempt cooldown; ticks down while the gate shows.
+    var blockedFor by remember { mutableStateOf(UnlockThrottle.remaining(context)) }
+    LaunchedEffect(blockedFor > 0) {
+        while (blockedFor > 0) {
+            delay(500)
+            blockedFor = UnlockThrottle.remaining(context)
+        }
+    }
     var showForgot by remember { mutableStateOf(false) }
     var forgotPhrase by remember { mutableStateOf("") }
     var forgotBusy by remember { mutableStateOf(false) }
@@ -246,6 +255,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
         if (busy) return
         if (mode == AuthMode.PIN && !PinRules.isValid(pin)) return
         if (mode == AuthMode.PASSWORD && password.isEmpty()) return
+        if (UnlockThrottle.remaining(context) > 0) return
         val secret = if (mode == AuthMode.PIN) pin else password
         scope.launch {
             busy = true
@@ -253,8 +263,15 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
             runCatching {
                 withContext(Dispatchers.IO) { Core.ffi.unlockWithPassword(secret) }
             }
-                .onSuccess { onUnlocked() }
+                .onSuccess {
+                    UnlockThrottle.reset(context)
+                    onUnlocked()
+                }
                 .onFailure {
+                    // Bounded in time, not just in cost: a one-character secret
+                    // has ten candidates, so attempts must be throttled.
+                    UnlockThrottle.recordFailure(context)
+                    blockedFor = UnlockThrottle.remaining(context)
                     error = if (mode == AuthMode.PIN) {
                         "Could not unlock the vault — check your PIN."
                     } else {
@@ -325,6 +342,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                     onConfirmPassword = { confirmPassword = it; error = null },
                     error = error,
                     busy = busy,
+                    blockedFor = blockedFor,
                     lockup = lockup,
                     onDigit = ::onDigit,
                     onBackspace = ::onBackspace,
@@ -650,6 +668,7 @@ private fun VaultGate(
     onConfirmPassword: (String) -> Unit,
     error: String?,
     busy: Boolean,
+    blockedFor: Long,
     lockup: Painter,
     onDigit: (Char) -> Unit,
     onBackspace: () -> Unit,
@@ -718,7 +737,7 @@ private fun VaultGate(
     }
 
     val actionEnabled = when {
-        busy -> false
+        busy || blockedFor > 0 -> false
         initialized && mode == AuthMode.PIN -> pinReady
         initialized -> passwordReady
         // Registering a PIN: the same button continues, confirms and creates.
@@ -726,6 +745,7 @@ private fun VaultGate(
         else -> passwordReady
     }
     val actionLabel = when {
+        blockedFor > 0 -> "Try again in " + UnlockThrottle.describe(blockedFor)
         busy && initialized -> "Unlocking…"
         busy -> "Creating…"
         !initialized && mode == AuthMode.PIN && stage == PinStage.ENTER -> "Continue"
@@ -836,7 +856,16 @@ private fun VaultGate(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(16.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            // Decorative, and deliberately silent: TalkBack
+                            // speaks aloud, so announcing "5 characters
+                            // entered" would tell anyone in the room the length
+                            // and undo the four-dot decoy. The field keeps its
+                            // own label ("Enter your PIN"), which is all a
+                            // screen-reader user needs to find it.
+                            modifier = Modifier.clearAndSetSemantics { },
+                        ) {
                             PinDots(filled = pinFilled.coerceAtMost(PinRules.MAX_DOTS), slots = pinSlots, error = error != null)
                             if (pinFilled > PinRules.MAX_DOTS) {
                                 Text(

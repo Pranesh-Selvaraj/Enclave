@@ -51,7 +51,17 @@ class MainActivity : ComponentActivity() {
     private var pendingEntryIntent by mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The manifest theme is the launch window; once the activity is up it
+        // hands over to the app theme. Framework-only equivalent of
+        // postSplashScreenTheme, so no compat library is needed.
+        setTheme(R.style.Theme_enclave)
         super.onCreate(savedInstanceState)
+        // Release builds keep the vault out of screenshots, the recents
+        // thumbnail and screen recording (#199). Debug builds stay capturable so
+        // the device pass can take screenshots.
+        if (!BuildConfig.DEBUG) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
         Core.init(this)
         WidgetCacheBridge.install(this)
         AppPrefs.load(this)
