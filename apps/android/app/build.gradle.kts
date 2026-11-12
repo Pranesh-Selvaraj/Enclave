@@ -1,8 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// The native app's version lives in version.properties; a -P flag wins when a
+// build should carry a release tag's version.
+val nativeVersion = Properties().apply {
+    val file = rootProject.file("version.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val appVersionName = (project.findProperty("appVersionName") as String?)
+    ?: nativeVersion.getProperty("versionName", "0.0.0-dev")
+val appVersionCode = ((project.findProperty("appVersionCode") as String?)
+    ?: nativeVersion.getProperty("versionCode", "1")).toInt()
+
+fun gitSha(): String = runCatching {
+    ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start().inputStream.bufferedReader().readText().trim()
+}.getOrDefault("unknown")
 
 android {
     namespace = "com.enclave.app"
@@ -14,8 +34,11 @@ android {
         applicationId = "com.enclave.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-native"
+        // One source of truth for the installed version, so About can show
+        // exactly what was installed: apps/android/version.properties, with CI
+        // allowed to override it from a tag (-PappVersionName= / -PappVersionCode=).
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         ndk {
             // arm64 phones; x86_64 is the emulator target. ONNX Runtime ships no
@@ -26,6 +49,9 @@ android {
         // P2P sync runs over ws:// on the LAN and every frame is AEAD-sealed at
         // the application layer, so the platform cleartext flag must be allowed.
         manifestPlaceholders["usesCleartextTraffic"] = "true"
+
+        // Shown in About so a build under test can be identified exactly.
+        buildConfigField("String", "GIT_SHA", "\"${gitSha()}\"")
     }
 
     buildTypes {
