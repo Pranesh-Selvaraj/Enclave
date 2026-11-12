@@ -6,6 +6,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -125,6 +127,14 @@ private val MonoColors = darkColorScheme(
     inversePrimary = Color(0xFF2A2A2A),
 )
 
+/**
+ * True when the app is in the Monochrome theme. Colour is allowed in the light
+ * and dark themes — accents, emoji, the lot — but Monochrome means *no colour*:
+ * glyphs that cannot be tinted (emoji are colour bitmaps) are replaced with
+ * type or a plain shape rather than left as the only coloured thing on screen.
+ */
+val LocalMonochrome = staticCompositionLocalOf { false }
+
 @Composable
 fun EnclaveTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
@@ -150,6 +160,7 @@ fun EnclaveTheme(
     val onPrimary = if (mono) base.onPrimary else if (primary.luminance() > 0.18f) Color(0xFF1B1A18) else Color.White
     val opposite = if (dark) Color.White else Color.Black
 
+    CompositionLocalProvider(LocalMonochrome provides mono) {
     MaterialTheme(
         colorScheme = base.copy(
             primary = primary,
@@ -160,4 +171,5 @@ fun EnclaveTheme(
         typography = EnclaveTypography,
         content = content,
     )
+    }
 }

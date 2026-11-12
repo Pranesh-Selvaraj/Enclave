@@ -1,6 +1,20 @@
 package com.enclave.app.ui
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -27,6 +41,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +97,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.focus.FocusRequester
@@ -146,7 +167,9 @@ fun HomeScreen(
     var layout by remember { mutableStateOf(NotesPrefs.layoutNow) }
     var sort by remember { mutableStateOf(NotesPrefs.sortNow) }
     var folderFilter by remember { mutableStateOf<String?>(null) }
-    var createOpen by remember { mutableStateOf(false) }
+    // A State object rather than a value: only the button, the scrim and the
+    // wrapper read it, so toggling it cannot recompose the note list.
+    val createOpen = remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<HomeSheet?>(null) }
     var folderDialog by remember { mutableStateOf<FolderDialog?>(null) }
     var folderName by remember { mutableStateOf("") }
@@ -169,7 +192,6 @@ fun HomeScreen(
     BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
     }
-    BackHandler(enabled = createOpen) { createOpen = false }
 
     suspend fun reload() {
         // Refreshing under a list that is already on screen must not blank it:
@@ -304,7 +326,7 @@ fun HomeScreen(
 
     fun create(target: CreateTarget) {
         scope.launch {
-            createOpen = false
+            createOpen.value = false
             if (target is CreateTarget.Builtin && target.kind == CreateKind.FOLDER) {
                 openNewFolder()
                 return@launch
@@ -325,7 +347,12 @@ fun HomeScreen(
         documents
             .filter { folderFilter == null || it.document.folderId == folderFilter }
             .filter { query.isBlank() || it.document.title.contains(query, ignoreCase = true) }
-            .sortedWith { a, b -> byDocument.compare(a.document, b.document) }
+            .sortedWith { a, b ->
+                // Pinned notes lead in every layout; the chosen sort decides
+                // the rest.
+                val pinned = b.document.isFavorite.compareTo(a.document.isFavorite)
+                if (pinned != 0) pinned else byDocument.compare(a.document, b.document)
+            }
     }
 
     val drawerDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -426,11 +453,8 @@ fun HomeScreen(
                 // The stack is an overlay rather than a FAB slot: while it is
                 // open the home blurs behind a scrim that swallows taps, so a
                 // stray tap cannot open a note hidden under the pills.
-                Column(
-                Modifier
-                    .fillMaxSize()
-                    .blur(if (createOpen) 8.dp else 0.dp),
-            ) {
+                HomeSurface(pressed = createOpen) {
+                Column(Modifier.fillMaxSize()) {
                 // Menu, search and lock share one row: the greeting cost a
                 // whole line of vertical space and said nothing the notes
                 // below did not already say.
@@ -523,25 +547,16 @@ fun HomeScreen(
                 }
             }
 
-            if (createOpen) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { createOpen = false },
-                )
-            }
+            Scrim(visible = createOpen, onDismiss = { createOpen.value = false })
 
+            }
             CreateStack(
                 open = createOpen,
-                onToggle = { createOpen = !createOpen },
+                onToggle = { createOpen.value = !createOpen.value },
                 templates = templates,
                 onCreate = ::create,
                 onNewTemplate = {
-                    createOpen = false
+                    createOpen.value = false
                     onNewTemplate()
                 },
                 onDeleteTemplate = { templateToDelete = it },
@@ -724,7 +739,9 @@ fun HomeScreen(
     when (sheet) {
         HomeSheet.LAYOUT -> OptionSheet(
             title = "Layout",
-            options = NotesLayout.entries.map { it to "${it.emoji}  ${it.label}" },
+            options = NotesLayout.entries.map {
+                it to if (LocalMonochrome.current) it.label else "${it.emoji}  ${it.label}"
+            },
             selected = layout,
             onSelect = {
                 layout = it
@@ -764,9 +781,12 @@ private fun DrawerRow(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
-    val container = if (selected) MaterialTheme.colorScheme.onSurface else Color.Transparent
-    val content = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
-    val iconTint = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant
+    // Selected is an accent wash, not an inverted pill: inverting made a light
+    // bar inside a dark theme (and read as a different app in Monochrome, where
+    // the accent is already neutral).
+    val container = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent
+    val content = MaterialTheme.colorScheme.onSurface
+    val iconTint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         color = container,
         shape = CircleShape,
@@ -912,15 +932,22 @@ private fun NotesContent(
             }
         }
 
-        NotesLayout.CARDS -> LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+        NotesLayout.CARDS -> LazyVerticalStaggeredGrid(
+            // Staggered, not a fixed grid: a card is as tall as its preview, so
+            // a short note no longer leaves a hole beside a long one.
+            columns = StaggeredGridCells.Fixed(2),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FabClearance),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalItemSpacing = 12.dp,
             modifier = Modifier.fillMaxSize(),
         ) {
             items(documents, key = { it.document.id }) { note ->
-                NoteCard(note, onClick = { onOpenNote(note.document.id) }, onLongClick = { onLongPressNote(note) })
+                NoteCard(
+                    note = note,
+                    modifier = Modifier.animateItem(),
+                    onClick = { onOpenNote(note.document.id) },
+                    onLongClick = { onLongPressNote(note) },
+                )
             }
         }
 
@@ -932,7 +959,12 @@ private fun NotesContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             items(documents, key = { it.document.id }) { note ->
-                GalleryTile(note, onClick = { onOpenNote(note.document.id) }, onLongClick = { onLongPressNote(note) })
+                GalleryTile(
+                    note = note,
+                    modifier = Modifier.animateItem(),
+                    onClick = { onOpenNote(note.document.id) },
+                    onLongClick = { onLongPressNote(note) },
+                )
             }
         }
 
@@ -946,6 +978,7 @@ private fun NotesContent(
             items(documents, key = { it.document.id }) { note ->
                 IconTile(
                     note = note,
+                    modifier = Modifier.animateItem(),
                     onClick = { onOpenNote(note.document.id) },
                     onLongClick = { onLongPressNote(note) },
                 )
@@ -994,54 +1027,130 @@ private fun NoteRow(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NoteCard(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun NoteCard(
+    note: HomeNote,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val doc = note.document
     val preview = note.preview
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 112.dp)
+            .heightIn(min = 96.dp)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(
-                doc.title.ifBlank { "Untitled note" },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (preview.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    preview,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 5,
-                    overflow = TextOverflow.Ellipsis,
+        Box {
+            // A pinned note leads the list and says so in the corner the eye
+            // reaches first.
+            if (doc.isFavorite) {
+                Icon(
+                    Icons.Filled.Star,
+                    contentDescription = "Pinned",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(16.dp),
                 )
             }
-            Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.fillMaxWidth().padding(16.dp).padding(end = if (doc.isFavorite) 12.dp else 0.dp)) {
+                Text(
+                    doc.title.ifBlank { "Untitled note" },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (preview.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        preview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
                 Text(
                     timeAgo(doc.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
                 )
-                if (doc.isFavorite) {
-                    Icon(
-                        Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
             }
         }
+    }
+}
+
+/**
+ * The home content, blurred while the create stack is open.
+ *
+ * The blur radius is a **fixed value per state**, never animated: animating it
+ * re-applies the render effect on every frame, which is what made the toggle
+ * look like the background was straining to blur. Applying it here — outside the
+ * content lambda — also keeps a toggle from re-running the whole home body.
+ */
+@Composable
+private fun HomeSurface(pressed: androidx.compose.runtime.State<Boolean>, content: @Composable () -> Unit) {
+    // A real-time blur of a full-screen Compose layer allocates an offscreen
+    // layer on every toggle (measured: one ~100 ms frame on the test device),
+    // and that hitch is what read as the background fighting the blur. The
+    // depth cue is a cheap transform instead: the content settles back 2% under
+    // the scrim, which is one persistent layer and pure GPU interpolation.
+    //
+    // Set this to true for the old blurred look; it is the one line to change.
+    val useBlur = false
+    val blurred = pressed.value
+    val scale by animateFloatAsState(
+        targetValue = if (blurred) 0.98f else 1f,
+        animationSpec = tween(170, easing = FastOutSlowInEasing),
+        label = "home-scale",
+    )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                if (useBlur) {
+                    renderEffect = if (blurred) {
+                        BlurEffect(40f, 40f, TileMode.Clamp)
+                    } else {
+                        null
+                    }
+                }
+            },
+    ) { content() }
+}
+
+/** The dim layer under the stack: only its alpha animates, and only it takes taps. */
+@Composable
+private fun Scrim(visible: androidx.compose.runtime.State<Boolean>, onDismiss: () -> Unit) {
+    val open = visible.value
+    BackHandler(enabled = open) { onDismiss() }
+    val alpha by animateFloatAsState(
+        targetValue = if (open) 0.6f else 0f,
+        animationSpec = tween(110),
+        label = "create-scrim",
+    )
+    // The pointer handler is attached only while the stack is open. A
+    // full-screen scrim that keeps one while closed swallows every tap on the
+    // list underneath — a disabled clickable still takes the event.
+    val dismiss = Modifier.pointerInput(Unit) {
+        detectTapGestures { onDismiss() }
+    }
+    if (open || alpha > 0.001f) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                // Black, not the background colour: scrimming a dark
+                // background with its own colour is invisible, so the stack had
+                // no contrast against the list behind it.
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = alpha))
+                .then(if (open) dismiss else Modifier),
+        )
     }
 }
 
@@ -1068,14 +1177,28 @@ private val FabClearance = 96.dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GalleryTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun GalleryTile(
+    note: HomeNote,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val doc = note.document
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(18.dp),
-        modifier = Modifier.fillMaxWidth().height(164.dp)
+        modifier = modifier.fillMaxWidth().height(164.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
+        Box(Modifier.fillMaxSize()) {
+            if (doc.isFavorite) {
+                Icon(
+                    Icons.Filled.Star,
+                    contentDescription = "Pinned",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(16.dp),
+                )
+            }
         Column(
             modifier = Modifier.fillMaxSize().padding(14.dp),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -1086,37 +1209,33 @@ private fun GalleryTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> 
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = if (doc.isFavorite) 14.dp else 0.dp),
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    timeAgo(doc.updatedAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                if (doc.isFavorite) {
-                    Icon(
-                        Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
+            Text(
+                timeAgo(doc.updatedAt),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun IconTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun IconTile(
+    note: HomeNote,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val doc = note.document
     val emoji = note.emoji
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().height(104.dp)
+        modifier = modifier.fillMaxWidth().height(104.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Column(
@@ -1126,7 +1245,17 @@ private fun IconTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Uni
         ) {
             val chosen = emoji
             if (chosen != null) {
-                Text(chosen, fontSize = 24.sp)
+                if (LocalMonochrome.current) {
+                    // An emoji is a colour bitmap; in Monochrome the note shows
+                    // its initial instead, in the theme's own foreground.
+                    Text(
+                        doc.title.trim().take(1).uppercase().ifEmpty { "•" },
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(chosen, fontSize = 24.sp)
+                }
             } else {
                 Icon(
                     Icons.Filled.Create,
@@ -1148,7 +1277,7 @@ private fun IconTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Uni
 
 @Composable
 private fun CreateStack(
-    open: Boolean,
+    open: androidx.compose.runtime.State<Boolean>,
     onToggle: () -> Unit,
     templates: List<com.enclave.app.editor.UserTemplate>,
     onCreate: (CreateTarget) -> Unit,
@@ -1156,12 +1285,29 @@ private fun CreateStack(
     onDeleteTemplate: (com.enclave.app.editor.UserTemplate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isOpen = open.value
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (open) {
+        // The stack grows out of the button's own corner. A vertical slide was
+        // wrong: for a tall stack it read as arriving from the bottom of the
+        // screen instead of from the + that was just tapped.
+        AnimatedVisibility(
+            visible = isOpen,
+            enter = scaleIn(
+                initialScale = 0.45f,
+                transformOrigin = TransformOrigin(1f, 1f),
+                animationSpec = tween(120, easing = FastOutSlowInEasing),
+            ) + fadeIn(tween(70)),
+            exit = scaleOut(
+                targetScale = 0.45f,
+                transformOrigin = TransformOrigin(1f, 1f),
+                animationSpec = tween(90, easing = FastOutLinearInEasing),
+            ) + fadeOut(tween(70)),
+        ) {
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             CreateKind.entries.forEach { kind ->
                 CreatePill(kind.emoji, kind.label, onClick = { onCreate(CreateTarget.Builtin(kind)) })
             }
@@ -1185,16 +1331,29 @@ private fun CreateStack(
                 }
             }
         }
+        }
 
+        // The glyph pops: the plus shrinks away as the close springs in. No
+        // spin — a rotating plus reads as a loading spinner, not a state.
         FloatingActionButton(
             onClick = onToggle,
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
-            Icon(
-                if (open) Icons.Filled.Close else Icons.Filled.Add,
-                contentDescription = if (open) "Close create menu" else "New",
-            )
+            // The glyph only crossfades: the motion belongs to the stack
+            // growing out of the button, not to the icon itself.
+            AnimatedContent(
+                targetState = isOpen,
+                transitionSpec = {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                },
+                label = "create-glyph",
+            ) { isOpen ->
+                Icon(
+                    if (isOpen) Icons.Filled.Close else Icons.Filled.Add,
+                    contentDescription = if (isOpen) "Close create menu" else "New",
+                )
+            }
         }
     }
 }
@@ -1208,19 +1367,26 @@ private fun CreatePill(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
+    // A theme surface, not an inverted one: a dark theme must stay dark. The
+    // emoji is the only colour in a pill, and Monochrome has none to give — an
+    // emoji cannot be tinted, so it is dropped rather than left as the one
+    // coloured thing on screen.
+    val monochrome = LocalMonochrome.current
     Surface(
-        color = MaterialTheme.colorScheme.onSurface,
-        contentColor = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(16.dp),
         shadowElevation = 2.dp,
         modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick ?: {}),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = if (monochrome) 20.dp else 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(emoji, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.width(10.dp))
+            if (!monochrome) {
+                Text(emoji, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.width(10.dp))
+            }
             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
