@@ -102,7 +102,8 @@ cd src-tauri && cargo run -p core-api --features uniffi,cli --bin uniffi-bindgen
   generate --library target/debug/libcore_api.so --language kotlin \
   --out-dir gen/android/app/src/main/java && git diff --exit-code -- gen/android/app/src/main/java/uniffi/ && cd -
 
-# UI audit (screenshots + DOM checks, desktop + phone profiles)
+# UI audit (screenshots + DOM checks, desktop + phone profiles). Local tool only:
+# the scheduled CI job was retired with the web UI it audits.
 npm run audit:ui
 ```
 
@@ -136,7 +137,7 @@ enclave/
 │   ├── src/                      # Tauri command bridge + sync protocol + tray + updater
 │   └── tauri.conf.json           # App config, CSP, bundle targets
 ├── docs/                         # README screenshots
-├── tools/ui-audit/               # Screenshot + DOM audit suite (desktop + phone profiles)
+├── tools/ui-audit/               # Screenshot + DOM audit suite, run locally
 ├── tsconfig.base.json            # Shared TypeScript base config
 └── package.json                  # npm workspace root
 ```
@@ -206,6 +207,17 @@ The four contract surfaces (vault schema, block JSON, sync protocol, FFI) are su
 ## License
 
 MIT. By contributing, you agree that your contributions will be licensed under the MIT License.
+
+## The native Android app's version
+
+The native app carries its own version, separate from the Tauri app's counter
+(`src-tauri/gen/android/app/tauri.properties`): `apps/android/version.properties`
+holds `versionName` and `versionCode`, and a build may override either with
+`-PappVersionName=… -PappVersionCode=…` so CI can stamp a tag onto it.
+
+Settings → About shows what the **package manager** reports for the installed
+build — name, version code and the commit it was built from — so a build under
+test can be identified without guessing.
 
 ## Releasing
 
