@@ -1131,29 +1131,57 @@ private fun sectionTitle(folders: List<Folder>, folderFilter: String?): String =
     folders.firstOrNull { it.id == folderFilter }?.name ?: "Recent pages"
 
 /** `2026-10-17T09:00:00+00:00` -> `just now` / `12m ago` / `3h ago` / `2d ago` / `2026-10-17`. */
-internal fun timeAgo(iso: String): String {
+/**
+ * "just now" / "5m ago" / "3h ago" / "2d ago", and a short date beyond a week.
+ *
+ * [now] is injectable so the cases are testable without sleeping. Anything
+ * older than a week becomes "3 Nov 2026" — the previous fallback printed the
+ * raw `2026-11-03T09:12:44+00:00` string, which is what every card showed for
+ * notes older than seven days. A timestamp in the future (a device clock that
+ * moved backwards) reads as "just now" rather than as a negative age.
+ */
+internal fun timeAgo(iso: String, now: Long = System.currentTimeMillis()): String {
     val then = parseIsoUtc(iso) ?: return iso.take(10)
-    val seconds = ((System.currentTimeMillis() - then) / 1000).coerceAtLeast(0)
+    val seconds = (now - then) / 1000
     return when {
         seconds < 60 -> "just now"
         seconds < 3600 -> "${seconds / 60}m ago"
         seconds < 86_400 -> "${seconds / 3600}h ago"
         seconds < 7 * 86_400 -> "${seconds / 86_400}d ago"
-        else -> iso.take(10)
+        else -> shortDate(then)
     }
 }
 
-/** Minimal RFC 3339 parser (second precision, UTC) — `java.time` needs API 26. */
+/**
+ * Minimal RFC 3339 / ISO-8601 parser in UTC (`java.time` needs API 26).
+ *
+ * The core writes `chrono::Utc::now().to_rfc3339()`, which carries nanoseconds
+ * and a `+00:00` offset, and older rows in a vault may carry a plain date. Both
+ * are accepted here; anything else returns null and the caller falls back.
+ */
 private fun parseIsoUtc(iso: String): Long? = runCatching {
+    require(iso.length >= 10)
+    val date = iso.substring(0, 10)
+    val time = if (iso.length >= 19 && (iso[10] == 'T' || iso[10] == ' ')) {
+        iso.substring(11, 19)
+    } else {
+        "00:00:00"
+    }
     val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
     cal.clear()
     cal.set(
-        iso.substring(0, 4).toInt(),
-        iso.substring(5, 7).toInt() - 1,
-        iso.substring(8, 10).toInt(),
-        iso.substring(11, 13).toInt(),
-        iso.substring(14, 16).toInt(),
-        iso.substring(17, 19).toInt(),
+        date.substring(0, 4).toInt(),
+        date.substring(5, 7).toInt() - 1,
+        date.substring(8, 10).toInt(),
+        time.substring(0, 2).toInt(),
+        time.substring(3, 5).toInt(),
+        time.substring(6, 8).toInt(),
     )
     cal.timeInMillis
 }.getOrNull()
+
+/** "3 Nov 2026" — the label for anything older than a week. */
+private fun shortDate(utcMillis: Long): String =
+    java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault())
+        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+        .format(java.util.Date(utcMillis))
