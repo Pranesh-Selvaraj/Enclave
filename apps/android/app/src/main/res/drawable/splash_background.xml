@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launch window for everything below Android 12, where the framework splash API
+  does not exist: the themed background with the mark centred, which is what the
+  system splash shows on 12+ so the two look like one thing.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+    <item
+        android:width="144dp"
+        android:height="144dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_splash_mark" />
+</layer-list>

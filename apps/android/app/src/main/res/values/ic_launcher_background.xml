@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Launcher-icon colours for the light system theme: the ink tile with the paper
-  mark, which is the brand's lockup for light pages (docs/brand/README.md). The
-  night variant in values-night swaps to the paper tile with the ink mark, so
-  the icon keeps its contrast against whichever launcher background the user
-  has chosen.
+  Launcher icon, light system theme: a paper tile with the ink mark — the inverse
+  of the dark theme, so the icon keeps a mark that reads against the launcher
+  background it sits on.
 -->
 <resources>
-  <color name="ic_launcher_background">#16130F</color>
-  <color name="ic_launcher_mark">#FFFFFF</color>
+  <color name="ic_launcher_background">#F6F5F2</color>
+  <color name="ic_launcher_mark">#16130F</color>
+  <color name="splash_background">#F6F5F2</color>
 </resources>

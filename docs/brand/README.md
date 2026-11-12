@@ -74,17 +74,32 @@ If the generator is committed later, it takes these numbers as its only input �
 ### Launcher icon
 
 An adaptive icon is a 108 dp canvas but a launcher only shows its central
-**72 dp**, so the mark is drawn at **38 % of the canvas** — about 57 % of what
+**72 dp**, so the mark is drawn at **45 % of the canvas** — about 67 % of what
 is actually visible. Sizing it against the full canvas (62 % was the first
 attempt) fills the visible circle almost completely and a mask then crops the
-artwork.
+artwork; sizing it for the visible circle alone leaves the icon looking small
+next to its neighbours.
 
-The icon follows the same light/dark rule as the lockups: an **ink tile with a
-paper mark** when the system theme is light, and the brand's **paper tile
-(`#F4F1EA`) with an ink mark** when it is dark, so it does not disappear into
-either launcher background. Android resolves those from `values/` and
-`values-night/`; launchers cache icons, so a theme switch may need a reinstall
-or a reboot before the change is visible.
+The icon inverts with the system theme, resolved from `values/` and
+`values-night/`: a **paper tile with the ink mark** when the theme is light, and
+an **ink tile with the paper mark** when it is dark — so the mark always reads
+against the launcher background, and the icon never turns into a bright disc
+among dark ones.
+
+The launch window uses the same pair of colours (see `splash_background` in the
+app's `values/` and `values-night/`): the mark centred on the themed background,
+which then hands over to the wordmark on the gate. The two share a colour so the
+hand-over has nothing to flash.
+
+Two traps, both hit on a real device:
+
+- **Never ship `mipmap-night-*` bitmaps.** `night` is a higher-precedence
+  resource qualifier than `anydpi`, so a night bitmap silently replaces the
+  adaptive icon on a dark-themed phone — the launcher draws the old bitmap on a
+  white plate and the icon looks wrong in a way no resource dump explains. The
+  adaptive icon gets its theme from `values-night/` colours instead.
+- **Launchers cache icons.** A reinstall (or a reboot) is the reliable way to
+  see a changed icon; switching the system theme alone may not repaint it.
 
 The identity is monochrome and takes no colour of its own. In the app the mark follows the theme; the interface keeps its one accent for actions, and that accent is never applied to the mark.
 
