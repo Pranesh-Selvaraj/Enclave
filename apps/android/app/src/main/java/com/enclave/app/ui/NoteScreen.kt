@@ -196,7 +196,9 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
     fun shareNote() {
         val body = buildString {
             if (title.isNotBlank()) append(title).append("\n\n")
-            append(editor?.plainText().orEmpty())
+            // The core projects the document to text, so the share body and
+            // the card previews can never drift apart.
+            append(editor?.let { Core.ffi.previewText(it.toJson()) }.orEmpty())
         }.trim()
         if (body.isBlank()) return
         val send = Intent(Intent.ACTION_SEND).apply {

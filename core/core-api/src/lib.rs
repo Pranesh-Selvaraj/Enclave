@@ -20,6 +20,7 @@ use rusqlite::Connection;
 pub mod crypto;
 pub mod frames;
 pub mod pairing;
+pub mod preview;
 pub mod updater;
 
 // Re-exported so shells never need to depend on core-db directly.
@@ -540,6 +541,11 @@ impl EnclaveCore {
     }
 
     // ── Documents ───────────────────────────────────────────────────────────
+
+    /// Every live note with its `icon`/`doc` decorations, in two queries.
+    pub fn home_notes(&self) -> CoreResult<Vec<core_db::HomeNoteRow>> {
+        self.with_db(|db| core_db::home_notes(db).map_err(db_err))
+    }
 
     pub fn list_documents(&self) -> CoreResult<Vec<Document>> {
         self.with_db(|db| core_db::query_documents(db).map_err(db_err))

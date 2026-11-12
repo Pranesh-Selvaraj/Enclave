@@ -106,6 +106,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import uniffi.core_api.Document
+import uniffi.core_api.HomeNote
 import uniffi.core_api.Folder
 import java.util.Calendar
 import java.util.UUID
@@ -136,7 +137,7 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     // Seeded from the session cache: the content was what still blinked after
     // the layout was cached, because the list arrived a frame later.
-    var documents by remember { mutableStateOf(NotesCache.documents ?: emptyList()) }
+    var documents by remember { mutableStateOf(NotesCache.documents ?: emptyList<HomeNote>()) }
     var folders by remember { mutableStateOf(NotesCache.folders ?: emptyList()) }
     var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(NotesCache.documents == null) }
@@ -156,9 +157,9 @@ fun HomeScreen(
     var templateToDelete by remember { mutableStateOf<UserTemplate?>(null) }
     var noteMenuShared by remember { mutableStateOf(false) }
     var iconTarget by remember { mutableStateOf<Document?>(null) }
+    var noteToDelete by remember { mutableStateOf<Document?>(null) }
     // Tiles key their lazy icon load on this, so setting an icon from this
     // screen refreshes the grid without reloading the whole list.
-    var iconRevision by remember { mutableStateOf(0) }
     var helpOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -174,7 +175,8 @@ fun HomeScreen(
         // Refreshing under a list that is already on screen must not blank it:
         // only a cold start (nothing cached) shows the progress bar.
         loading = NotesCache.documents == null
-        documents = withContext(Dispatchers.IO) { Core.ffi.listDocuments() }
+        // One call for the whole list: titles, timestamps, emoji and previews.
+        documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
         folders = withContext(Dispatchers.IO) { Core.ffi.listFolders() }
         layout = withContext(Dispatchers.IO) { NotesPrefs.loadLayout() }
         sort = withContext(Dispatchers.IO) { NotesPrefs.loadSort() }
@@ -216,12 +218,13 @@ fun HomeScreen(
             // core_db::delete_folder), so nothing is lost; reload both lists.
             if (folderFilter == folder.id) folderFilter = null
             folders = withContext(Dispatchers.IO) { Core.ffi.listFolders() }
-            documents = withContext(Dispatchers.IO) { Core.ffi.listDocuments() }
+            documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
             WidgetCacheBridge.requestRefresh()
         }
     }
 
-    fun openNoteMenu(doc: Document) {
+    fun openNoteMenu(note: HomeNote) {
+        val doc = note.document
         noteMenu = doc
         noteMenuShared = false
         scope.launch {
@@ -238,8 +241,8 @@ fun HomeScreen(
 
     fun togglePin(doc: Document) {
         scope.launch {
-            val updated = withContext(Dispatchers.IO) { Core.ffi.toggleFavorite(doc.id) }
-            documents = documents.map { if (it.id == updated.id) updated else it }
+            withContext(Dispatchers.IO) { Core.ffi.toggleFavorite(doc.id) }
+            documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
             WidgetCacheBridge.requestRefresh()
         }
     }
@@ -250,7 +253,7 @@ fun HomeScreen(
                 val text = runCatching {
                     Core.ffi.getBlocks(doc.id)
                         .firstOrNull { it.blockType == "doc" }
-                        ?.let { EditorDocument.parse(it.contentJson).plainText() }
+                        ?.let { Core.ffi.previewText(it.contentJson) }
                         .orEmpty()
                 }.getOrDefault("")
                 listOf(doc.title, text).filter { it.isNotBlank() }.joinToString("\n\n")
@@ -285,8 +288,8 @@ fun HomeScreen(
 
     fun duplicate(doc: Document) {
         scope.launch {
-            val copy = withContext(Dispatchers.IO) { Core.ffi.duplicateDocument(doc.id) }
-            documents = listOf(copy) + documents
+            withContext(Dispatchers.IO) { Core.ffi.duplicateDocument(doc.id) }
+            documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
             WidgetCacheBridge.requestRefresh()
         }
     }
@@ -294,8 +297,7 @@ fun HomeScreen(
     fun deleteNote(doc: Document) {
         scope.launch {
             withContext(Dispatchers.IO) { Core.ffi.deleteDocument(doc.id) }
-            NotesCache.forget(doc.id)
-            documents = documents.filterNot { it.id == doc.id }
+            documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
             WidgetCacheBridge.requestRefresh()
         }
     }
@@ -313,16 +315,17 @@ fun HomeScreen(
                 is CreateTarget.Custom -> NoteFactory.createFromTemplate(target.template, folderId = folderFilter)
             }
             WidgetCacheBridge.requestRefresh()
-            documents = listOf(document) + documents.filterNot { it.id == document.id }
+            documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
             onOpenNote(document.id)
         }
     }
 
     val visible = remember(documents, query, folderFilter, sort) {
+        val byDocument = sort.comparator()
         documents
-            .filter { folderFilter == null || it.folderId == folderFilter }
-            .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) }
-            .sortedWith(sort.comparator())
+            .filter { folderFilter == null || it.document.folderId == folderFilter }
+            .filter { query.isBlank() || it.document.title.contains(query, ignoreCase = true) }
+            .sortedWith { a, b -> byDocument.compare(a.document, b.document) }
     }
 
     val drawerDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -516,7 +519,7 @@ fun HomeScreen(
                         )
                     }
                 } else {
-                    NotesContent(layout, visible, onOpenNote, ::openNoteMenu, iconRevision)
+                    NotesContent(layout, visible, onOpenNote, ::openNoteMenu)
                 }
             }
 
@@ -569,6 +572,32 @@ fun HomeScreen(
         )
     }
 
+    noteToDelete?.let { doc ->
+        AlertDialog(
+            onDismissRequest = { noteToDelete = null },
+            title = { Text("Delete “${doc.title.ifBlank { "Untitled note" }}”?") },
+            text = {
+                Text(
+                    "Its content is removed from this vault. This cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        noteToDelete = null
+                        deleteNote(doc)
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { noteToDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     iconTarget?.let { doc ->
         EmojiPickerDialog(
             current = null,
@@ -576,7 +605,7 @@ fun HomeScreen(
                 iconTarget = null
                 scope.launch {
                     NoteIcon.save(doc.id, picked)
-                    iconRevision++
+                    documents = withContext(Dispatchers.IO) { Core.ffi.homeNotes() }
                 }
             },
             onDismiss = { iconTarget = null },
@@ -600,7 +629,7 @@ fun HomeScreen(
                 ) { setWidgetSharing(doc, !noteMenuShared) },
                 ActionItem(Icons.Filled.Face, "Set icon") { iconTarget = doc },
                 ActionItem(Icons.Filled.Create, "Make a copy") { duplicate(doc) },
-                ActionItem(Icons.Filled.Delete, "Delete", destructive = true) { deleteNote(doc) },
+                ActionItem(Icons.Filled.Delete, "Delete", destructive = true) { noteToDelete = doc },
             ),
             onDismiss = { noteMenu = null },
         )
@@ -868,10 +897,9 @@ private fun FolderChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun NotesContent(
     layout: NotesLayout,
-    documents: List<Document>,
+    documents: List<HomeNote>,
     onOpenNote: (String) -> Unit,
-    onLongPressNote: (Document) -> Unit,
-    iconRevision: Int,
+    onLongPressNote: (HomeNote) -> Unit,
 ) {
     when (layout) {
         NotesLayout.LIST -> LazyColumn(
@@ -879,8 +907,8 @@ private fun NotesContent(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(documents, key = { it.id }) { doc ->
-                NoteRow(doc, onClick = { onOpenNote(doc.id) }, onLongClick = { onLongPressNote(doc) })
+            items(documents, key = { it.document.id }) { note ->
+                NoteRow(note, onClick = { onOpenNote(note.document.id) }, onLongClick = { onLongPressNote(note) })
             }
         }
 
@@ -891,8 +919,8 @@ private fun NotesContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(documents, key = { it.id }) { doc ->
-                NoteCard(doc, onClick = { onOpenNote(doc.id) }, onLongClick = { onLongPressNote(doc) })
+            items(documents, key = { it.document.id }) { note ->
+                NoteCard(note, onClick = { onOpenNote(note.document.id) }, onLongClick = { onLongPressNote(note) })
             }
         }
 
@@ -903,8 +931,8 @@ private fun NotesContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(documents, key = { it.id }) { doc ->
-                GalleryTile(doc, onClick = { onOpenNote(doc.id) }, onLongClick = { onLongPressNote(doc) })
+            items(documents, key = { it.document.id }) { note ->
+                GalleryTile(note, onClick = { onOpenNote(note.document.id) }, onLongClick = { onLongPressNote(note) })
             }
         }
 
@@ -915,12 +943,11 @@ private fun NotesContent(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(documents, key = { it.id }) { doc ->
+            items(documents, key = { it.document.id }) { note ->
                 IconTile(
-                    doc = doc,
-                    iconRevision = iconRevision,
-                    onClick = { onOpenNote(doc.id) },
-                    onLongClick = { onLongPressNote(doc) },
+                    note = note,
+                    onClick = { onOpenNote(note.document.id) },
+                    onLongClick = { onLongPressNote(note) },
                 )
             }
         }
@@ -929,7 +956,8 @@ private fun NotesContent(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NoteRow(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun NoteRow(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val doc = note.document
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(14.dp),
@@ -966,11 +994,9 @@ private fun NoteRow(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NoteCard(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit) {
-    var preview by remember(doc.id) { mutableStateOf("") }
-    LaunchedEffect(doc.id, doc.updatedAt) {
-        preview = notePreview(doc.id, doc.updatedAt)
-    }
+private fun NoteCard(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val doc = note.document
+    val preview = note.preview
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
@@ -1040,19 +1066,10 @@ private fun openUrl(context: android.content.Context, url: String) {
 /** Room under the last row so the floating create button never covers a note. */
 private val FabClearance = 96.dp
 
-/** Plain-text preview of a note, loaded lazily as cards become visible. */
-private suspend fun notePreview(id: String, updatedAt: String): String {
-    NotesCache.preview(id, updatedAt)?.let { return it }
-    return withContext(Dispatchers.IO) {
-        val blocks = runCatching { Core.ffi.getBlocks(id) }.getOrDefault(emptyList())
-        val doc = blocks.firstOrNull { it.blockType == "doc" } ?: return@withContext ""
-        EditorDocument.parse(doc.contentJson).plainText().also { NotesCache.putPreview(id, updatedAt, it) }
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GalleryTile(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun GalleryTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val doc = note.document
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(18.dp),
@@ -1092,11 +1109,9 @@ private fun GalleryTile(doc: Document, onClick: () -> Unit, onLongClick: () -> U
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun IconTile(doc: Document, iconRevision: Int, onClick: () -> Unit, onLongClick: () -> Unit) {
-    // The emoji lives in an `icon` block, so it is read per tile and refreshed
-    // whenever the note changes — the same lazy pattern the card previews use.
-    var emoji by remember(doc.id, doc.updatedAt, iconRevision) { mutableStateOf<String?>(null) }
-    LaunchedEffect(doc.id, doc.updatedAt, iconRevision) { emoji = NoteIcon.load(doc.id) }
+private fun IconTile(note: HomeNote, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val doc = note.document
+    val emoji = note.emoji
 
     Surface(
         color = MaterialTheme.colorScheme.surface,

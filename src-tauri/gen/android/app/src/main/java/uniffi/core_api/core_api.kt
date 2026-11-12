@@ -823,6 +823,20 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -842,6 +856,10 @@ internal interface IntegrityCheckingUniffiLib : Library {
 ): Short
 fun uniffi_core_api_checksum_method_fficore_archive_document(
 ): Short
+fun uniffi_core_api_checksum_method_fficore_backup_vault(
+): Short
+fun uniffi_core_api_checksum_method_fficore_check_update(
+): Short
 fun uniffi_core_api_checksum_method_fficore_connect_peer(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_create_document(
@@ -855,6 +873,8 @@ fun uniffi_core_api_checksum_method_fficore_delete_block(
 fun uniffi_core_api_checksum_method_fficore_delete_document(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_delete_folder(
+): Short
+fun uniffi_core_api_checksum_method_fficore_download_update(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_duplicate_document(
 ): Short
@@ -873,6 +893,8 @@ fun uniffi_core_api_checksum_method_fficore_get_document(
 fun uniffi_core_api_checksum_method_fficore_get_page_list(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_get_setting(
+): Short
+fun uniffi_core_api_checksum_method_fficore_home_notes(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_init_vault(
 ): Short
@@ -894,11 +916,17 @@ fun uniffi_core_api_checksum_method_fficore_move_document(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_network_status(
 ): Short
+fun uniffi_core_api_checksum_method_fficore_preview_text(
+): Short
 fun uniffi_core_api_checksum_method_fficore_rename_folder(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_reset_vault(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_restore_document(
+): Short
+fun uniffi_core_api_checksum_method_fficore_restore_vault(
+): Short
+fun uniffi_core_api_checksum_method_fficore_revision(
 ): Short
 fun uniffi_core_api_checksum_method_fficore_run_sync_loop(
 ): Short
@@ -999,6 +1027,10 @@ fun uniffi_core_api_fn_method_fficore_app_dir(`ptr`: Pointer,uniffi_out_err: Uni
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_archive_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_backup_vault(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_check_update(`ptr`: Pointer,`currentVersion`: RustBuffer.ByValue,
+): Long
 fun uniffi_core_api_fn_method_fficore_connect_peer(`ptr`: Pointer,`host`: RustBuffer.ByValue,`port`: Short,
 ): Long
 fun uniffi_core_api_fn_method_fficore_create_document(`ptr`: Pointer,`title`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1013,6 +1045,8 @@ fun uniffi_core_api_fn_method_fficore_delete_document(`ptr`: Pointer,`id`: RustB
 ): Unit
 fun uniffi_core_api_fn_method_fficore_delete_folder(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_core_api_fn_method_fficore_download_update(`ptr`: Pointer,`destDir`: RustBuffer.ByValue,
+): Long
 fun uniffi_core_api_fn_method_fficore_duplicate_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_find_or_create_document(`ptr`: Pointer,`title`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1030,6 +1064,8 @@ fun uniffi_core_api_fn_method_fficore_get_document(`ptr`: Pointer,`id`: RustBuff
 fun uniffi_core_api_fn_method_fficore_get_page_list(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_get_setting(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_home_notes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_init_vault(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1051,12 +1087,18 @@ fun uniffi_core_api_fn_method_fficore_move_document(`ptr`: Pointer,`id`: RustBuf
 ): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_network_status(`ptr`: Pointer,
 ): Long
+fun uniffi_core_api_fn_method_fficore_preview_text(`ptr`: Pointer,`docJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_core_api_fn_method_fficore_rename_folder(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_core_api_fn_method_fficore_reset_vault(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_core_api_fn_method_fficore_restore_document(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_core_api_fn_method_fficore_restore_vault(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`backup`: RustBuffer.ByValue,
+): Long
+fun uniffi_core_api_fn_method_fficore_revision(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 fun uniffi_core_api_fn_method_fficore_run_sync_loop(`ptr`: Pointer,
 ): Long
 fun uniffi_core_api_fn_method_fficore_search_all(`ptr`: Pointer,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1227,6 +1269,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_core_api_checksum_method_fficore_archive_document() != 42180.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_core_api_checksum_method_fficore_backup_vault() != 20058.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_check_update() != 61038.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_core_api_checksum_method_fficore_connect_peer() != 6581.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1246,6 +1294,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_delete_folder() != 64178.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_download_update() != 50188.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_duplicate_document() != 6748.toShort()) {
@@ -1273,6 +1324,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_get_setting() != 7408.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_home_notes() != 32135.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_init_vault() != 56490.toShort()) {
@@ -1305,6 +1359,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_core_api_checksum_method_fficore_network_status() != 47908.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_core_api_checksum_method_fficore_preview_text() != 38185.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_core_api_checksum_method_fficore_rename_folder() != 16207.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1312,6 +1369,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_restore_document() != 50388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_restore_vault() != 62251.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_core_api_checksum_method_fficore_revision() != 53406.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_core_api_checksum_method_fficore_run_sync_loop() != 5280.toShort()) {
@@ -1880,6 +1943,20 @@ public interface FfiCoreInterface {
     
     fun `archiveDocument`(`id`: kotlin.String): Document
     
+    /**
+     * Write a consistent, still-encrypted snapshot of the vault (SQLCipher's
+     * `VACUUM INTO`, so WAL state is included) and return its path inside the
+     * app's private storage. The shell copies that file to a location the
+     * user chooses — SAF on Android. Restoring is desktop-only for now.
+     */
+    fun `backupVault`(): kotlin.String
+    
+    /**
+     * Check GitHub Releases for a newer version. `current_version` comes from
+     * the shell (its own version), so the core need not know it.
+     */
+    suspend fun `checkUpdate`(`currentVersion`: kotlin.String): UpdateInfo
+    
     suspend fun `connectPeer`(`host`: kotlin.String, `port`: kotlin.UShort)
     
     fun `createDocument`(`title`: kotlin.String): Document
@@ -1898,6 +1975,13 @@ public interface FfiCoreInterface {
     
     fun `deleteFolder`(`id`: kotlin.String)
     
+    /**
+     * Download the asset from the last check into `dest_dir` and return its
+     * path. Fails closed on a bad SHA-256 digest or Ed25519 signature; the
+     * shell only has to hand the verified file to the platform installer.
+     */
+    suspend fun `downloadUpdate`(`destDir`: kotlin.String): kotlin.String
+    
     fun `duplicateDocument`(`id`: kotlin.String): Document
     
     fun `findOrCreateDocument`(`title`: kotlin.String): Document
@@ -1915,6 +1999,11 @@ public interface FfiCoreInterface {
     fun `getPageList`(): List<PageInfo>
     
     fun `getSetting`(`key`: kotlin.String): kotlin.String?
+    
+    /**
+     * Every live note with its icon and preview, in one call.
+     */
+    fun `homeNotes`(): List<HomeNote>
     
     fun `initVault`(`key`: kotlin.ByteArray)
     
@@ -1940,11 +2029,31 @@ public interface FfiCoreInterface {
     
     suspend fun `networkStatus`(): NetworkStatus
     
+    /**
+     * Flatten an editor document to the text a preview or a share body shows.
+     */
+    fun `previewText`(`docJson`: kotlin.String): kotlin.String
+    
     fun `renameFolder`(`id`: kotlin.String, `name`: kotlin.String)
     
     fun `resetVault`()
     
     fun `restoreDocument`(`id`: kotlin.String): Document
+    
+    /**
+     * Replace the vault with a backup snapshot. `secret` is the vault's
+     * password or its 12-word recovery phrase — a restore re-authenticates
+     * the owner. Only a backup of this vault is accepted (it must open with
+     * the derived key); the vault ends locked.
+     */
+    suspend fun `restoreVault`(`secret`: kotlin.String, `backup`: kotlin.ByteArray)
+    
+    /**
+     * Monotonic data-change counter. Shells poll it and refresh derived state
+     * (home-screen widgets) when it moves — sync merges happen inside the core
+     * and are otherwise unobservable from a shell.
+     */
+    fun `revision`(): kotlin.ULong
     
     /**
      * Consume peer sync messages for the process lifetime (merges snapshots
@@ -2129,6 +2238,50 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     
 
     
+    /**
+     * Write a consistent, still-encrypted snapshot of the vault (SQLCipher's
+     * `VACUUM INTO`, so WAL state is included) and return its path inside the
+     * app's private storage. The shell copies that file to a location the
+     * user chooses — SAF on Android. Restoring is desktop-only for now.
+     */
+    @Throws(EnclaveException::class)override fun `backupVault`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EnclaveException) { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_backup_vault(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check GitHub Releases for a newer version. `current_version` comes from
+     * the shell (its own version), so the core need not know it.
+     */
+    @Throws(EnclaveException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `checkUpdate`(`currentVersion`: kotlin.String) : UpdateInfo {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_check_update(
+                thisPtr,
+                FfiConverterString.lower(`currentVersion`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeUpdateInfo.lift(it) },
+        // Error FFI converter
+        EnclaveException.ErrorHandler,
+    )
+    }
+
+    
     @Throws(EnclaveException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `connectPeer`(`host`: kotlin.String, `port`: kotlin.UShort) {
@@ -2228,6 +2381,32 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     }
     
     
+
+    
+    /**
+     * Download the asset from the last check into `dest_dir` and return its
+     * path. Fails closed on a bad SHA-256 digest or Ed25519 signature; the
+     * shell only has to hand the verified file to the platform installer.
+     */
+    @Throws(EnclaveException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `downloadUpdate`(`destDir`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_download_update(
+                thisPtr,
+                FfiConverterString.lower(`destDir`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
+        // Error FFI converter
+        EnclaveException.ErrorHandler,
+    )
+    }
 
     
     @Throws(EnclaveException::class)override fun `duplicateDocument`(`id`: kotlin.String): Document {
@@ -2340,6 +2519,22 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     uniffiRustCallWithError(EnclaveException) { _status ->
     UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_get_setting(
         it, FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Every live note with its icon and preview, in one call.
+     */
+    @Throws(EnclaveException::class)override fun `homeNotes`(): List<HomeNote> {
+            return FfiConverterSequenceTypeHomeNote.lift(
+    callWithPointer {
+    uniffiRustCallWithError(EnclaveException) { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_home_notes(
+        it, _status)
 }
     }
     )
@@ -2495,6 +2690,21 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     }
 
     
+    /**
+     * Flatten an editor document to the text a preview or a share body shows.
+     */override fun `previewText`(`docJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_preview_text(
+        it, FfiConverterString.lower(`docJson`),_status)
+}
+    }
+    )
+    }
+    
+
+    
     @Throws(EnclaveException::class)override fun `renameFolder`(`id`: kotlin.String, `name`: kotlin.String)
         = 
     callWithPointer {
@@ -2525,6 +2735,51 @@ open class FfiCore: Disposable, AutoCloseable, FfiCoreInterface
     uniffiRustCallWithError(EnclaveException) { _status ->
     UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_restore_document(
         it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Replace the vault with a backup snapshot. `secret` is the vault's
+     * password or its 12-word recovery phrase — a restore re-authenticates
+     * the owner. Only a backup of this vault is accepted (it must open with
+     * the derived key); the vault ends locked.
+     */
+    @Throws(EnclaveException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `restoreVault`(`secret`: kotlin.String, `backup`: kotlin.ByteArray) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_restore_vault(
+                thisPtr,
+                FfiConverterString.lower(`secret`),FfiConverterByteArray.lower(`backup`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_core_api_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_core_api_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        EnclaveException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Monotonic data-change counter. Shells poll it and refresh derived state
+     * (home-screen widgets) when it moves — sync merges happen inside the core
+     * and are otherwise unobservable from a shell.
+     */override fun `revision`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_core_api_fn_method_fficore_revision(
+        it, _status)
 }
     }
     )
@@ -3126,6 +3381,47 @@ public object FfiConverterTypeFolder: FfiConverterRustBuffer<Folder> {
 
 
 
+/**
+ * One home-screen row: the document plus the two things the list draws from
+ * its blocks — the emoji and the plain-text preview. Returning them together
+ * turns an N+1 (one `get_blocks` per card) into a single call.
+ */
+data class HomeNote (
+    var `document`: Document, 
+    var `emoji`: kotlin.String?, 
+    var `preview`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHomeNote: FfiConverterRustBuffer<HomeNote> {
+    override fun read(buf: ByteBuffer): HomeNote {
+        return HomeNote(
+            FfiConverterTypeDocument.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HomeNote) = (
+            FfiConverterTypeDocument.allocationSize(value.`document`) +
+            FfiConverterOptionalString.allocationSize(value.`emoji`) +
+            FfiConverterString.allocationSize(value.`preview`)
+    )
+
+    override fun write(value: HomeNote, buf: ByteBuffer) {
+            FfiConverterTypeDocument.write(value.`document`, buf)
+            FfiConverterOptionalString.write(value.`emoji`, buf)
+            FfiConverterString.write(value.`preview`, buf)
+    }
+}
+
+
+
 data class NetworkStatus (
     var `localPeerId`: kotlin.String, 
     var `localHost`: kotlin.String, 
@@ -3359,6 +3655,57 @@ public object FfiConverterTypeTagInfo: FfiConverterRustBuffer<TagInfo> {
     override fun write(value: TagInfo, buf: ByteBuffer) {
             FfiConverterString.write(value.`docId`, buf)
             FfiConverterSequenceString.write(value.`tags`, buf)
+    }
+}
+
+
+
+/**
+ * Latest-release information for the in-app updater.
+ */
+data class UpdateInfo (
+    var `currentVersion`: kotlin.String, 
+    var `latestVersion`: kotlin.String, 
+    var `updateAvailable`: kotlin.Boolean, 
+    var `notes`: kotlin.String, 
+    var `assetName`: kotlin.String?, 
+    var `assetSize`: kotlin.ULong?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeUpdateInfo: FfiConverterRustBuffer<UpdateInfo> {
+    override fun read(buf: ByteBuffer): UpdateInfo {
+        return UpdateInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: UpdateInfo) = (
+            FfiConverterString.allocationSize(value.`currentVersion`) +
+            FfiConverterString.allocationSize(value.`latestVersion`) +
+            FfiConverterBoolean.allocationSize(value.`updateAvailable`) +
+            FfiConverterString.allocationSize(value.`notes`) +
+            FfiConverterOptionalString.allocationSize(value.`assetName`) +
+            FfiConverterOptionalULong.allocationSize(value.`assetSize`)
+    )
+
+    override fun write(value: UpdateInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`currentVersion`, buf)
+            FfiConverterString.write(value.`latestVersion`, buf)
+            FfiConverterBoolean.write(value.`updateAvailable`, buf)
+            FfiConverterString.write(value.`notes`, buf)
+            FfiConverterOptionalString.write(value.`assetName`, buf)
+            FfiConverterOptionalULong.write(value.`assetSize`, buf)
     }
 }
 
@@ -3749,6 +4096,34 @@ public object FfiConverterSequenceTypeFolder: FfiConverterRustBuffer<List<Folder
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFolder.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHomeNote: FfiConverterRustBuffer<List<HomeNote>> {
+    override fun read(buf: ByteBuffer): List<HomeNote> {
+        val len = buf.getInt()
+        return List<HomeNote>(len) {
+            FfiConverterTypeHomeNote.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HomeNote>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHomeNote.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HomeNote>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHomeNote.write(it, buf)
         }
     }
 }
