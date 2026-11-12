@@ -20,7 +20,7 @@ The wordmark is `ENCLAVE`, **constructed on a cell grid** — the initial **E at
 | [`logo-tile.svg`](logo-tile.svg) | The tile, edge to edge | Favicons |
 | [`mark.svg`](mark.svg) | The keyhole alone, in `currentColor` | Anywhere text could go |
 | [`lockup.svg`](lockup.svg), [`lockup-dark.svg`](lockup-dark.svg) | The tile beside the wordmark, for light and for dark pages; on dark pages the tile turns to paper | The README and the website |
-| [`icon-foreground.svg`](icon-foreground.svg), [`icon-background.svg`](icon-background.svg) | The Android adaptive-icon layers: the keyhole alone at 62 % of the canvas (inside Android's 66/108 safe zone, so no launcher mask clips it), and solid ink behind it | `scripts/generate-icons.mjs` |
+| [`icon-foreground.svg`](icon-foreground.svg), [`icon-background.svg`](icon-background.svg) | The Android adaptive-icon layers: the keyhole alone, and a solid tile behind it | `scripts/generate-icons.mjs` |
 | [`social-preview.png`](social-preview.png) | A 1280×640 card for links to the repository | GitHub → Settings → Social preview |
 | [`watermark.svg`](watermark.svg), [`watermark-dark.svg`](watermark-dark.svg) | The lockup at 6 % ink or paper on a 1920×1080 canvas | Quiet backgrounds, decks and documentation |
 
@@ -28,7 +28,7 @@ The wordmark is `ENCLAVE`, **constructed on a cell grid** — the initial **E at
 
 `watermark.svg` is the ink lockup at 6 % for light surfaces; `watermark-dark.svg` is the paper lockup at 6 % for dark surfaces. Use one at full size as a quiet background, never behind body copy and never as a replacement for the lockup itself. Both are generated from the lockups, so the geometry stays identical.
 
-The design tokens and the rules that keep the UI consistent live in [`docs/design/`](../design/README.md); this directory remains the vector source of truth.
+This directory is the vector source of truth for the mark, the lockups and the icon layers; the reasoning behind them is in [`docs/decisions/`](../decisions/README.md).
 
 Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **Their generator is not committed yet** — the numbers are the source of truth in the meantime.
 
@@ -70,6 +70,21 @@ If the generator is committed later, it takes these numbers as its only input �
 | Ink | `#16130F` | The tile, and the mark on light ground. The same value as the app's `--color-bg` |
 | Paper | `#FFFFFF` | The mark on the tile |
 | Paper (dark pages) | `#F4F1EA` | The tile and the wordmark on dark pages |
+
+### Launcher icon
+
+An adaptive icon is a 108 dp canvas but a launcher only shows its central
+**72 dp**, so the mark is drawn at **38 % of the canvas** — about 57 % of what
+is actually visible. Sizing it against the full canvas (62 % was the first
+attempt) fills the visible circle almost completely and a mask then crops the
+artwork.
+
+The icon follows the same light/dark rule as the lockups: an **ink tile with a
+paper mark** when the system theme is light, and the brand's **paper tile
+(`#F4F1EA`) with an ink mark** when it is dark, so it does not disappear into
+either launcher background. Android resolves those from `values/` and
+`values-night/`; launchers cache icons, so a theme switch may need a reinstall
+or a reboot before the change is visible.
 
 The identity is monochrome and takes no colour of its own. In the app the mark follows the theme; the interface keeps its one accent for actions, and that accent is never applied to the mark.
 

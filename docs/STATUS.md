@@ -18,7 +18,7 @@ Last updated: 2026-11-03 — the branded gate (lockup → register → repeat PI
 ## Android — done
 
 - Vault gate: create (recovery phrase shown once with acknowledgement), unlock, lock.
-- **Branded gate**: the official lockup glides into the form; sliding PIN/Password switch; 4–12-digit PIN (matching the web app's `/^\d{4,12}$/`, confirmed with the keypad's check key) with repeat-to-confirm and an in-app keypad; centred 2-per-row recovery phrase; the selected accent drives the switch, dots, buttons and logo gradient.
+- **Branded gate**: the official lockup glides into the form; sliding PIN/Password switch; unlock secret with **no length policy** — any non-empty string, one character included (ADR 0011), confirmed with the keypad's check key — with repeat-to-confirm and an in-app keypad; centred 2-per-row recovery phrase; the selected accent drives the switch, dots, buttons and logo gradient.
 - **Restore from the gate**: register and login can pick a taken backup before any vault exists. A recovery-phrase restore sets a fresh PIN (a device that still holds the key file can restore with the password); the Settings restore remains.
 - **Forgot PIN/password**: the login form offers a recovery-phrase path that unlocks the vault and then requires a new 4–12-digit PIN through `set_vault_password`, so the next unlock works. A wrong phrase leaves the vault locked.
 - Notes home: search pill with layout/sort controls, folder chips, **four layouts** (List / Gallery / Cards / Icons), three sort orders, create stack (Text / Checklist / Folder, plus New template and the user's own templates).

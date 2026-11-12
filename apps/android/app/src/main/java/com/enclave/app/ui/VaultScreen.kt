@@ -274,7 +274,7 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
     fun onConfirmPin() {
         if (busy || mode != AuthMode.PIN) return
         if (!PinRules.isValid(pin)) {
-            error = "Use at least ${PinRules.MIN_LENGTH} digits."
+            error = "Enter your PIN first."
             return
         }
         when {
@@ -480,26 +480,26 @@ fun VaultScreen(notice: String? = null, onUnlocked: () -> Unit) {
                         OutlinedTextField(
                             value = newPin,
                             onValueChange = {
-                                newPin = PinRules.filter(it)
+                                newPin = it
                                 pinSetupError = null
                             },
-                            label = { Text("PIN") },
+                            label = { Text("New PIN or password") },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = confirmNewPin,
                             onValueChange = {
-                                confirmNewPin = PinRules.filter(it)
+                                confirmNewPin = it
                                 pinSetupError = null
                             },
-                            label = { Text("Confirm PIN") },
+                            label = { Text("Confirm it") },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                             modifier = Modifier.fillMaxWidth(),
                         )
                         pinSetupError?.let {
@@ -711,7 +711,8 @@ private fun VaultGate(
         else -> "PIN confirmed"
     }
     val note = if (isRegister) {
-        "A 12-word recovery phrase is generated next. It is the only way to recover the vault if you forget your ${if (mode == AuthMode.PIN) "PIN" else "password"} — write it down and keep it offline."
+        "Any PIN or password works, with no minimum length — but a longer one is much harder to guess. " +
+            "A 12-word recovery phrase is generated next; it is the only way to recover the vault if you forget this, so write it down and keep it offline."
     } else {
         null
     }
@@ -835,7 +836,16 @@ private fun VaultGate(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(16.dp))
-                        PinDots(filled = pinFilled, slots = pinSlots, error = error != null)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PinDots(filled = pinFilled.coerceAtMost(PinRules.MAX_DOTS), slots = pinSlots, error = error != null)
+                            if (pinFilled > PinRules.MAX_DOTS) {
+                                Text(
+                                    "  ${pinFilled}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                         error?.let {
                             Spacer(Modifier.height(12.dp))
                             Text(

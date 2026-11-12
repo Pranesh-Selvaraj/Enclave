@@ -17,11 +17,11 @@
         android:scaleX="2.073"
         android:scaleY="2.073">
         <path
-            android:fillColor="#FFFFFFFF"
+            android:fillColor="@color/ic_launcher_mark"
             android:fillType="evenOdd"
             android:pathData="M4.8,9 a7.2,7.2 0 1,0 14.4,0 a7.2,7.2 0 1,0 -14.4,0 Z M9.5,9 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
         <path
-            android:fillColor="#FFFFFFFF"
+            android:fillColor="@color/ic_launcher_mark"
             android:pathData="M8.5,13.6 h7 l-0.9,6.4 Q14.6,21.6 13,21.6 h-2 Q9.4,21.6 9.4,20 Z" />
     </group>
 </vector>

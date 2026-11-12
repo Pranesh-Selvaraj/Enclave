@@ -6,73 +6,56 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The PIN policy has to match the shipping app (`/^\d{4,12}$/`): the gate used
- * to accept exactly four digits, which silently rejected every longer PIN a
- * user could have created in the web app. These cases lock the boundaries.
+ * The unlock secret has no minimum and no maximum: any single character is
+ * accepted, and the keypad simply keeps accepting input. These cases pin that
+ * policy down, because it deliberately gives up the old 4–12-digit rule.
  */
 class PinRulesTest {
 
     @Test
-    fun `four digits is the shortest valid pin`() {
+    fun `one character is a valid secret`() {
+        assertTrue(PinRules.isValid("7"))
+        assertTrue(PinRules.isValid("a"))
+        assertTrue(PinRules.isValid("🔐"))
+    }
+
+    @Test
+    fun `only an empty secret is rejected`() {
         assertFalse(PinRules.isValid(""))
-        assertFalse(PinRules.isValid("123"))
-        assertTrue(PinRules.isValid("1234"))
+        assertTrue(PinRules.isValid("1"))
+        assertTrue(PinRules.isValid("x"))
     }
 
     @Test
-    fun `twelve digits is the longest valid pin`() {
-        assertTrue(PinRules.isValid("123456789012"))
-        assertFalse(PinRules.isValid("1234567890123"))
-    }
-
-    @Test
-    fun `only ascii digits are valid`() {
-        assertFalse(PinRules.isValid("123a"))
-        assertFalse(PinRules.isValid("12 34"))
-        // Arabic-Indic digits pass Char.isDigit() but not the web app's \d.
-        assertFalse(PinRules.isValid("٢٩١٤"))
-        assertFalse(PinRules.isValid("-123"))
-    }
-
-    @Test
-    fun `append ignores non-digits and never exceeds the cap`() {
-        assertEquals("1", PinRules.append("", '1'))
-        assertEquals("1", PinRules.append("1", 'a'))
-        assertEquals("1", PinRules.append("1", ' '))
-        assertEquals("", PinRules.append("", '-'))
-
-        val full = (1..PinRules.MAX_LENGTH).fold("") { pin, digit ->
-            PinRules.append(pin, digit.toString()[0])
-        }
-        assertEquals(PinRules.MAX_LENGTH, full.length)
-        assertTrue(PinRules.isValid(full))
-        // One past the cap is dropped rather than truncated to something else.
-        assertEquals(full, PinRules.append(full, '9'))
-    }
-
-    @Test
-    fun `filter keeps digits from a pasted or hardware-keyboard entry`() {
-        assertEquals("1234", PinRules.filter("1a2b3c4"))
-        assertEquals("1234", PinRules.filter("12 34"))
-        assertEquals("123456789012", PinRules.filter("123456789012345"))
-        assertEquals("", PinRules.filter("٢٩١٤"))
-    }
-
-    @Test
-    fun `the dot row grows with the entry and never shrinks below the minimum`() {
-        assertEquals(PinRules.MIN_LENGTH, PinRules.slots(0))
-        assertEquals(PinRules.MIN_LENGTH, PinRules.slots(3))
-        assertEquals(PinRules.MIN_LENGTH, PinRules.slots(4))
-        assertEquals(7, PinRules.slots(7))
-        assertEquals(PinRules.MAX_LENGTH, PinRules.slots(PinRules.MAX_LENGTH))
-    }
-
-    @Test
-    fun `a longer pin can be typed digit by digit and stays valid`() {
-        val pin = "4815162342"
+    fun `there is no upper bound on the secret`() {
+        val long = "correct horse battery staple and then some more words"
+        assertTrue(PinRules.isValid(long))
         var typed = ""
-        pin.forEach { typed = PinRules.append(typed, it) }
-        assertEquals(pin, typed)
+        repeat(64) { typed = PinRules.append(typed, '9') }
+        assertEquals(64, typed.length)
         assertTrue(PinRules.isValid(typed))
+    }
+
+    @Test
+    fun `any character is allowed, not just digits`() {
+        assertTrue(PinRules.isValid("pässwörd!"))
+        assertTrue(PinRules.isValid("٢٩١٤"))
+        assertEquals("12 34", PinRules.filter("12 34"))
+    }
+
+    @Test
+    fun `append keeps every character it is given`() {
+        assertEquals("1", PinRules.append("", '1'))
+        assertEquals("1a", PinRules.append("1", 'a'))
+        assertEquals("1a!", PinRules.append("1a", '!'))
+    }
+
+    @Test
+    fun `the dot row grows with the secret and stops at the display cap`() {
+        assertEquals(1, PinRules.slots(0))
+        assertEquals(1, PinRules.slots(1))
+        assertEquals(4, PinRules.slots(4))
+        assertEquals(PinRules.MAX_DOTS, PinRules.slots(PinRules.MAX_DOTS))
+        assertEquals(PinRules.MAX_DOTS, PinRules.slots(PinRules.MAX_DOTS + 9))
     }
 }
