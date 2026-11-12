@@ -16,29 +16,6 @@
 > **Enclave is migrating to dedicated native apps for every platform.**
 > The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
 
-<a id="platform-status"></a>
-
-### Platform status
-
-| Platform | State |
-| --- | --- |
-| Android (Tauri) | Shipping — this release; rebuilds against the updated core, no visual changes |
-| Android (native, Kotlin/Compose) | **Next stable, in development** — in the repository and on a real device, not yet released |
-| Desktop (Tauri) | Shipping — this release; unchanged beyond the core |
-| Desktop (native, Qt 6) | **In development** (ADR 0004, verification gate still open) |
-
-### Compatibility
-
-The supported pairing is **two builds from the same release train**. The next native Android stable is **not supported against the previous stable desktop build** (v1.13.0): it is a different application on the same core, its sync has not been exercised against the Tauri desktop, and it writes app-level blocks (`icon`, `widget`) that the older desktop ignores. Nothing is lost by the mismatch — the vault schema (v1) and the sync wire format (v3) are unchanged — but do not pair a native Android build with a desktop app from an older release.
-
-**If you want to use Enclave today, download the latest stable release, currently [v1.14.0](https://github.com/Pranesh-Selvaraj/Enclave/releases/latest).** Build from `main` only if you are contributing to the migration.
-
-## What it looks like
-
-The product is shown, and kept current, on the homepage: **<https://pranesh-selvaraj.github.io/Enclave/>**. It has the live tour (editor, sync, whiteboard, graph, local AI), the current desktop and Android screenshots and the platform status.
-
-Screenshots are deliberately not embedded here. They were the most stale lines in this file — every UI change invalidated them, the Android set showed the native app that is not released yet, and they duplicated what the homepage already does with the same files in [`docs/screenshots/`](docs/screenshots/). The README is the reference document; the homepage is the front door ([ADR 0009](docs/decisions/0009-public-homepage-github-pages.md)).
-
 ## Architecture
 
 Enclave is built on three core principles — for the full picture see [Vault & Security](#vault--security), [Security Model](#security-model) and [Network Design](#network-design):
