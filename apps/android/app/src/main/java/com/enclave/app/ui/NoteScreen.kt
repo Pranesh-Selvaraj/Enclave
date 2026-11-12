@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -104,6 +105,8 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
     var sheetOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
     var templateOpen by remember { mutableStateOf(false) }
+    var iconOpen by remember { mutableStateOf(false) }
+    var icon by remember { mutableStateOf<String?>(null) }
     var templateName by remember { mutableStateOf("") }
     var widgetEnabled by remember { mutableStateOf(false) }
     var widgetEditable by remember { mutableStateOf(true) }
@@ -142,6 +145,7 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 sortOrder = seed?.sortOrder ?: 1.0
                 editor = EditorDocument.empty()
             }
+            icon = NoteIcon.load(documentId)
             title = document.title
             savedTitle = document.title
             updatedAt = document.updatedAt
@@ -374,6 +378,13 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
                 onClick = ::duplicateNote,
             )
             SheetAction(
+                icon = Icons.Filled.Face,
+                label = icon?.let { "Icon: $it" } ?: "Set icon",
+            ) {
+                sheetOpen = false
+                iconOpen = true
+            }
+            SheetAction(
                 icon = Icons.Filled.Star,
                 label = "Save as template",
             ) {
@@ -398,6 +409,20 @@ fun NoteScreen(documentId: String, onBack: () -> Unit) {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (iconOpen) {
+        EmojiPickerDialog(
+            current = icon,
+            onPick = { picked ->
+                iconOpen = false
+                scope.launch {
+                    NoteIcon.save(documentId, picked)
+                    icon = picked.ifBlank { null }
+                }
+            },
+            onDismiss = { iconOpen = false },
+        )
     }
 
     if (templateOpen) {

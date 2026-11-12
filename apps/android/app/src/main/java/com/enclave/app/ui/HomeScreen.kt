@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -149,6 +150,10 @@ fun HomeScreen(
     var templates by remember { mutableStateOf<List<UserTemplate>>(emptyList()) }
     var templateToDelete by remember { mutableStateOf<UserTemplate?>(null) }
     var noteMenuShared by remember { mutableStateOf(false) }
+    var iconTarget by remember { mutableStateOf<Document?>(null) }
+    // Tiles key their lazy icon load on this, so setting an icon from this
+    // screen refreshes the grid without reloading the whole list.
+    var iconRevision by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     // The drawer covers the screen, so Back closes it instead of leaving
@@ -412,33 +417,29 @@ fun HomeScreen(
                     .fillMaxSize()
                     .blur(if (createOpen) 8.dp else 0.dp),
             ) {
+                // Menu, search and lock share one row: the greeting cost a
+                // whole line of vertical space and said nothing the notes
+                // below did not already say.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 6.dp, end = 8.dp, top = 8.dp, bottom = 2.dp),
+                        .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                         Icon(Icons.Filled.Menu, contentDescription = "Menu")
                     }
-                    Text(
-                        greeting(),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
+                    SearchPill(
+                        query = query,
+                        onChange = { query = it },
+                        onLayout = { sheet = HomeSheet.LAYOUT },
+                        onSort = { sheet = HomeSheet.SORT },
+                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
                     )
                     IconButton(onClick = onLock) {
                         Icon(Icons.Filled.Lock, contentDescription = "Lock vault")
                     }
                 }
-
-                SearchPill(
-                    query = query,
-                    onChange = { query = it },
-                    onLayout = { sheet = HomeSheet.LAYOUT },
-                    onSort = { sheet = HomeSheet.SORT },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                )
 
                 if (folders.isNotEmpty()) {
                     LazyRow(
@@ -504,7 +505,7 @@ fun HomeScreen(
                         )
                     }
                 } else {
-                    NotesContent(layout, visible, onOpenNote, onLongPressNote = ::openNoteMenu)
+                    NotesContent(layout, visible, onOpenNote, ::openNoteMenu, iconRevision)
                 }
             }
 
@@ -538,6 +539,20 @@ fun HomeScreen(
         }
     }
 
+    iconTarget?.let { doc ->
+        EmojiPickerDialog(
+            current = null,
+            onPick = { picked ->
+                iconTarget = null
+                scope.launch {
+                    NoteIcon.save(doc.id, picked)
+                    iconRevision++
+                }
+            },
+            onDismiss = { iconTarget = null },
+        )
+    }
+
     noteMenu?.let { doc ->
         ActionSheet(
             title = doc.title.ifBlank { "Untitled note" },
@@ -553,6 +568,7 @@ fun HomeScreen(
                     Icons.AutoMirrored.Filled.List,
                     if (noteMenuShared) "Hide from widgets" else "Show in widgets",
                 ) { setWidgetSharing(doc, !noteMenuShared) },
+                ActionItem(Icons.Filled.Face, "Set icon") { iconTarget = doc },
                 ActionItem(Icons.Filled.Create, "Make a copy") { duplicate(doc) },
                 ActionItem(Icons.Filled.Delete, "Delete", destructive = true) { deleteNote(doc) },
             ),
@@ -764,8 +780,8 @@ private fun SearchPill(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(28.dp),
-        modifier = modifier.fillMaxWidth().height(52.dp),
+        shape = RoundedCornerShape(24.dp),
+        modifier = modifier.fillMaxWidth().height(48.dp),
     ) {
         Row(
             modifier = Modifier.padding(start = 16.dp, end = 4.dp),
@@ -789,7 +805,7 @@ private fun SearchPill(
                     Box(contentAlignment = Alignment.CenterStart) {
                         if (query.isEmpty()) {
                             Text(
-                                "Search Enclave",
+                                "Search",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyLarge,
                             )
@@ -825,6 +841,7 @@ private fun NotesContent(
     documents: List<Document>,
     onOpenNote: (String) -> Unit,
     onLongPressNote: (Document) -> Unit,
+    iconRevision: Int,
 ) {
     when (layout) {
         NotesLayout.LIST -> LazyColumn(
@@ -869,7 +886,12 @@ private fun NotesContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             items(documents, key = { it.id }) { doc ->
-                IconTile(doc, onClick = { onOpenNote(doc.id) }, onLongClick = { onLongPressNote(doc) })
+                IconTile(
+                    doc = doc,
+                    iconRevision = iconRevision,
+                    onClick = { onOpenNote(doc.id) },
+                    onLongClick = { onLongPressNote(doc) },
+                )
             }
         }
     }
@@ -1019,7 +1041,12 @@ private fun GalleryTile(doc: Document, onClick: () -> Unit, onLongClick: () -> U
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun IconTile(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun IconTile(doc: Document, iconRevision: Int, onClick: () -> Unit, onLongClick: () -> Unit) {
+    // The emoji lives in an `icon` block, so it is read per tile and refreshed
+    // whenever the note changes — the same lazy pattern the card previews use.
+    var emoji by remember(doc.id, doc.updatedAt, iconRevision) { mutableStateOf<String?>(null) }
+    LaunchedEffect(doc.id, doc.updatedAt, iconRevision) { emoji = NoteIcon.load(doc.id) }
+
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
@@ -1031,12 +1058,17 @@ private fun IconTile(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                Icons.Filled.Create,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
+            val chosen = emoji
+            if (chosen != null) {
+                Text(chosen, fontSize = 24.sp)
+            } else {
+                Icon(
+                    Icons.Filled.Create,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             Text(
                 doc.title.ifBlank { "Untitled" },
                 style = MaterialTheme.typography.labelMedium,
@@ -1125,16 +1157,6 @@ private fun CreatePill(
             Spacer(Modifier.width(10.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-    }
-}
-
-/** The old app's greeting, so the home reads the same way. */
-private fun greeting(): String {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return when {
-        hour < 12 -> "Good morning"
-        hour < 18 -> "Good afternoon"
-        else -> "Good evening"
     }
 }
 
