@@ -29,6 +29,7 @@ import com.enclave.app.ui.AppPrefs
 import com.enclave.app.ui.EnclaveTheme
 import com.enclave.app.ui.HomeScreen
 import com.enclave.app.ui.NoteScreen
+import com.enclave.app.ui.NotesCache
 import com.enclave.app.ui.SettingsScreen
 import com.enclave.app.ui.TemplateEditorScreen
 import com.enclave.app.ui.SyncScreen
@@ -77,6 +78,9 @@ class MainActivity : ComponentActivity() {
                         // then let widgets switch to their lock placeholder.
                         SyncController.pause(this@MainActivity)
                         Core.ffi.lockVault()
+                        // Note titles, bodies and previews are vault data: the
+                        // session cache must not outlive the unlock.
+                        NotesCache.clear()
                         WidgetCacheBridge.requestRefresh()
                         screen = Screen.Vault
                     }
@@ -207,6 +211,8 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             onBack = { screen = Screen.Home },
                             onRestored = {
+                                // A restore replaces the vault behind the list.
+                                NotesCache.clear()
                                 notice = it
                                 screen = Screen.Vault
                             },

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DrawerValue
@@ -133,10 +134,12 @@ fun HomeScreen(
     onLock: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var documents by remember { mutableStateOf<List<Document>>(emptyList()) }
-    var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
+    // Seeded from the session cache: the content was what still blinked after
+    // the layout was cached, because the list arrived a frame later.
+    var documents by remember { mutableStateOf(NotesCache.documents ?: emptyList()) }
+    var folders by remember { mutableStateOf(NotesCache.folders ?: emptyList()) }
     var query by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(NotesCache.documents == null) }
     // Start from the last known choice so returning from a page does not paint
     // the default layout first and then switch to the chosen one.
     var layout by remember { mutableStateOf(NotesPrefs.layoutNow) }
@@ -156,6 +159,7 @@ fun HomeScreen(
     // Tiles key their lazy icon load on this, so setting an icon from this
     // screen refreshes the grid without reloading the whole list.
     var iconRevision by remember { mutableStateOf(0) }
+    var helpOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     // The drawer covers the screen, so Back closes it instead of leaving
@@ -167,12 +171,16 @@ fun HomeScreen(
     BackHandler(enabled = createOpen) { createOpen = false }
 
     suspend fun reload() {
-        loading = true
+        // Refreshing under a list that is already on screen must not blank it:
+        // only a cold start (nothing cached) shows the progress bar.
+        loading = NotesCache.documents == null
         documents = withContext(Dispatchers.IO) { Core.ffi.listDocuments() }
         folders = withContext(Dispatchers.IO) { Core.ffi.listFolders() }
         layout = withContext(Dispatchers.IO) { NotesPrefs.loadLayout() }
         sort = withContext(Dispatchers.IO) { NotesPrefs.loadSort() }
         templates = TemplateStore.load()
+        NotesCache.documents = documents
+        NotesCache.folders = folders
         loading = false
     }
 
@@ -286,6 +294,7 @@ fun HomeScreen(
     fun deleteNote(doc: Document) {
         scope.launch {
             withContext(Dispatchers.IO) { Core.ffi.deleteDocument(doc.id) }
+            NotesCache.forget(doc.id)
             documents = documents.filterNot { it.id == doc.id }
             WidgetCacheBridge.requestRefresh()
         }
@@ -403,7 +412,7 @@ fun HomeScreen(
                     selected = false,
                     onClick = {
                         scope.launch { drawerState.close() }
-                        onOpenSettings()
+                        helpOpen = true
                     },
                 )
             }
@@ -539,6 +548,25 @@ fun HomeScreen(
             )
             }
         }
+    }
+
+    if (helpOpen) {
+        ActionSheet(
+            title = "Help & feedback",
+            subtitle = "Opens in the GitHub app or your browser",
+            actions = listOf(
+                ActionItem(Icons.Filled.Warning, "Report a problem") {
+                    openUrl(context, "$PROJECT_URL/issues/new/choose")
+                },
+                ActionItem(Icons.AutoMirrored.Filled.List, "Browse open issues") {
+                    openUrl(context, "$PROJECT_URL/issues")
+                },
+                ActionItem(Icons.Filled.Lock, "Security policy") {
+                    openUrl(context, "$PROJECT_URL/security/policy")
+                },
+            ),
+            onDismiss = { helpOpen = false },
+        )
     }
 
     iconTarget?.let { doc ->
@@ -941,7 +969,7 @@ private fun NoteRow(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit)
 private fun NoteCard(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit) {
     var preview by remember(doc.id) { mutableStateOf("") }
     LaunchedEffect(doc.id, doc.updatedAt) {
-        preview = notePreview(doc.id)
+        preview = notePreview(doc.id, doc.updatedAt)
     }
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -991,14 +1019,35 @@ private fun NoteCard(doc: Document, onClick: () -> Unit, onLongClick: () -> Unit
     }
 }
 
+/** Where "Help & feedback" sends people: the repository, not a mailbox. */
+private const val PROJECT_URL = "https://github.com/Pranesh-Selvaraj/Enclave"
+
+/**
+ * Open [url] in whatever handles links, and say so when nothing does: a phone
+ * with no browser (or with the intent filtered out) should not look like the
+ * button did nothing.
+ */
+private fun openUrl(context: android.content.Context, url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+    runCatching { context.startActivity(intent) }
+        .onFailure {
+            android.widget.Toast
+                .makeText(context, "No app can open $url", android.widget.Toast.LENGTH_LONG)
+                .show()
+        }
+}
+
 /** Room under the last row so the floating create button never covers a note. */
 private val FabClearance = 96.dp
 
 /** Plain-text preview of a note, loaded lazily as cards become visible. */
-private suspend fun notePreview(id: String): String = withContext(Dispatchers.IO) {
-    val blocks = runCatching { Core.ffi.getBlocks(id) }.getOrDefault(emptyList())
-    val doc = blocks.firstOrNull { it.blockType == "doc" } ?: return@withContext ""
-    EditorDocument.parse(doc.contentJson).plainText()
+private suspend fun notePreview(id: String, updatedAt: String): String {
+    NotesCache.preview(id, updatedAt)?.let { return it }
+    return withContext(Dispatchers.IO) {
+        val blocks = runCatching { Core.ffi.getBlocks(id) }.getOrDefault(emptyList())
+        val doc = blocks.firstOrNull { it.blockType == "doc" } ?: return@withContext ""
+        EditorDocument.parse(doc.contentJson).plainText().also { NotesCache.putPreview(id, updatedAt, it) }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
