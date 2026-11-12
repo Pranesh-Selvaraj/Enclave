@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import com.enclave.app.BuildConfig
 import com.enclave.app.R
 import com.enclave.app.WidgetCacheBridge
@@ -342,7 +343,7 @@ fun SettingsScreen(
                         message = null
                         runCatching {
                             withContext(Dispatchers.IO) {
-                                Core.ffi.checkUpdate(BuildConfig.VERSION_NAME)
+                                Core.ffi.checkUpdate(installedVersion(context).first)
                             }
                         }
                             .onSuccess { info ->
@@ -377,7 +378,22 @@ fun SettingsScreen(
             }
 
             item { SectionTitle("About") }
-            item { SettingsRow("Version", BuildConfig.VERSION_NAME, onClick = null) }
+            val installed = installedVersion(context)
+            item {
+                SettingsRow(
+                    "Version",
+                    "${installed.first} (${installed.second})",
+                    onClick = null,
+                )
+            }
+            item {
+                Text(
+                    "Build ${BuildConfig.GIT_SHA} · " +
+                        (if (BuildConfig.DEBUG) "debug" else "release"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             item {
                 Text(
                     "Type: Inter · JetBrains Mono (OFL).",
@@ -852,6 +868,18 @@ private fun SettingsRow(
 }
 
 /** Copies the core's private snapshot to the user-chosen SAF location. */
+/**
+ * The version of the build that is actually installed: the package manager's
+ * answer, not a compile-time constant. `versionName` comes from
+ * `apps/android/version.properties` (CI can override it from a tag), and the
+ * code is what makes two builds with the same name distinguishable.
+ */
+private fun installedVersion(context: Context): Pair<String, Long> = runCatching {
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    val name = info.versionName ?: BuildConfig.VERSION_NAME
+    name to PackageInfoCompat.getLongVersionCode(info)
+}.getOrDefault(BuildConfig.VERSION_NAME to BuildConfig.VERSION_CODE.toLong())
+
 private fun copyToUri(context: Context, path: String, uri: Uri): String = runCatching {
     val bytes = File(path).readBytes()
     context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }

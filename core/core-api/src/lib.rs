@@ -1232,6 +1232,38 @@ mod tests {
         assert!(matches!(core.get_blocks("x"), Err(CoreError::VaultLocked)));
     }
 
+    /// The home screen's projection has to carry a real note's text, not only
+    /// parse a hand-written payload: this exercises the same path the FFI takes
+    /// (create a document, write its `doc` block, read `home_notes`).
+    #[test]
+    fn home_notes_carry_the_preview_and_the_icon() {
+        let (_dir, core) = unlocked();
+        let doc = core.create_document("Standup").unwrap();
+
+        let content = serde_json::json!({
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Notes from the standup"}]},
+                {"type": "taskList", "content": [
+                    {"type": "taskItem", "attrs": {"checked": true},
+                     "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Ship it"}]}]}
+                ]}
+            ]
+        });
+        core.upsert_block(&doc.id, &doc.id, "doc", content.clone(), 1.0)
+            .unwrap();
+        core.upsert_block("icon-block", &doc.id, "icon", serde_json::json!({"emoji": "🎯"}), 2.0)
+            .unwrap();
+
+        let notes = core.home_notes().unwrap();
+        let note = notes.iter().find(|n| n.document.id == doc.id).expect("note");
+        assert_eq!(
+            note.doc_json.as_deref().map(crate::preview::plain_text).unwrap_or_default(),
+            "Notes from the standup\n☑ Ship it",
+        );
+        assert_eq!(note.emoji.as_deref(), Some("🎯"));
+    }
+
     #[test]
     fn vault_lifecycle() {
         let (_dir, core) = unlocked();

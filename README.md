@@ -16,6 +16,8 @@
 > **Enclave is migrating to dedicated native apps for every platform.**
 > The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
 
+<a id="platform-status"></a>
+
 ### Platform status
 
 | Platform | State |
@@ -31,28 +33,11 @@ The supported pairing is **two builds from the same release train**. The next na
 
 **If you want to use Enclave today, download the latest stable release, currently [v1.14.0](https://github.com/Pranesh-Selvaraj/Enclave/releases/latest).** Build from `main` only if you are contributing to the migration.
 
-## Screenshots
+## What it looks like
 
-Desktop — notes dashboard, editor with backlinks, whiteboard and the link graph:
+The product is shown, and kept current, on the homepage: **<https://pranesh-selvaraj.github.io/Enclave/>**. It has the live tour (editor, sync, whiteboard, graph, local AI), the current desktop and Android screenshots and the platform status.
 
-<p align="center">
-  <img src="docs/screenshots/desktop-home.png" alt="Desktop home with sidebar, recent pages and favorites" width="49%" />
-  <img src="docs/screenshots/desktop-editor.png" alt="Desktop editor with backlinks and outline" width="49%" />
-</p>
-<p align="center">
-  <img src="docs/screenshots/desktop-whiteboard.png" alt="Whiteboard canvas with sticky note, shape and connector" width="49%" />
-  <img src="docs/screenshots/desktop-graph.png" alt="Backlink graph view" width="49%" />
-</p>
-
-Android — a notes-first shell: card layouts with view/sort sheets, a FAB that fans out into creation actions, and the full editor:
-
-<p align="center">
-  <img src="docs/screenshots/mobile-home.png" alt="Android home in Cards layout" width="19%" />
-  <img src="docs/screenshots/mobile-views.png" alt="Android note-layout bottom sheet" width="19%" />
-  <img src="docs/screenshots/mobile-create.png" alt="Android FAB creation stack" width="19%" />
-  <img src="docs/screenshots/mobile-drawer.png" alt="Android drawer with Home, folders and the bottom app actions" width="19%" />
-  <img src="docs/screenshots/mobile-editor.png" alt="Android block editor with a cover, tags and a product roadmap note" width="19%" />
-</p>
+Screenshots are deliberately not embedded here. They were the most stale lines in this file — every UI change invalidated them, the Android set showed the native app that is not released yet, and they duplicated what the homepage already does with the same files in [`docs/screenshots/`](docs/screenshots/). The README is the reference document; the homepage is the front door ([ADR 0009](docs/decisions/0009-public-homepage-github-pages.md)).
 
 ## Architecture
 
@@ -169,7 +154,6 @@ enclave/
 ├── .github/
 │   ├── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
 │   ├── workflows/android.yml      # CI: Android release APK/AAB (signs with secrets)
-│   └── workflows/ui-audit.yml     # CI: scheduled screenshot + layout audit
 ├── apps/
 │   ├── android/                    # Native Android app — Kotlin + Jetpack Compose (ADR 0005)
 │   │   ├── app/src/main/java/com/enclave/app/    # Screens, core binding, block renderer
@@ -241,7 +225,7 @@ enclave/
 │   ├── generate-icons.py          # App icon set generator
 │   └── release-check.sh           # Version + Android versionCode pre-flight
 ├── tools/
-│   └── ui-audit/                  # Screenshot + DOM audit suite (desktop + phone profiles)
+│   └── ui-audit/                  # Screenshot + DOM audit suite, run locally
 ├── tsconfig.base.json             # Shared TypeScript base config
 └── package.json                   # npm workspace root
 ```
@@ -347,7 +331,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 # Frontend type-check
 npm run check -w @enclave/frontend
 
-# UI audit — screenshots + DOM checks on desktop and phone profiles
+# UI audit — screenshots + DOM checks on desktop and phone profiles (local tool;
+# it is no longer a scheduled CI job, because it audits the retiring web UI)
 npm run audit:ui
 
 # Release pre-flight — version agreement + Android versionCode ordering
