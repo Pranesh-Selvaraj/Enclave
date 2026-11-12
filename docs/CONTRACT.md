@@ -89,6 +89,24 @@ Convergence: `hello` → `digest` both ways → `need` → `snapshot` → merge 
 
 Tests: `core-network/tests/wire_format.rs` and `core-api/tests/wire_format.rs`.
 
+### App-level blocks
+
+Some block types belong to an app rather than to the editor document. They are
+stored in the same `blocks` table, they are never rendered as content, and a
+reader that does not know the type must ignore it (the editor's parser already
+does):
+
+| Type | Payload | Written by |
+| --- | --- | --- |
+| `doc` | The canonical editor document (see §2) | every editor |
+| `widget` | `{"enabled": bool, "editable": bool}` — whether the page may appear on the home screen and be edited there | Android (per-page widget sharing) |
+| `icon` | `{"emoji": string}` — the glyph the Icons layout shows | Android |
+
+They travel with the document through sync and backup like any other block, so a
+desktop client opening a phone-created note sees at most an extra block it
+ignores. Adding a type here is additive and needs no schema bump; **changing the
+payload of an existing type is a contract change** and needs the rules in §5.
+
 ## 4. FFI boundary
 
 `core-api` exposes the shell-agnostic surface; when built with the `uniffi` feature it generates the Kotlin bindings consumed by the native Android app (committed at `apps/android/app/src/main/java/uniffi/core_api/core_api.kt`, loaded through JNA). The UniFFI records and functions in `core-api/src/ffi.rs` are the contract: **additive changes within a core major are compatible; a breaking change requires a core major version and app updates.** The surface carries no separate version number — the core's semver plus the fixture tests are the guard.
@@ -99,8 +117,9 @@ The C ABI for the desktop stack (ADR 0004) is planned but **not implemented yet*
 
 | Build | Core | Sync protocol | Vault schema | Status |
 | --- | --- | --- | --- | --- |
-| Tauri app v1.13.0 (desktop + Android) | core 1.x | v3 | v1 | Supported product; the interop baseline. |
-| Native Android `0.1.0-native` (`main`) | core 1.x | v3 | v1 | Feature slice, unreleased; protocol-compatible with v1.13.0 (cross-device sync not yet exercised on hardware). |
+| Tauri app v1.14.0 (desktop + Android) | core 1.x | v3 | v1 | Supported product; the interop baseline. |
+| Tauri app v1.13.0 (desktop + Android) | core 1.x | v3 | v1 | Previous release. Opens and syncs with v1.14.0: same schema, same protocol. |
+| Native Android `0.1.0-native` (`main`) | core 1.x | v3 | v1 | Next stable, unreleased. Protocol-compatible on paper with both Tauri builds, but **not supported against v1.13.0**: sync has not been exercised against the Tauri desktop, and it writes the app-level `icon`/`widget` blocks that build ignores. |
 | Anything released before v1.9.0 | — | no `v` field | unversioned, migrated to v1 on open | Cannot sync with current builds; refused with update guidance. |
 | Future desktop app | core 1.x | v3 (or negotiated) | v1 (or migrated) | Must land with a C ABI and fixtures before it ships. |
 
