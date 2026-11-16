@@ -29,6 +29,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Cache cargo
         uses: swatinem/rust-cache@v2
@@ -40,7 +42,7 @@ jobs:
           # `apt-get update` — nothing installed here comes from them, so a
           # failed third-party index is ignored (apt keeps healthy mirrors).
           sudo apt-get update || true
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev
 
       - name: npm install
         run: npm ci
@@ -48,8 +50,17 @@ jobs:
       - name: Rust tests (core)
         run: cargo test --manifest-path core/Cargo.toml
 
-      - name: Rust tests (desktop shell)
+      - name: Rust tests (Tauri desktop shell)
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust tests (Rust desktop)
+        run: cargo test --manifest-path apps/desktop/Cargo.toml
+
+      - name: Rust lint (Rust desktop)
+        run: cargo clippy --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
+
+      - name: Rust format check (Rust desktop)
+        run: cargo fmt --manifest-path apps/desktop/Cargo.toml --check
 
       - name: Svelte typecheck
         run: npm run check -w @enclave/frontend
