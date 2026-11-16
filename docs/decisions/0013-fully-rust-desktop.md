@@ -6,6 +6,8 @@
 - **Supersedes:** 0004
 - **Superseded by:** —
 
+> **Update 2026-11-16:** ADR 0014 retired the Tauri desktop from `main`; this record’s “Tauri remains the shipping desktop” transition clause is historical. The fully Rust target is unchanged.
+
 ## Context
 
 Android and the desktop are both products. Decision 0004 chose Qt 6 for the desktop because `QTextDocument` provides a mature rich-text engine, and because a vault app should not ship a browser engine. That decision accepted C++ in the presentation layer, LGPLv3 dynamic linking, and a C ABI between the Rust core and the Qt UI.

@@ -10,7 +10,7 @@ on:
       - 'site/**'
       - 'docs/brand/**'
       - 'docs/screenshots/**'
-      - 'apps/frontend/static/fonts/**'
+      - 'docs/brand/fonts/**'
       - 'scripts/build-site.mjs'
       - '.github/workflows/pages.yml'
   workflow_dispatch:

@@ -14,7 +14,7 @@ alternatives are in
 ## Build and preview
 
 ```bash
-npm run site:build                     # assembles site-dist/
+node scripts/build-site.mjs                     # assembles site-dist/
 python3 -m http.server 8080 -d site-dist
 # then open http://localhost:8080/
 ```
@@ -111,11 +111,11 @@ no fetch.
 
 The site uses a 115 KB Latin subset of Inter generated from the app's 344 KB
 variable font. The subset lives at `assets/fonts/InterVariable-site.woff2`; the
-OFL is copied from `apps/frontend/static/fonts/Inter-OFL.txt` at build time.
+OFL is copied from `docs/brand/fonts/Inter-OFL.txt` at build time.
 Regenerate it after adding new punctuation or symbols to the page:
 
 ```bash
-pyftsubset apps/frontend/static/fonts/InterVariable.woff2 \
+pyftsubset docs/brand/fonts/InterVariable.woff2 \
   --unicodes='U+0020-007E,U+00A0-00FF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-2199,U+21B5,U+2200-22FF,U+2318,U+2726' \
   --layout-features='*' --flavor=woff2 \
   --output-file=site/assets/fonts/InterVariable-site.woff2
@@ -204,7 +204,7 @@ for same-origin audits.
 - **Keep auto-play guarded.** It is opt-in, stops on trusted pointer/key/wheel/
   touch input, and is disabled under `prefers-reduced-motion`. Add new views to
   the same loop rather than a second timer.
-- **Update the JSON-LD hash.** Edit the schema and run `npm run site:build`; the
+- **Update the JSON-LD hash.** Edit the schema and run `node scripts/build-site.mjs`; the
   build prints/fails on the expected `sha256-…` value. Never add
   `'unsafe-inline'` to the main `script-src`.
 - **Renew `security.txt`.** Keep `Expires` in the future, keep the GitHub
@@ -241,5 +241,5 @@ for same-origin audits.
   the build replaces the `INLINE_LOCKUP` marker. Never paste a second copy.
 - **Refresh the Android screenshots** in `docs/screenshots/` when the phone UI
   changes; the homepage uses four of them.
-- **Run `npm run site:build` before pushing.** It catches missing assets, a
+- **Run `node scripts/build-site.mjs` before pushing.** It catches missing assets, a
   stale JSON-LD CSP hash, a missing 404 lockup marker and a missing font subset.

@@ -1,7 +1,7 @@
 //! Windows link requirements for the `core-api` cdylib.
 //!
 //! Desktops link the system OpenSSL (on Windows: the vcpkg static build). The
-//! main binary gets user32/crypt32 transitively through Tauri/WebView2, but
+//! main binary gets user32/crypt32 through the platform shell, but
 //! this cdylib is linked on its own and must name the Windows API libraries
 //! the OpenSSL static libs reference (CertOpenStore, GetProcessWindowStation,
 //! …).

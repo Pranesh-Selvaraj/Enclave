@@ -20,7 +20,7 @@ The wordmark is `ENCLAVE`, **constructed on a cell grid** — the initial **E at
 | [`logo-tile.svg`](logo-tile.svg) | The tile, edge to edge | Favicons |
 | [`mark.svg`](mark.svg) | The keyhole alone, in `currentColor` | Anywhere text could go |
 | [`lockup.svg`](lockup.svg), [`lockup-dark.svg`](lockup-dark.svg) | The tile beside the wordmark, for light and for dark pages; on dark pages the tile turns to paper | The README and the website |
-| [`icon-foreground.svg`](icon-foreground.svg), [`icon-background.svg`](icon-background.svg) | The Android adaptive-icon layers: the keyhole alone, and a solid tile behind it | `scripts/generate-icons.mjs` |
+| [`icon-foreground.svg`](icon-foreground.svg), [`icon-background.svg`](icon-background.svg) | The Android adaptive-icon layers: the keyhole alone, and a solid tile behind it | Native Android resources |
 | [`social-preview.png`](social-preview.png) | A 1280×640 card for links to the repository | GitHub → Settings → Social preview |
 | [`watermark.svg`](watermark.svg), [`watermark-dark.svg`](watermark-dark.svg) | The lockup at 6 % ink or paper on a 1920×1080 canvas | Quiet backgrounds, decks and documentation |
 
@@ -32,7 +32,7 @@ This directory is the vector source of truth for the mark, the lockups and the i
 
 Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **Their generator is not committed yet** — the numbers are the source of truth in the meantime.
 
-`scripts/generate-icons.mjs` derives every platform icon from these files by handing them to `tauri icon`, which does the rasterising and writes `.ico`/`.icns` correctly. The geometry therefore lives here and nowhere else. It replaced `scripts/generate-icons.py`, which redrew the mark from scratch with Pillow — a second, hand-synced copy — and wrote the Android icons into `src-tauri/gen/android`, a path the repository restructure left behind, so Android had silently stopped receiving icons.
+The Android adaptive icon is committed as Android resources under `apps/android/app/src/main/res/` (foreground, background, monochrome). The desktop icon set is part of the native packaging work ([#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241)); the SVG sources here remain the geometry source of truth. The retired Tauri generator script was removed with the Tauri shell.
 
 ### The mark — a 24 grid
 
@@ -67,7 +67,7 @@ If the generator is committed later, it takes these numbers as its only input �
 
 | Name | Value | Where |
 |---|---|---|
-| Ink | `#16130F` | The tile, and the mark on light ground. The same value as the app's `--color-bg` |
+| Ink | `#16130F` | The tile, and the mark on light ground. The same value as the homepage background |
 | Paper | `#FFFFFF` | The mark on the tile |
 | Paper (dark pages) | `#F4F1EA` | The tile and the wordmark on dark pages |
 

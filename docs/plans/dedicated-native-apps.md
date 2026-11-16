@@ -1,138 +1,145 @@
-# Plan: dedicated native desktop + Android apps
+# Plan: native desktop + Android apps on one Rust core
 
-Companion to ADR 0002. This is the execution plan for moving Enclave from the shared-web-UI architecture (ADR 0001) to two dedicated native apps on one versioned Rust core.
+Companion to ADR 0002 and ADR 0014. This is the execution plan for the native-only repository: two dedicated apps that share no UI code, both built on the versioned Rust core.
 
 ## Status
 
-Live tracker: [`docs/STATUS.md`](../STATUS.md).
+Live tracker: [`docs/STATUS.md`](../STATUS.md). Desktop feature migration: [`desktop-feature-parity.md`](desktop-feature-parity.md).
 
-- **Phase 0** — the Android vertical slice is built; the desktop stack is now **fully Rust** (ADR 0013) and its editor-engine gate is open. Qt/C++ (ADR 0004) is superseded.
-- **Phase 1** — complete: vault schema versioning, the block golden fixture, sync-frame golden fixtures (transport frames, app frames and handshake crypto) and [`docs/CONTRACT.md`](../CONTRACT.md). What remains is the Phase 4 interop CI that runs the fixtures from the app builds.
-- **Phase 2** — the native Android app is feature-complete for a first release; the gate is verified on a real phone, the remaining hardware checklist is pending.
-- **Phase 3/4** — the Rust desktop foundation is in progress; parity and rollout are not started.
+- **Phase 0** — complete enough to proceed: the Android vertical slice works; the Rust desktop editor slice is built (fixture round-trip, editing, marks, tasks, split/merge, undo/redo, autosave); IME and accessibility are the remaining gate.
+- **Phase 1** — complete: vault schema versioning, block golden fixture, sync-frame fixtures and [`docs/CONTRACT.md`](../CONTRACT.md).
+- **Phase 2** — native Android is feature-complete for a first release; the remaining real-device checklist is #188.
+- **Phase 3** — Rust desktop editor prototype is in progress.
+- **Phase 4** — native release pipelines and parity/rollout are not started ([#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241)).
 
 ## Goal
 
-Ship a native Android app and a native desktop app that share no UI code, both built on the existing Rust core, with identical vaults and a wire-compatible sync protocol. Remove the webview from the shipping product.
+Ship a native Rust desktop and a native Android app that share no UI code, both built on the same Rust core, with identical vaults and a wire-compatible sync protocol. Remove the browser engine and the retired Tauri/Svelte shell from `main`.
 
-## Invariants (must never change)
+## Invariants
 
 - The Rust core (`core-db`, `core-network`, `core-api`) is the only implementation of crypto, storage, the block schema and sync.
-- The contract in ADR 0006 is versioned and tested; desktop and Android must always interoperate.
-- No cloud, no accounts, no telemetry: the product's mission is unchanged.
-- Users' existing vaults open in every new app; migrations are one-way and tested.
+- The contract in ADR 0006 is versioned and tested; desktop and Android must interoperate.
+- No cloud, accounts or telemetry.
+- A Tauri-created vault (schema v1 / protocol v3) must still open in both native apps; the Tauri app is a historical peer, not a build target.
+- No C ABI on desktop; Android keeps UniFFI.
+- No webview or shared UI framework.
 
 ## Non-goals
 
 - A shared UI framework or shared components between desktop and Android.
 - iOS (the contract must not preclude it, but it is not in this plan).
-- Rewriting the vault, crypto or sync protocol. The core is reused; the UI is replaced.
+- Rewriting the vault, crypto or sync protocol.
+- Keeping a buildable Tauri/Svelte app on `main`.
 
 ## Phases
 
-Phases are criteria-driven, not calendar-driven: a phase ends when its exit criteria are met, and the next begins as soon as its dependencies are complete.
+Phases are criteria-driven, not calendar-driven.
 
 ```mermaid
 graph LR
-    P0["Phase 0<br/>Spike and stack decision"] --> P1["Phase 1<br/>Core extraction and contract"]
-    P1 --> P2["Phase 2<br/>Native Android app"]
-    P1 --> P3["Phase 3<br/>Native desktop app"]
-    P2 --> P4["Phase 4<br/>Parity, interop, rollout"]
+    P0["Phase 0<br/>Native slices"] --> P1["Phase 1<br/>Core + contract"]
+    P1 --> P2["Phase 2<br/>Native Android"]
+    P1 --> P3["Phase 3<br/>Rust desktop"]
+    P2 --> P4["Phase 4<br/>Parity, release, rollout"]
     P3 --> P4
 ```
 
-### Phase 0 — Spike and stack decision
+### Phase 0 — Native slices
 
-**Deliverables**
+**Delivered**
 
-- A fully Rust desktop foundation: `apps/desktop` consuming `core-api` directly, a vault gate, a notes list and a shell skeleton. No C ABI, no C++.
-- An in-house headless block-editor prototype covering: paragraphs, headings, lists, tasks, tables, images, code blocks, undo/redo, IME, keyboard navigation, Markdown paste, and a screen-reader pass. ProseMirror JSON is the boundary.
-- Packaging, signing and auto-update on Linux first, then Windows/macOS; the core's Ed25519 verifier is the shared gate.
-- An Android vertical slice: Compose app + `core-api` via UniFFI, opening a vault, listing notes, editing one document, and running background sync through a foreground service; one Glance widget.
-- A written measurement table: build time, binary size, cold start, editor latency, memory, and developer effort. The Avalonia/Qt evidence is kept under `~/.enclave-dev/phase0-native-apps/` for the record.
+- Android slice: Compose + `core-api` via UniFFI, vault, notes, editor, sync service and widget.
+- Rust desktop slice: vault gate, notes list, editable text/tasks/marks, save/autosave and the canonical fixture round-trip.
+- Contract fixtures as the interop gate.
 
-**Exit criteria**
+**Remaining exit criteria**
 
-- The Rust editor prototype loads the canonical block fixture, edits it, exports ProseMirror JSON and round-trips it through the core.
-- The editor meets the usability bar: typing latency on a 2,000-block document, IME, table/task keyboard editing, and an AccessKit screen-reader pass.
-- The Rust shell consumes `core-api` directly and opens a vault; no C ABI exists.
-- A Linux package and the Ed25519 update-verification path are proven.
-- The Android slice proves the UniFFI path end to end on a real device.
-- The contract tests exist as a skeleton (vault fixture, one sync frame fixture).
+- Rust desktop: real IME, AccessKit/screen-reader pass, table/list polish, 2,000-block latency.
+- Android: the remaining real-device checklist (#188).
 
-### Phase 1 — Core extraction and contract
+### Phase 1 — Core and contract
 
-**Deliverables**
+**Delivered**
 
-- Core moved to `core/` per ADR 0003, with the current Tauri app still building and shipping.
-- A stable app boundary in `core-api`: UniFFI bindings for Android, and a direct Rust crate dependency for the desktop. There is no C ABI (ADR 0013).
-- An explicit vault schema version and ordered migration chain (ADR 0006).
-- Golden fixtures and interop tests: canonical vault, block-schema documents, sync frames; both app stacks build against the same core SHA.
-- The compatibility matrix (app ↔ core ↔ protocol ↔ schema) published in `docs/`.
+- Core in `core/` per ADR 0003.
+- UniFFI for Android and a direct Rust crate for desktop; no C ABI.
+- Vault schema v1, block JSON v1, sync protocol v3 and golden fixtures.
+- Compatibility matrix and [`docs/CONTRACT.md`](../CONTRACT.md).
 
-**Exit criteria**
+**Remaining**
 
-- `cargo test` plus interop fixtures pass for core + both app stubs.
-- The Tauri app still reads and writes the same vaults, unchanged, against the new core layout.
-- Contract documentation is complete enough for an app developer to build against without reading core internals.
+- App-side interop CI: native Android + Rust desktop against one core SHA and the fixtures, including a Tauri-created vault fixture.
+- Sync protocol v4 (deltas, compression, attachments, settings/templates, resumable transfers).
 
 ### Phase 2 — Native Android app
 
-**Deliverables**
+**Delivered**
 
-- Compose app: unlock/create vault, notes layouts (List, Gallery, Cards, Icons), sort, search, folders, tags, editor (the Phase 0 prototype hardened), settings, sync UI.
-- Native integration: foreground sync service, Glance widgets (notes list, pinned note, quick capture), share target, launcher shortcuts, Quick Settings tile, Keystore-backed widget cache, SAF import/export/backup, insets.
-- Migrate an existing v1.13.0 vault without data loss; sync against the current Tauri app.
-
-**Exit criteria**
-
-- Feature parity with the current Android build of the Tauri app on a published checklist.
-- Background sync survives restart and screen-off on a real device; battery measurements recorded.
-- TalkBack pass on primary flows; widgets render while locked.
-
-### Phase 3 — Fully Rust desktop app (can run alongside Phase 2 once Phase 1 is complete)
-
-**Deliverables**
-
-- Rust shell: vault flow, sidebar and folder tree, editor, whiteboard, database views, graph, split view, command palette, settings, tray/wallpaper widget, updates.
-- Headless editor engine: ProseMirror JSON model, transactions/selection/history, layout/display list, IME and AccessKit, with a desktop view adapter. The engine has no UI-framework dependency and is the open-source candidate.
-- AI service: local embeddings and retrieval, Q&A with citations, opt-in remote providers, and a read-only agent with app-enforced tool permissions.
-- Platform integration per OS: menus, file dialogs, drag-and-drop, notifications, global shortcuts, signing/notarisation, installers (`.deb`/`.AppImage`, `.msi`/NSIS, `.dmg`).
-- Migration of an existing vault; sync against both the Tauri app and the native Android app.
+- Compose app: gate, notes layouts, sort/search, folders, tags, editor, settings, sync screen.
+- Widgets (notes list, pinned note, quick capture), Quick Settings tile, launcher shortcuts, share target.
+- Foreground sync service, Keystore-wrapped widget cache, SAF backup/restore, update check.
+- Device pass on Nothing A063 for the gate, share target, export, restore and update check.
 
 **Exit criteria**
 
-- Feature parity with the desktop Tauri app on a published checklist.
-- Screen-reader pass on primary flows; keyboard-only navigation works; IME works across CJK and combining sequences.
-- Auto-update path verified on all three OSes, including signature verification.
-- No C ABI and no C++ in the desktop product.
+- The remaining hardware checklist (#188): widgets + interactive checklist, Quick Settings tile, background sync to the desktop, TalkBack, release-signed update install.
+- Published parity checklist for the native Android surface.
 
-### Phase 4 — Parity, interoperability, rollout
+### Phase 3 — Rust desktop app
+
+**Delivered**
+
+- eframe/egui shell: vault gate, notes list, note composer, editable document view, mark toolbar, autosave/save/lock.
+- Headless engine: ProseMirror model/validation, selection, transactions, history, marks, tasks, block split/merge, table-cell text editing.
+- Direct `core-api` worker; no FFI. Save/load through the core.
+- 19 tests, including a headless render of the canonical fixture.
+
+**Next**
+
+- IME, AccessKit and keyboard-only pass; 2,000-block latency.
+- Home/organisation (#236), editor/data blocks (#237), whiteboard/graph/split/palette (#238), AI/sync UI (#239), settings/platform/accessibility (#240).
+- Packaging, signing and verified updates ([#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241)).
+
+**Exit criteria**
+
+- [Desktop feature parity](desktop-feature-parity.md) is green.
+- Screen-reader and keyboard-only passes; IME across CJK/combining sequences.
+- Signed installers and verified updates on Linux, Windows and macOS.
+- No C ABI, no C++ and no webview.
+
+### Phase 4 — Parity, release and rollout
 
 **Deliverables**
 
-- Cross-app interop matrix run in CI: Tauri ↔ native Android ↔ native desktop, all combinations, for the sync protocol and vault format.
-- Release pipelines for both native apps (signing, versioning, changelog, release notes).
-- Rollout: native apps ship alongside Tauri; Tauri is deprecated and then removed once telemetry-free crash/issue reports show parity.
+- Native Android release pipeline: release build from `apps/android`, APK/AAB signing, Ed25519 update signatures, GitHub release upload.
+- Rust desktop packaging/update pipeline: `.deb`/`.AppImage`, `.msi`/NSIS, `.dmg`, signing/notarisation and verified updates.
+- Interop CI: native Android ↔ Rust desktop ↔ historical Tauri vault fixtures.
+- Parity checklist green for both apps; historical Tauri code remains in tags only.
+
+**Exit criteria**
+
+- Both native apps ship signed releases from `main`.
+- A Tauri-created vault opens in both native apps and syncs with a native peer.
+- No Tauri/Svelte code is required to build or release the product.
+- No browser engine ships.
 
 ## Risks and mitigations
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Editor rebuild proves larger than planned | Highest — blocks both apps | Phase 0 prototype with a hard go/no-go; treat the editor as its own subproject with its own milestones. |
+| Rust editor engine proves larger than planned | Highest — blocks desktop parity | Fixture/IME/accessibility gate before the shell grows; engine is its own submodule; `canvist` is a reference, not a dependency. |
 | Contract drift between apps | Sync breakage, data loss | ADR 0006: versioned surfaces, golden fixtures, interop CI against one core SHA. |
-| The Rust editor engine proves larger than planned | Highest — blocks the desktop | Phase 0 fixture/IME/accessibility gate before the shell grows; treat the engine as its own subproject; canvist is a measured fallback/reference (ADR 0013). |
-| Rust UI ecosystem churn | Rework in the shell | Keep the editor engine and core UI-framework-independent; pin and isolate the shell; prefer stable crates. |
-| Vault migration failure | Data loss | One-way migrations tested against canonical fixtures from every released version; never ship a migration without a round-trip test. |
-| Parity gap (whiteboard, graph, database) | Native apps feel incomplete | Publish a parity checklist per app; do not deprecate Tauri until it is fully green. |
-| Three apps during transition | Maintenance load, confusion | Bound the transition by parity criteria; keep `main` as the source of truth and release Tauri from its own tags. |
-| Android background/battery restrictions | Sync reliability | Foreground service with visible state; measure on real devices; fall back to manual sync when restricted. |
-| Editor engine maintenance and open-source support | Long-term load | Budget maintainers, fuzzers and API stability; extract only after the desktop editor slice passes (ADR 0013). |
+| Native release gap after Tauri retirement | No new installers until #241 lands | Existing Tauri releases remain; prioritize Android signing and desktop packaging; releases pause rather than publish unsigned. |
+| Vault migration failure | Data loss | Migrations tested against canonical fixtures from every released version. |
+| Parity gap (whiteboard, graph, database, AI) | Desktop feels incomplete | Publish the parity checklist; do not call the desktop the product until green; ship it as a prototype internally. |
+| Android background/battery restrictions | Sync reliability | Foreground service with visible state; measure on real devices. |
+| Accessibility/IME regressions | Users blocked | Gate before declaring the editor usable; test with real input methods and screen readers. |
 
 ## Success criteria
 
-- Native Rust desktop and native Android apps pass parity checklists and ship signed releases.
-- A v1.13.0 vault opens in both new apps and syncs with an unmodified Tauri app.
-- The Tauri app can be retired with no loss of features or data.
-- Cross-device sync is proven by CI interop tests, not by manual testing alone.
-- No browser engine, no C ABI and no C++ ship in the product.
+- Native Android and Rust desktop pass their parity checklists and ship signed releases.
+- A Tauri v1.15.0 vault opens in both native apps and syncs with a native peer.
+- `main` builds and releases with no Tauri/Svelte/Node UI toolchain.
+- Cross-device sync is proven by CI interop tests.
+- No browser engine, no C ABI and no C++ in the product.

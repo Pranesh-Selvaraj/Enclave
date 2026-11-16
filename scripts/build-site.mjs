@@ -4,8 +4,8 @@
  *
  * The page itself has no build step, but the brand vectors, screenshots and
  * the Inter font are maintained in their product locations (docs/brand,
- * docs/screenshots, apps/frontend/static/fonts). Copying them here keeps one
- * source of truth instead of a second, drifting set of assets.
+ * docs/screenshots). Copying them here keeps one source of truth instead of a
+ * second, drifting set of assets.
  *
  * The build fails if a required source asset is missing or if index.html
  * references a local asset that was not produced, so a broken image cannot
@@ -26,7 +26,7 @@ const copies = [
   ['docs/brand/lockup-dark.svg', 'assets/brand/lockup-dark.svg'],
   ['docs/brand/logo-tile.svg', 'assets/brand/logo-tile.svg'],
   ['docs/brand/social-preview.png', 'assets/brand/social-preview.png'],
-  ['apps/frontend/static/fonts/Inter-OFL.txt', 'assets/fonts/Inter-OFL.txt'],
+  ['docs/brand/fonts/Inter-OFL.txt', 'assets/fonts/Inter-OFL.txt'],
 ];
 
 if (!existsSync(source)) {

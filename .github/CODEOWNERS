@@ -4,9 +4,9 @@
 * @Pranesh-Selvaraj
 
 # Crypto, storage, networking and key handling — the trust boundaries.
-packages/crypto/ @Pranesh-Selvaraj
 core/core-db/ @Pranesh-Selvaraj
 core/core-network/ @Pranesh-Selvaraj
-src-tauri/src/embed.rs @Pranesh-Selvaraj
-apps/frontend/src/lib/VaultGuard.svelte @Pranesh-Selvaraj
-apps/frontend/src/lib/ai.ts @Pranesh-Selvaraj
+core/core-api/src/crypto.rs @Pranesh-Selvaraj
+core/core-api/src/updater.rs @Pranesh-Selvaraj
+apps/android/app/src/main/java/com/enclave/app/core/ @Pranesh-Selvaraj
+apps/desktop/src/core_worker.rs @Pranesh-Selvaraj

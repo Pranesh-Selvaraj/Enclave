@@ -2,7 +2,7 @@
 name = "core-api"
 version = "0.1.0"
 edition = "2021"
-description = "Shell-agnostic Enclave API: vault, documents, blocks, search and sync. Consumed by the Tauri desktop shell and by the native Android app (UniFFI/JNI)."
+description = "Shell-agnostic Enclave API: vault, documents, blocks, search and sync. Consumed by the native Android app (UniFFI/JNI) and the Rust desktop (direct dependency)."
 license = "MIT"
 
 [lib]
@@ -18,7 +18,7 @@ uuid = { version = "1", features = ["v4"] }
 rusqlite = { version = "0.34", features = ["bundled-sqlcipher"] }
 uniffi = { version = "0.29", optional = true }
 
-# Vault cryptography — mirrors packages/crypto (TypeScript) exactly.
+# Vault cryptography — frozen against the retired TypeScript implementation.
 argon2 = "0.5"
 aes-gcm = "0.10"
 bip39 = "2"

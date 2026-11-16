@@ -10,38 +10,37 @@ Once a fix is released, we'll publish a security advisory crediting the reporter
 
 ## Security Model
 
-Enclave is a zero-knowledge, local-first knowledge base. The security model rests on these guarantees:
+Enclave is a zero-knowledge, local-first knowledge base. The products on `main` are the native Rust desktop and the native Android app, both on the shared Rust core. The retired Tauri/Svelte app is historical (ADR 0014) and is not part of the current attack surface.
 
 ### What We Protect
 
-- **At rest**: page contents are stored in a SQLCipher-encrypted SQLite database — AES-256-CBC with HMAC-SHA512, the SQLCipher defaults. Embeddings, the vec0 ANN index, and AI settings (incl. API keys) live in the same encrypted file. Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism), a memory-hard KDF resistant to GPU/ASIC attacks.
-- **Key material**: the master key exists only in memory during a session. The only on-disk copy of key material is `vault.key`: the seed phrase re-encrypted with Argon2id (fresh random 32-byte salt) + AES-256-GCM under your password. It is unusable without the password and can be reset by deleting it (unlock with the seed phrase instead).
+- **At rest**: page contents are stored in a SQLCipher-encrypted SQLite database — AES-256-CBC with HMAC-SHA512, the SQLCipher defaults. Embeddings, the vec0 ANN index and app settings live in the same encrypted file. Keys are derived from a 12-word BIP39 seed phrase using Argon2id (64 MiB, 3 iterations, 4 parallelism).
+- **Key material**: the master key exists only in memory during a session. The only on-disk copy of key material is `vault.key`: the seed phrase re-encrypted with Argon2id (fresh random 32-byte salt) + AES-256-GCM under the password. It is unusable without the password and can be reset by deleting it (unlock with the seed phrase instead).
+- **UI boundary**: the desktop consumes `core-api` as a Rust crate; Android consumes it through UniFFI. No webview, no C ABI, no JavaScript runtime. The core validates untrusted document content before it reaches a UI model where practical.
 
 ### What We Don't Protect
 
 - The operating system or filesystem itself. If an attacker has root access to your machine, Enclave cannot protect your data.
-- Clipboard contents, screenshots, or other side channels.
+- Clipboard contents, screenshots or other side channels.
 - The seed phrase display during vault creation. Someone looking at your screen at that moment can compromise the vault.
-- ~~**Sync traffic on the wire.**~~ **Fixed:** P2P sync is now authenticated + encrypted — see [P2P Sync Security](#p2p-sync-security).
+- **Sync traffic on the wire** — fixed: P2P sync is authenticated and encrypted (see below).
 
 ### Trust Boundaries
 
 ```
-User input ──► SvelteKit frontend (trusted, same process)
-                      │
-                      ▼
-              Tauri command bridge (IPC boundary)
-                      │
-                      ▼
-              Rust backend (trusted, same machine)
-                      │
-        ┌─────────────┴─────────────┐
-        ▼                           ▼
-   core-db (SQLCipher)     core-network (mDNS + WebSocket)
-        │                           │
-        ▼                           ▼
-   AES-256-CBC at rest     AUTH + XChaCha20-Poly1305 in transit
+Native UI (Rust desktop / Kotlin Compose Android)
+        │
+        ├── desktop: direct Rust `core-api` dependency
+        └── Android: UniFFI/JNA typed boundary
+        │
+        ▼
+Rust core (trusted, same process)
+        │
+        ├── core-db: SQLCipher at rest
+        └── core-network: mDNS + WebSocket, authenticated + sealed
 ```
+
+The core is the only implementation of crypto, storage, the block schema and sync. Shells own windows, input and presentation only.
 
 ## P2P Sync Security
 
@@ -50,51 +49,42 @@ User input ──► SvelteKit frontend (trusted, same process)
 - **Transport encryption:** after auth, every frame is sealed with XChaCha20-Poly1305 (AEAD) under a per-session key (HKDF of the sync key + both challenges). Random 24-byte nonce per frame; forged or tampered frames fail the MAC and kill the session.
 - **Ownership = the seed phrase.** Two devices with the same vault (same BIP39 seed phrase) derive the same sync key and can sync. Devices with a different vault are rejected — even though they share the Wi-Fi and can see the traffic, they only see ciphertext. mDNS still advertises "an Enclave is here", but discovery alone yields nothing.
 - **Replay protection:** challenges are fresh per connection, so a recorded handshake cannot be replayed.
-- Remaining caveat: sync still assumes a LAN you can *reach* — mDNS and the WebSocket port are visible to the network, so an attacker with full control of the router could mount a MITM at the TCP layer. Do not sync across an untrusted network.
+- Remaining caveat: sync assumes a LAN you can *reach* — mDNS and the WebSocket port are visible to the network, so an attacker with full control of the router could mount a MITM at the TCP layer. Do not sync across an untrusted network.
 
-## Local AI / LLM Data Boundary
+## AI Data Boundary
 
-The AI assistant is **opt-in** and **off by default**. When enabled in **Settings → AI assistant**:
+AI is **not yet shipped in the native apps**. When it lands, the design is:
 
-- Page content is sent to the endpoint you configure — for embedding on save (`POST /v1/embeddings`) and as retrieval context for questions (`POST /v1/chat/completions`).
-- The CSP allows `https:` plus `localhost:*` (and the app's own origin). Content only leaves the machine if you run a local LLM server (Ollama, llama.cpp, LM Studio, vLLM) or point the AI feature at a remote https endpoint with an API key.
-- **Offline embeddings** (built-in ONNX model, on by default when enabled): retrieval vectors are computed on-device and the embedding step makes no network request at all — only chat still talks to the endpoint.
-- Settings (URL, model, enabled, RAG, **API key**) are stored **encrypted at rest** in the vault's `settings` table (SQLCipher), not in localStorage. A pre-1.1 localStorage copy is migrated once on first load and then removed.
+- opt-in and off by default;
+- local embeddings/retrieval by default, with remote providers requiring explicit per-provider consent;
+- the exact context sent to a remote provider shown to the user;
+- the AI service never receives the vault key; the app executes agent tools after policy checks and approvals;
+- no network, shell or filesystem tools for the model; no automatic writes;
+- no telemetry and no logging of prompts, document contents or keys.
+
+Until that implementation ships, do not assume any AI data path exists in the native apps. The retired Tauri AI client is not part of the current product.
 
 ## What This Means in Practice
 
-Enclave protects data **at rest** and keeps it **off the cloud** — there is no Enclave server, no telemetry, and no account. The remaining exposure is the LAN during sync, and whatever endpoint you choose to send content to if you enable the AI feature. Both are operator choices; keep sync on networks you control and keep AI pointed at endpoints you trust.
+Enclave protects data **at rest** and keeps it **off the cloud** — there is no Enclave server, no telemetry and no account. The remaining exposure is the LAN during sync and whatever endpoint a future explicit AI opt-in chooses. Both are operator choices; keep sync on networks you control and point AI only at endpoints you trust.
 
 ## Update Integrity
 
-Auto-updates are strictly opt-in and never run unattended: **Settings → Updates** only checks, shows the changelog, and asks before downloading. Once you approve:
+Auto-updates are strictly opt-in and never run unattended. The native apps will use the core's verifier: the asset is checked against GitHub's reported size and SHA-256 digest, and every release asset also carries a detached Ed25519 signature (`<asset>.sig`) verified against the pinned public key in `core/core-api/src/updater.rs`. A missing or invalid signature deletes the download and refuses installation. The private signing key lives in the `UPDATE_SIGNING_KEY` CI secret; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS` + `SHA256SUMS.sig` for manual installs.
 
-- The asset is streamed from GitHub Releases and checked against the size and SHA-256 digest GitHub reports for it.
-- Every release asset also carries a detached Ed25519 signature (`<asset>.sig`), verified against a public key pinned in the app binary (`src-tauri/src/update_signature.rs`). A missing or invalid signature deletes the download and refuses installation.
-- `install_update` only executes the exact file this session downloaded and verified, so a path handed over IPC cannot be substituted.
-- The private signing key lives in the `UPDATE_SIGNING_KEY` CI secret, never in the repository; `scripts/sign-release.mjs` signs the assets and publishes `SHA256SUMS` + `SHA256SUMS.sig` for manual installs.
-
-This removes the "compromised GitHub account/release or TLS-terminating proxy" path to arbitrary code execution. It is why an unsigned release fails closed instead of installing.
+Native release pipelines are being rebuilt ([#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241)). Until then, no new release is published; historical Tauri assets are not covered by the native update policy.
 
 ## Known Dependency Advisories
 
-Some alerts on this repository cannot be fixed here, because the fix lives upstream. They are listed so that an open alert is not mistaken for an oversight.
+### `glib` < 0.20.0 — GHSA-wrw7-89jp-8q8g (historical)
 
-### `glib` < 0.20.0 — GHSA-wrw7-89jp-8q8g (medium)
+This advisory affected the retired Tauri Linux build transitively through `tauri → gtk → glib`. ADR 0014 removed the Tauri shell and `gtk`/`webkit2gtk`/`wry` from `main`, so the advisory is no longer in the current dependency graph. Any alert against an old Tauri tag is historical and not a current product issue.
 
-`glib 0.18.5` is reported for unsound `Iterator` and `DoubleEndedIterator` implementations in `glib::VariantStrIter`. The patched release is `0.20.0`, and **no version of the desktop shell can reach it**:
-
-- `glib` arrives transitively, on Linux only, through `tauri` → `gtk 0.18.2` → `glib ^0.18`.
-- `gtk 0.18` accepts only `glib ^0.18`, so `cargo update -p glib --precise 0.20.0` fails to resolve: *"failed to select a version for the requirement `glib = "^0.18"`"*.
-- Upgrading Tauri does not help. The newest `wry` (0.57.0) still pins `gtk ^0.18` and `webkit2gtk 2.0.2`, and `webkit2gtk` itself is still at 2.0.2. Dependabot's own bump attempts for this package fail for the same reason.
-
-The vulnerable iterator is never called: Enclave does not use `glib` directly, and the advisory concerns a specific iterator type rather than a path reachable from user input. It is an upstream soundness issue, not a remote-code-execution one, and it is confined to the Linux desktop build.
-
-**Resolution.** ADR 0002 removes the webview from the shipping product, which takes `gtk`, `webkit2gtk`, `wry` and `glib` out of the dependency graph entirely. Until that lands, this alert is expected and accepted, and the Dependabot alert is dismissed with this section as the reason.
+The native desktop uses `eframe/egui/winit/wgpu`; the native Android app uses Compose and the Rust core. New dependency advisories are evaluated against those graphs.
 
 ## Supported Versions
 
-Only the latest release receives security patches. There are no LTS releases.
+Only the latest native release receives security patches. Historical Tauri releases are not supported. There are no LTS releases.
 
 ## Disclosure Timeline
 

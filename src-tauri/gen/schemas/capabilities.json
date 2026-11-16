@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capability for the app windows","local":true,"windows":["main","capture","widget"],"permissions":["core:default","core:window:allow-close","dialog:default","dialog:allow-confirm","opener:default",{"identifier":"opener:allow-open-path","allow":[{"path":"$APPDATA/attachments/**"}]}]}}

@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * Android entry points into the full Enclave app (the Tauri web view).
+ * Android entry points into the native Enclave app.
  * Widgets, the Quick Settings tile, launcher shortcuts and the share sheet all
  * route here; [MainActivity] turns them into app routes.
  */

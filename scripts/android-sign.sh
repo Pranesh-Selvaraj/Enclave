@@ -2,7 +2,8 @@
 # Sign the Android release APK (zipalign + apksigner) and AAB (jarsigner).
 #
 # Usage: scripts/android-sign.sh
-#   Run from the repo root after `npx tauri android build --target <abi>`.
+#   Run from the repo root after `./gradlew :app:assembleRelease :app:bundleRelease`
+#   in apps/android.
 #
 # Environment (all optional):
 #   KEYSTORE_PATH     keystore file (default: $HOME/Android/keystore/enclave-release.jks)
@@ -10,8 +11,8 @@
 #   KEYSTORE_PASSWORD keystore password (default: read from $KEYSTORE_PATH.password)
 #   KEY_PASSWORD      key password (default: same as KEYSTORE_PASSWORD)
 #   KEY_ALIAS         key alias (default: enclave)
-#   APK               input APK (default: tauri's app-universal-release-unsigned.apk)
-#   AAB               input AAB (default: tauri's app-universal-release.aab)
+#   APK               input APK (default: apps/android/.../app-release-unsigned.apk)
+#   AAB               input AAB (default: apps/android/.../app-release.aab)
 #   ANDROID_HOME      Android SDK root (default: $HOME/Android/Sdk)
 #   JAVA_HOME         JDK home (default: resolved from `which java`)
 #
@@ -31,8 +32,8 @@ trap cleanup EXIT
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
 KEY_ALIAS="${KEY_ALIAS:-enclave}"
-APK="${APK:-src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk}"
-AAB="${AAB:-src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab}"
+APK="${APK:-apps/android/app/build/outputs/apk/release/app-release-unsigned.apk}"
+AAB="${AAB:-apps/android/app/build/outputs/bundle/release/app-release.aab}"
 OUT_APK="${OUT_APK:-$(dirname "$APK")/enclave-android-release.apk}"
 
 # ── Resolve keystore ─────────────────────────────────────────────────────────

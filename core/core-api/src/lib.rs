@@ -3,7 +3,7 @@
 //!
 //! Everything the app can do to the vault lives here: vault lifecycle,
 //! document/folder/block CRUD, search, backlinks, settings, files and the P2P
-//! sync protocol. Shells (the Tauri desktop app today, the native Android app
+//! sync protocol. Shells (the Rust desktop and the native Android app
 //! next) are thin adapters: they own windows, events and lifetime, never data
 //! logic. That keeps desktop and mobile on one implementation and one wire
 //! protocol — full interoperability by construction.
@@ -43,7 +43,7 @@ const DB_FILENAME: &str = "enclave.db";
 const KEY_FILENAME: &str = "vault.key";
 
 /// Process-wide core. One process = one vault, one network stack, one sync
-/// loop. Native Android and the Tauri editor island live in the same process,
+/// loop. Native shells live in the same process,
 /// so they must share this instead of opening two connections.
 static GLOBAL_CORE: OnceLock<Arc<EnclaveCore>> = OnceLock::new();
 
@@ -95,7 +95,7 @@ fn poisoned() -> CoreError {
 
 // ── Sync events ─────────────────────────────────────────────────────────────
 
-/// Shell-visible sync notifications. The Tauri shell forwards these to the web
+/// Shell-visible sync notifications. The shells forward these to the UI
 /// UI as `sync-done` / `peer-connect-failed`; the Android shell will surface
 /// them in the sync screen and notification.
 #[derive(Debug, Clone, serde::Serialize)]

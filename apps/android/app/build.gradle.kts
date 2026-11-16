@@ -29,7 +29,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        // Same applicationId and data directory as the shipping Tauri app so an
+        // Same applicationId and data directory as the retired Tauri app so an
         // existing vault is picked up unchanged (`applicationInfo.dataDir`).
         applicationId = "com.enclave.app"
         minSdk = 24

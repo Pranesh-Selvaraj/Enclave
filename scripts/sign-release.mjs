@@ -5,7 +5,7 @@
 // secret; never committed). For each file this writes `<file>.sig` containing
 // the hex Ed25519 signature over the file's lowercase SHA-256 hex digest —
 // the exact thing `download_update` verifies against the pinned public key in
-// `src-tauri/src/updater.rs`.
+// `core/core-api/src/updater.rs`.
 //
 //   node scripts/sign-release.mjs [--sums <path>] <files...>
 //

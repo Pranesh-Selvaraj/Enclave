@@ -1812,10 +1812,10 @@
   if (os) {
     var names = { windows: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android' };
     document.querySelectorAll('[data-os-label]').forEach(function (label) {
-      label.textContent = 'Download for ' + names[os];
+      label.textContent = 'Legacy release for ' + names[os];
     });
     document.querySelectorAll('[data-os-download]').forEach(function (link) {
-      link.setAttribute('aria-label', 'Download for ' + names[os]);
+      link.setAttribute('aria-label', 'Legacy release for ' + names[os]);
     });
     var card = document.querySelector('.download-card[data-os="' + os + '"]');
     if (card) card.classList.add('is-you');

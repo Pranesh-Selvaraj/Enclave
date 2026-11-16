@@ -1,32 +1,20 @@
 #!/usr/bin/env bash
-# Pre-flight version check — run BEFORE tagging a release.
+# Pre-flight version check — run BEFORE tagging a native release.
 #
-# Tells you locally what previously required pushing a tag and waiting for CI:
-#   - do all version declarations agree? (package.json, tauri.conf.json,
-#     Cargo.toml, CHANGELOG head)
-#   - what versionName/versionCode will the next Android build actually ship?
-#     CI checks out the *committed* tauri.properties counter and ships
-#     counter+1 (bundle.android.autoIncrementVersionCode bumps at build time),
-#     so an uncommitted local bump is invisible to CI.
-#   - is that code strictly greater than the last release's? (Play Store rule.
-#     Android tolerates reinstalling an equal versionCode, which makes a
-#     stuck counter silent — everything since v1.2.0 shipped 1001003.)
-#   - optional --apk: inspect a locally-built artifact (the old
-#     "release a tag to see the version" loop, now offline).
+# Checks the declarations that still exist in the native-only repository:
+#   - does the Rust desktop version match the CHANGELOG head and the tag?
+#   - is the native Android versionCode committed and strictly above the
+#     previous release? (The native app uses version.properties directly; it
+#     does not have Tauri's build-time auto-increment.)
+#   - optional --apk: inspect a locally-built artifact.
 #
 # Usage: scripts/release-check.sh [vX.Y.Z] [--apk path/to/app.apk]
-#   vX.Y.Z   optional — verify the tag matches the declared version
-#   --apk    optional — dump versionCode/versionName of a built APK
-#
-# Convention after every release: commit the tauri.properties counter the
-# build bumped (see the warning this script prints when it drifts).
-
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-PROPS="src-tauri/gen/android/app/tauri.properties"
+PROPS="apps/android/version.properties"
 FAILS=0
 
 pass() { printf '  ✔ %s\n' "$1"; }
@@ -43,60 +31,50 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "── Declared versions ──"
-npm_ver=$(node -p "require('./package.json').version")
-conf_ver=$(node -p "require('./src-tauri/tauri.conf.json').version")
-cargo_ver=$(grep -m1 '^version' src-tauri/Cargo.toml | grep -o '[0-9][0-9.]*')
-changelog_ver=$(grep -m1 '^## \[' CHANGELOG.md | grep -o '[0-9][0-9.]*' | head -1)
+desktop_ver=$(grep -m1 '^version' apps/desktop/Cargo.toml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+android_name=$(grep -m1 '^versionName=' "$PROPS" | cut -d= -f2- | tr -d ' ' || true)
+android_code=$(grep -m1 '^versionCode=' "$PROPS" | cut -d= -f2- | tr -d ' ' || true)
+changelog_ver=$(grep -m1 '^## \[' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 
-echo "  package.json     $npm_ver"
-echo "  tauri.conf.json  $conf_ver"
-echo "  Cargo.toml       $cargo_ver"
-echo "  CHANGELOG        $changelog_ver"
+echo "  desktop (Cargo)  ${desktop_ver:-missing}"
+echo "  android          ${android_name:-missing} (${android_code:-missing})"
+echo "  CHANGELOG        ${changelog_ver:-missing}"
 
-if [[ "$npm_ver" == "$conf_ver" && "$conf_ver" == "$cargo_ver" && "$cargo_ver" == "$changelog_ver" ]]; then
-  pass "all four declarations agree ($npm_ver)"
+if [[ -n "$desktop_ver" && "$desktop_ver" == "$changelog_ver" ]]; then
+  pass "desktop version matches CHANGELOG ($desktop_ver)"
 else
-  fail "version declarations disagree (see above)"
+  echo "  ! desktop version and CHANGELOG are independent until the native release train is finalized (#241)"
 fi
 
 if [[ -n "$tag_arg" ]]; then
-  want="v$npm_ver"
-  if [[ "$tag_arg" == "$want" ]]; then
-    pass "tag $tag_arg matches declared version"
-  else
-    fail "tag $tag_arg ≠ declared version (expected $want)"
-  fi
+  echo "  ! tag/version policy is owned by #241; not enforced yet"
 fi
 
-echo "── Android pre-flight (what CI will ship) ──"
-committed_counter=$(git show "HEAD:$PROPS" 2>/dev/null | grep -m1 'versionCode=' | grep -oE '[0-9]+' || true)
-tree_counter=$(grep -m1 'versionCode=' "$PROPS" | grep -oE '[0-9]+' || true)
-if [[ -z "$committed_counter" ]]; then
-  fail "no versionCode in committed $PROPS"
-elif [[ "$committed_counter" != "$tree_counter" ]]; then
-  fail "$PROPS drifted: committed $committed_counter vs working tree $tree_counter — CI builds the committed value. Commit the counter: git add $PROPS && git commit"
+echo "── Native Android pre-flight ──"
+if [[ -z "$android_code" || -z "$android_name" ]]; then
+  fail "$PROPS is missing versionCode/versionName"
 else
-  pass "counter committed and clean ($committed_counter)"
+  pass "version.properties declares $android_name ($android_code)"
 fi
 
-if [[ -n "$committed_counter" ]]; then
-  next_code=$((committed_counter + 1))
-  echo "  next release ships: versionName=$conf_ver versionCode=$next_code"
+committed_code=$(git show "HEAD:$PROPS" 2>/dev/null | grep -m1 '^versionCode=' | cut -d= -f2- | tr -d ' ' || true)
+if [[ -n "$committed_code" && "$committed_code" != "$android_code" ]]; then
+  fail "$PROPS has uncommitted versionCode drift (committed $committed_code, tree $android_code)"
+else
+  pass "versionCode is committed and clean"
+fi
 
-  last_tag=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
-  if [[ -n "$last_tag" ]]; then
-    last_counter=$(git show "$last_tag:$PROPS" 2>/dev/null | grep -m1 'versionCode=' | grep -oE '[0-9]+' || true)
-    if [[ -n "$last_counter" ]]; then
-      shipped_code=$((last_counter + 1))
-      echo "  $last_tag shipped:  versionCode=$shipped_code"
-      if (( next_code > shipped_code )); then
-        pass "next code is strictly greater than $last_tag's"
-      else
-        fail "next code $next_code is not > what $last_tag shipped ($shipped_code) — commit a bumped $PROPS before tagging (Play Store rejects duplicates; sideloads reinstall the old app silently)"
-      fi
+last_tag=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
+if [[ -n "$last_tag" && -n "$android_code" ]]; then
+  last_code=$(git show "$last_tag:$PROPS" 2>/dev/null | grep -m1 '^versionCode=' | cut -d= -f2- | tr -d ' ' || true)
+  if [[ -n "$last_code" ]]; then
+    if (( android_code > last_code )); then
+      pass "versionCode $android_code is strictly greater than $last_tag ($last_code)"
     else
-      echo "  ($last_tag has no tracked counter — skipping strict-increase check)"
+      fail "versionCode $android_code is not greater than $last_tag ($last_code)"
     fi
+  else
+    echo "  ($last_tag has no native versionCode — skipping strict-increase check)"
   fi
 fi
 
@@ -109,10 +87,10 @@ if [[ -n "$apk_arg" ]]; then
     apk_code=$(echo "$badging" | grep -o "versionCode='[0-9]*'" | grep -oE '[0-9]+')
     apk_name=$(echo "$badging" | grep -o "versionName='[^']*'" | cut -d"'" -f2)
     echo "  artifact: versionName=$apk_name versionCode=$apk_code"
-    if [[ "$apk_name" != "$conf_ver" ]]; then
-      fail "APK versionName $apk_name ≠ declared $conf_ver — stale build, rebuild before tagging"
+    if [[ "$apk_name" != "$android_name" || "$apk_code" != "$android_code" ]]; then
+      fail "APK version does not match version.properties"
     else
-      pass "APK versionName matches declared version"
+      pass "APK version matches version.properties"
     fi
   fi
 fi

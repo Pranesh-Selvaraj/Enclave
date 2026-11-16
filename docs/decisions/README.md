@@ -29,6 +29,7 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 | [0011](0011-unlock-secret-has-no-length-policy.md) | The unlock secret has no length policy | Accepted | Security / Android |
 | [0012](0012-multiple-vaults.md) | Multiple vaults with independent unlock secrets | Proposed | Security / Architecture |
 | [0013](0013-fully-rust-desktop.md) | Desktop app: fully Rust, with an in-house headless editor engine | Accepted | Stack / Architecture |
+| [0014](0014-native-only-repository.md) | Native-only repository: retire the Tauri/Svelte app | Accepted | Repository / Distribution |
 
 ## Decision map
 
@@ -42,7 +43,9 @@ graph TD
     C --> F["0006 · Shared contract<br/>vault · blocks · sync · FFI"]
     D -.->|superseded by| K
     K --> F
+    K --> L["0014 · Native-only repo<br/>retire Tauri/Svelte"]
     E --> F
+    L --> F
     F --> G["0007 · Vault restore<br/>re-auth, same-vault only"]
     G --> H["0010 · User templates<br/>vault settings, 50 max"]
     H --> I["0011 · No unlock-secret policy<br/>any non-empty string"]

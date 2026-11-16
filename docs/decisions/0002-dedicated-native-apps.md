@@ -6,6 +6,8 @@
 - **Supersedes:** 0001 (UI layer only; the Rust core from 0001 is kept)
 - **Superseded by:** —
 
+> **Update 2026-11-16:** ADR 0014 retired the Tauri/Svelte app from `main`. The native Android and Rust desktop apps are the products; the Tauri app remains only in Git history and release tags. The architecture in this record is unchanged.
+
 ## Context
 
 Enclave's mission is a secure, local-first, zero-knowledge knowledge base with peer-to-peer sync over the local network and an offline AI assistant. Nothing in that mission requires a webview — quite the opposite: a browser engine is a large, continuously patched attack surface, and the platform capabilities the product needs (background sync, home-screen widgets, file access, keystores, native editors) are all native APIs. The current shared-web-UI architecture (0001) reached its limits: mobile background execution and widgets are bridged, desktop feels like a website, and the whole UI carries a browser-engine dependency forever.

@@ -120,13 +120,13 @@ The boundary is versioned with the core's semver: **additive changes within a co
 
 | Build | Core | Sync protocol | Vault schema | Status |
 | --- | --- | --- | --- | --- |
-| Tauri app v1.14.0 (desktop + Android) | core 1.x | v3 | v1 | Supported product; the interop baseline. |
-| Tauri app v1.13.0 (desktop + Android) | core 1.x | v3 | v1 | Previous release. Opens and syncs with v1.14.0: same schema, same protocol. |
-| Native Android `0.1.0-native` (`main`) | core 1.x | v3 | v1 | Next stable, unreleased. Protocol-compatible on paper with both Tauri builds, but **not supported against v1.13.0**: sync has not been exercised against the Tauri desktop, and it writes the app-level `icon`/`widget` blocks that build ignores. |
+| Tauri app v1.15.0 (desktop + Android) | core 1.x | v3 | v1 | **Retired historical release.** Code and installers remain at the tag; not built from `main`. Vaults and fixtures remain the migration baseline. |
+| Tauri app v1.13.0–v1.14.0 | core 1.x | v3 | v1 | Historical releases; same schema/protocol. Kept for vault migration and compatibility evidence. |
+| Native Android `0.2.0-native` (`main`) | core 1.x | v3 | v1 | In development, not released. Must open Tauri-created vaults; sync must be exercised against the Rust desktop and historical fixtures. |
+| Rust desktop (`main`, in development) | core 1.x | v3 now; v4 planned | v1 (or migrated) | Direct Rust dependency on `core-api`; must pass the fixture, IME and accessibility gate before it ships. |
 | Anything released before v1.9.0 | — | no `v` field | unversioned, migrated to v1 on open | Cannot sync with current builds; refused with update guidance. |
-| Rust desktop (in development) | core 1.x | v3 now; v4 planned | v1 (or migrated) | Direct Rust dependency on `core-api`; must pass the fixture, IME and accessibility gate before it ships. |
 
-The matrix is about **interoperation**, not feature parity: a Tauri v1.13.0 vault opens and syncs with the native Android app on `main` because both speak protocol v3 against schema v1.
+The matrix is about **interoperation**, not feature parity. `main` builds only the two native apps; a Tauri v1.15.0 vault must still open in both, because the schema and wire format are unchanged. The Tauri source is history, not a third build target.
 
 ## Verifying the contract
 

@@ -120,13 +120,13 @@ The `site/` directory, a small build script and a Pages workflow are the result.
   `style-src 'unsafe-inline'` and no scripts. Its links to the site are
   absolute.
 - **The palette follows the app's tokens.** Background, surfaces, borders,
-  text, accent and status colours mirror `apps/frontend/src/app.css`, including
-  the warm charcoal dark theme and paper light theme, so the homepage and the
-  app do not look like different products.
+  text, accent and status colours mirror the Enclave brand tokens, including the
+  warm charcoal dark theme and paper light theme, so the homepage and the apps
+  do not look like different products.
 
 ## Consequences
 
-- Publishing is one command locally (`npm run site:build`) and automatic on
+- Publishing is one command locally (`node scripts/build-site.mjs`) and automatic on
   merge. There is no site build dependency to audit and no framework upgrade to
   track.
 - Brand and screenshot updates flow to the site automatically; a change to the

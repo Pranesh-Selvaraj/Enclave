@@ -16,7 +16,7 @@ enum class CreateKind(val label: String, val emoji: String) {
 
 /**
  * Starter documents for the create stack. They are the same plain ProseMirror
- * JSON the core stores, mirroring `packages/editor/src/templates.ts`, so a note
+ * JSON the core stores, mirroring the retired Tauri editor, so a note
  * started on the phone opens identically on the desktop.
  */
 object Templates {

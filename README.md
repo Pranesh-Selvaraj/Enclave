@@ -8,443 +8,297 @@
   <br>
 </p>
 
-> **Secure, local-first, zero-knowledge knowledge base with P2P sync over local Wi-Fi.**
+> **A private, local-first knowledge base for desktop and Android.**
 >
-> No cloud. No servers. No internet required (the optional local-AI assistant talks only to an endpoint you configure).
+> Encrypted at rest. Synced directly over your own Wi-Fi. No cloud, no account, no telemetry.
 
-> [!IMPORTANT]
-> **Enclave is migrating to dedicated native apps for every platform.**
-> The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The desktop is moving to a **fully Rust** app with an in-house headless editor engine ([ADR 0013](docs/decisions/0013-fully-rust-desktop.md)); Tauri remains the shipping desktop until it reaches parity. The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
+Enclave is a notes and knowledge app for people who do not want their writing in someone else's cloud. Pages, folders, tasks, tables, whiteboards and the links between them live in a single encrypted vault on your device. When two devices are on the same network they find each other and sync directly, peer to peer. The optional AI assistant is opt-in and designed to keep retrieval local.
 
-## Architecture
+The apps are native: a Rust desktop and a Kotlin/Compose Android app, both on the same Rust core. There is no browser engine and no JavaScript runtime in the product. The desktop is under active development; the Android app is the current reference implementation.
 
-Enclave is built on three core principles — for the full picture see [Vault & Security](#vault--security), [Security Model](#security-model) and [Network Design](#network-design):
+## Contents
 
-### 1. Local-First
-All data lives on your device first. The application functions fully offline — create, edit, and organize pages without ever connecting to a network. Sync is an enhancement, not a requirement.
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Platforms](#platforms)
+- [Editor](#editor)
+- [Whiteboard and graph](#whiteboard-and-graph)
+- [Sync](#sync)
+- [Local AI](#local-ai)
+- [Security](#security)
+- [Build and test](#build-and-test)
+- [Repository layout](#repository-layout)
+- [Screenshots](#screenshots)
+- [Documentation](#documentation)
+- [License](#license)
 
-### 2. Encryption at Rest
-The vault database is encrypted with **SQLCipher** (AES-256-CBC with HMAC-SHA512) before it touches persistent storage. Key derivation uses **Argon2id** with strong defaults (64 MiB, 3 iterations, 4 parallelism). A 12-word **BIP39** seed phrase unlocks the vault. The application never sees your plaintext keys — they're derived from credentials that never leave your device.
+## Features
 
-### 3. Peer-to-Peer Sync
-When devices are on the same local network, they discover each other via **mDNS** (Multicast DNS) and sync documents directly over **WebSocket**, merged with **doc-level last-write-wins** resolution. No relay servers, no cloud routing — just device-to-device communication within your Wi-Fi boundary. Sync is **authenticated and encrypted**: peers must prove knowledge of the vault-derived sync key (challenge-response, so only devices of the same owner — same seed phrase — can join) and every frame is encrypted with XChaCha20-Poly1305. Other devices on the Wi-Fi see only challenges and ciphertext. If your
-network blocks mDNS (some routers, guest Wi-Fi, VPNs), add a peer manually
-by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
+### Your vault
 
-## Tech Stack
+- One encrypted vault per install. Create it with a password and save the 12-word recovery phrase shown once.
+- Unlock with the password or the recovery phrase; change the password without re-encrypting the whole vault.
+- Auto-lock, manual lock, encrypted backup and restore. A restored backup must belong to the same vault.
+- Everything is stored locally. There is no account, no sync server and no Enclave infrastructure to trust.
+
+### Notes and knowledge
+
+- Notes with headings, rich text, lists, tasks, quotes, code, tables, images, files and links.
+- Folders, tags, favourites, search and a trash/archive flow.
+- Page links and backlinks, mentions, page embeds and a table of contents.
+- Templates for recurring pages, plus your own templates.
+- Multiple note layouts on Android (List, Gallery, Cards, Icons), sorting one-handed from a search pill.
+- A desktop workspace with a sidebar tree, split view and a command palette.
+
+### Editing
+
+- Block-based document model compatible with ProseMirror/TipTap JSON.
+- Marks: bold, italic, strike, inline code and links.
+- Nested lists, task checklists, blockquotes, callouts, toggles, dividers and fenced code blocks.
+- Tables with header rows and cell editing.
+- Images, PDFs and arbitrary files stored inside the vault.
+- Slash commands, a bubble formatting menu, block drag handles and a block menu.
+- Markdown source view, Markdown/HTML export, Markdown import and encrypted whole-vault backup.
+- Undo/redo, debounced autosave and a native editor surface that respects the platform's input methods.
+
+### Whiteboard, databases and graph
+
+- **Whiteboard**: infinite canvas with sticky notes, rectangles, ellipses, arrows, text, frames, page embeds and mind maps; presentation mode and PNG export.
+- **Databases**: typed tables with multiple column types and table, kanban, list, gallery and timeline views; grouping, sorting and filters; linked databases.
+- **Graph**: the backlink graph, with zoom, pan and page focus.
+- **Split view**: two pages side by side with autosaving panes.
+
+### Android
+
+- A notes-first Compose app with a drawer, search pill, four layouts and long-press actions.
+- Home-screen widgets: notes list, pinned note and quick capture; a Quick Settings tile, launcher shortcuts and a share target.
+- Foreground sync service with a visible notification; Keystore-wrapped widget cache.
+- SAF backup/restore, theme and accent settings, editor text size/page width, auto-lock and an opt-in update check.
+- Release builds block screenshots and recents previews.
+
+### Desktop
+
+- Native Rust window, menus, keyboard shortcuts and a focused editor shell.
+- Tray/quick-capture and a wallpaper-style widget are part of the desktop surface.
+- Themes, accent colours, background styles, corner styles, density, fonts and OLED mode.
+- Signed installers and verified updates; the app never checks for updates unless you opt in.
+
+### AI, on your terms
+
+- Opt-in and off by default.
+- Local embeddings and retrieval by default; remote providers need explicit consent.
+- Answers cite the pages they used.
+- Agent-style actions are proposed by the model and executed by the app after approval; the model gets no direct vault, shell or network access.
+- No telemetry and no logging of prompts or note contents.
+
+## How it works
+
+```
+┌──────────────────────────┐        ┌──────────────────────────┐
+│ Rust desktop             │        │ Native Android           │
+│ egui shell + editor      │        │ Kotlin + Jetpack Compose │
+└────────────┬─────────────┘        └────────────┬─────────────┘
+             │ direct Rust crate                 │ UniFFI / JNA
+             └──────────────────┬────────────────┘
+                                ▼
+                 ┌─────────────────────────────┐
+                 │ Shared Rust core            │
+                 │ vault · crypto · storage    │
+                 │ search · sync · updates     │
+                 └──────────────┬──────────────┘
+                                │
+              ┌─────────────────┴─────────────────┐
+              ▼                                   ▼
+     SQLCipher-encrypted DB               mDNS + WebSocket
+     (AES-256-CBC + HMAC-SHA512)          (auth + XChaCha20-Poly1305)
+```
+
+The core is the only implementation of cryptography, storage, the block schema, search and sync. It exposes one shell-agnostic API. Android consumes it through typed UniFFI bindings; the Rust desktop links it as a normal crate. Neither shell implements its own vault logic.
+
+The document format is ProseMirror/TipTap JSON stored as a block in the vault, so desktop, Android and historical vaults all read the same content. The sync protocol ships documents, blocks and folders with document-level last-write-wins.
+
+## Tech stack
 
 | Layer | Technology |
-|-------|-----------|
-| **Shells** | Tauri v2 (Rust) — the current shipping desktop (WebKitGTK / WebView2 / WKWebView) and Android (system WebView), one SvelteKit frontend + one Rust core. A fully Rust desktop ([ADR 0013](docs/decisions/0013-fully-rust-desktop.md)) is in development alongside it |
-| **Frontend** | SvelteKit (static adapter) + Svelte 5 |
-| **Editor** | Tiptap 3 (ProseMirror) + custom Svelte 5 wrapper, extensions and page templates |
+| --- | --- |
+| **Core** | Rust: `core-db` (SQLCipher, FTS5, `sqlite-vec`), `core-network` (mDNS + WebSocket), `core-api` (shell-agnostic API, UniFFI) |
+| **Desktop** | Rust, `eframe`/`egui`, an in-house headless block engine over ProseMirror JSON |
+| **Android** | Kotlin, Jetpack Compose, Glance widgets, JNA + UniFFI |
 | **Storage** | SQLite + SQLCipher (AES-256-CBC with HMAC-SHA512) |
-| **Data Model** | Document + Block with a `sort_order` column |
-| **Seed Phrase** | BIP39 12-word mnemonic (`@scure/bip39`) |
-| **Key Derivation** | Argon2id (`hash-wasm`) |
-| **Markdown I/O** | Hand-rolled HTML → Markdown serializer + `marked` (Markdown → HTML) |
-| **Network Discovery** | mDNS (`mdns-sd`) |
-| **Transport** | WebSocket (`tokio-tungstenite`) |
-| **Sync** | Full JSON snapshots + doc-level last-write-wins merge |
-| **Local AI** | OpenAI-compatible client (`/v1`) — Ollama, llama.cpp, LM Studio, vLLM, or frontier APIs with a key |
-| **Embeddings** | In-process ONNX model (`all-MiniLM-L6-v2`, fully offline) or any `/v1/embeddings` endpoint |
-| **Vector Search** | `sqlite-vec` ANN index inside the encrypted SQLCipher file (per-dimension vec0 tables) |
-| **Workspace** | Split-screen view — two pages side by side with a draggable divider, autosaving panes |
-| **Organization** | Folders with collapsible sidebar tree, tags, favorites, trash |
-| **Markdown Source** | `</>` toggle renders the page as editable markdown (Ctrl+S round-trip) |
-| **Database** | Typed table/kanban/list/gallery/timeline views, per-block density (Compact/Spacious) |
-| **Widgets** | Desktop wallpaper widget (tray-toggleable panel: recents + quick capture) and Android home-screen widget |
-| **UI Design** | Matte, fully opaque surfaces with hairline borders and dense layouts — Background styles: Matte / Soft glow / Glass (frosted chrome + blur), accent-tinted to your color |
-| **Updates** | Strictly opt-in — Enclave never phones home. Settings → Updates enables checks; every update is reviewed (changelog) and approved individually before download, and the download is verified (GitHub SHA-256 + a pinned Ed25519 release signature) before the installer is allowed to run |
-| **Theming** | Auto / light / dark (follows system), 6 accent presets + custom color picker, Background styles, corner presets, 4 fonts, 3 densities, editor font size, page width, OLED true-black, reduced motion |
-| **CI/CD** | GitHub Actions — tests + Windows (.msi/.exe) + Linux (.deb/.AppImage) + macOS (.dmg) + Android (signed .apk/.aab) |
+| **Keys** | BIP39 12-word mnemonic, Argon2id (64 MiB, 3 passes, 4 lanes), AES-256-GCM for `vault.key` |
+| **Sync** | mDNS discovery, WebSocket transport, HMAC-SHA256 auth, XChaCha20-Poly1305 sealed frames |
+| **Search** | FTS5 + `sqlite-vec` ANN index inside the encrypted database |
+| **AI** | Opt-in local embeddings/RAG; OpenAI-compatible local or remote providers; app-enforced agent tools |
+| **Homepage** | Static HTML/CSS/JS assembled by a Node script; GitHub Pages |
 
-## Supported Platforms
+## Platforms
 
-| Platform | Status | Bundle |
-|----------|--------|--------|
-| **Linux** (x86_64) | Supported | `.deb`, `.AppImage` |
-| **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
-| **macOS** (Apple Silicon) | Supported | `.dmg` |
-| **Android** (arm64) | Beta | Signed `.apk` / `.aab` (CI-built, monotonic versionCode) |
-| **Desktop, native Rust** | In development | Foundation in [`apps/desktop`](apps/desktop/README.md); Tauri remains the supported desktop until parity |
+| Platform | Target |
+| --- | --- |
+| **Android** (arm64) | Native Kotlin + Jetpack Compose app; current reference build |
+| **Linux** (x86_64) | Native Rust desktop; `.deb` / `.AppImage` packaging |
+| **Windows** (x86_64) | Native Rust desktop; `.msi` / NSIS packaging |
+| **macOS** (Apple Silicon) | Native Rust desktop; `.dmg` packaging and notarisation |
+| **iOS** | Not currently targeted; the versioned contract does not preclude it |
 
-## Android (Beta)
+The desktop is under active development; packaging and update orchestration live in the desktop release work.
 
-Same SvelteKit frontend + Rust core in the system WebView (Tauri mobile).
-Builds, signs and installs; known gaps are tracked on the
-[issues page](https://github.com/Pranesh-Selvaraj/Enclave/issues).
+## Editor
 
-### Phone UI
+Enclave pages are block documents. Every page can switch between **Paper** (documents) and **Whiteboard** (infinite canvas).
 
-The Android shell is notes-first and tuned for one-handed use:
+### Paper blocks
 
-- **Search pill** — one rounded bar in the middle of the top bar holds search, a
-  **layout** button and a **sort** button; sync state is a circular avatar on the
-  right and the bar fades into the page instead of drawing a separator.
-- **Notes layouts** — **List**, **Gallery**, **Cards** and **Icons**, chosen from a
-  bottom sheet; **Cards** (2-column, title-first, quiet time footer) is the default.
-- **Sorting** — recently updated, date created, or title, from a bottom sheet next
-  to the layout button. Both choices persist in Settings.
-- **Create stack** — the FAB fans out into **Text**, **Checklist**, **Journal**,
-  **Meeting notes** and **Folder**, and becomes a ✕ while open. Checklist/Meeting
-  open pre-filled pages from the page templates.
-- **Drawer** — the big “Enclave” heading, Home, the page tree, collapsible folders,
-  tags, trash and Sync/Settings. There is no bottom navigation bar; Graph view and
-  split view remain desktop-only.
-- **Home declutters itself** — once the vault has notes, the welcome tagline and the
-  quick-action buttons give way to the notes grid; an empty vault keeps them.
-- **Status bar** — real system-bar insets are bridged from `MainActivity` into
-  `--safe-top` / `--safe-bottom` CSS variables, so the top bar sits below the clock
-  and its controls stay tappable.
+| Block | What it does |
+| --- | --- |
+| Text, headings 1–3 | The base document flow, with a slash menu and block types |
+| Bullet, numbered and task lists | Nested lists and task toggles that write through the core |
+| Quote, callout, toggle, divider | Structural blocks for notes and documents |
+| Code block | Monospace editing with a language label |
+| Table | Header row and editable cells |
+| Image, PDF, file | Stored in the vault, previewed inline and opened with the system viewer |
+| Bookmark | A URL card |
+| Page embed | An inline card for another page |
+| Database and linked database | Typed rows with table/kanban/list/gallery/timeline views |
+| Template | Start a page from a checklist, meeting notes, project plan, journal or book notes |
 
-### Build & sign
-
-Prereqs: JDK 21, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066,
-rustup target `aarch64-linux-android` (`x86_64-linux-android` for emulators — local
-embeddings are compiled out there because ONNX Runtime ships no x86_64-android binaries).
-
-```bash
-export ANDROID_HOME=~/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/29.0.13846066 JAVA_HOME=<jdk21>
-cd src-tauri && npx tauri android build --target aarch64 && cd ..
-scripts/android-sign.sh          # signs APK + AAB (keystore guidance: CONTRIBUTING)
-```
-
-CI ([.github/workflows/android.yml](.github/workflows/android.yml)) builds, signs with
-`ANDROID_KEYSTORE_*` secrets and uploads the arm64 APK/AAB; `versionCode`
-auto-increments per build.
-
-For a live dev run on an emulator or device (Vite HMR for the frontend, native
-rebuilds for Rust changes):
-
-```bash
-cd src-tauri && npx tauri android dev
-```
-
-Known issues and gaps (real-device sync, arm64 RAG, file dialogs) are tracked
-as [GitHub issues](https://github.com/Pranesh-Selvaraj/Enclave/issues) — the
-README only documents what the app does today.
-
-## Monorepo Structure
-
-```
-enclave/
-├── .github/
-│   ├── workflows/build.yml        # CI: tests + Windows/Linux/macOS builds + releases
-│   ├── workflows/android.yml      # CI: Android release APK/AAB (signs with secrets)
-├── apps/
-│   ├── android/                    # Native Android app — Kotlin + Jetpack Compose (ADR 0005)
-│   │   ├── app/src/main/java/com/enclave/app/    # Screens, core binding, block renderer
-│   │   └── scripts/build-core.sh  # Builds the core .so + UniFFI bindings into the app
-│   └── frontend/                  # Shared SvelteKit frontend — desktop + Android shells
-│       ├── src/
-│       │   ├── app.html           # Root HTML shell (viewport-fit=cover for safe areas)
-│       │   ├── app.css            # Global styles, theme tokens, safe-area variables
-│       │   ├── lib/
-│       │   │   ├── backend.ts          # Tauri IPC bridge (invoke/listen)
-│       │   │   ├── ai.ts               # OpenAI-compatible client (chat/embeddings/SSE) + settings
-│       │   │   ├── importExport.ts     # Markdown/HTML import + export, vault backup
-│       │   │   ├── graphLinks.ts       # Link extraction for graph view + backlinks
-│       │   │   ├── wbLayout.ts         # Whiteboard layout helpers
-│       │   │   ├── updates.ts          # Opt-in update checks
-│       │   │   ├── haptics.ts          # Android haptic taps
-│       │   │   ├── ActionSheet.svelte  # Mobile bottom sheets (notes view, sort, page actions)
-│       │   │   ├── VaultGuard.svelte   # Vault creation / unlock flow
-│       │   │   ├── SettingsPanel.svelte# Appearance, AI assistant, backup, shortcuts
-│       │   │   ├── Whiteboard.svelte   # Infinite canvas editor
-│       │   │   ├── UpdateDialog.svelte # Changelog + update approval dialog
-│       │   │   └── DocPane.svelte      # Split-view pane wrapper
-│       │   └── routes/
-│       │       ├── +layout.svelte      # App shell: sidebar/drawer, command palette, network, sync
-│       │       ├── +layout.ts          # prerender / SSR config
-│       │       ├── +page.svelte        # Home / recents (desktop) · notes grid (Android)
-│       │       ├── [id]/+page.svelte   # Editor + AI ask/RAG panel
-│       │       ├── split/[a]/          # Split-screen workspace
-│       │       ├── graph/              # Backlink graph (desktop)
-│       │       ├── capture/            # Quick Capture window / Android share target
-│       │       └── widget/             # Android widget host page
-│       ├── tests/                 # ai, csp, graphLinks, saveRetry, wbLayout unit tests
-│       └── static/
-├── packages/
-│   ├── crypto/                     # BIP39 + Argon2id + AES-256-GCM
-│   │   └── src/index.ts            # generateMnemonic, deriveMasterKey, encrypt/decrypt
-│   ├── editor/                     # Tiptap 3 Svelte 5 wrapper, extensions, markdown, templates
-│   │   ├── src/
-│   │   │   ├── TipTapEditor.svelte # Core editor
-│   │   │   ├── markdown.ts         # Hand-rolled HTML → Markdown serializer
-│   │   │   ├── templates.ts        # Page templates (Checklist, Meeting, Project, Journal, Book)
-│   │   │   ├── extensions/         # slash-command, page-link, mention, callout, toggle-block,
-│   │   │   │                       #   database, image, page-embed, bookmark, drag-handle
-│   │   │   └── blocks/             # SlashMenu, BubbleMenu, DragHandleMenu, TocPanel, views, …
-│   │   ├── test.ts                 # Markdown round-trip verification
-│   │   └── test-insert.ts          # jsdom insert/toolbar integration tests
-│   ├── sync-engine/                # Standalone Yjs CRDT library (the app syncs via Rust merge)
-│   └── ui/                         # Shared Svelte components, theme store, types
-│       └── src/
-│           ├── theme.svelte.ts     # Theme/appearance + notes view/sort settings (persisted)
-│           └── components/         # Icon, Logo, Button, EmojiPicker, ShortcutsDialog
-├── core/                           # Shared Rust core (ADR 0003) — the only shared code
-│   ├── core-db/                    # Encrypted SQLite (SQLCipher) + FTS5 + vec0 ANN + embeddings
-│   ├── core-network/               # mDNS + WebSocket P2P transport (auth + AEAD)
-│   └── core-api/                   # Shell-agnostic API + UniFFI bindings for the native apps
-├── src-tauri/                      # Desktop shell (Tauri v2) — consumes core/ by path
-│   ├── src/
-│   │   ├── main.rs                 # Binary entry point
-│   │   ├── lib.rs                  # Tauri commands + sync protocol + tray/quick capture
-│   │   ├── embed.rs                # Built-in offline embeddings (fastembed/ONNX)
-│   │   ├── updater.rs              # Opt-in GitHub-release updater + SHA-256 verification
-│   │   └── android_sync.rs         # JNI bridge to the Android foreground sync service
-│   ├── gen/android/                # Committed Android project (native customizations)
-│   └── icons/
-├── docs/
-│   └── screenshots/                # Desktop + Android screenshots used in this README
-├── scripts/
-│   ├── android-sign.sh            # zipalign + apksigner / jarsigner
-│   ├── generate-icons.py          # App icon set generator
-│   └── release-check.sh           # Version + Android versionCode pre-flight
-├── tools/
-│   └── ui-audit/                  # Screenshot + DOM audit suite, run locally
-├── tsconfig.base.json             # Shared TypeScript base config
-└── package.json                   # npm workspace root
-```
-
-## Prerequisites
-
-- **Rust** (1.77+) — [rustup.rs](https://rustup.rs)
-- **Node.js** (24+, 26 recommended) — [nvm](https://github.com/nvm-sh/nvm) recommended
-- **System dependencies** (Linux):
-
-  ```bash
-  sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-    librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
-  ```
-
-- **Windows**: [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) + WebView2 (pre-installed on Windows 10+)
-
-## Getting Started
-
-### 1. Install
-
-```bash
-git clone https://github.com/Pranesh-Selvaraj/Enclave.git
-cd enclave
-npm install
-```
-
-### 2. Development
-
-**Full Tauri desktop app:**
-
-```bash
-npx tauri dev
-# Compiles the Rust backend and opens the desktop window
-```
-
-**Native Rust desktop (in development):**
-
-```bash
-cargo run --manifest-path apps/desktop/Cargo.toml
-# Rust UI shell + direct core-api integration; see apps/desktop/README.md
-```
-
-### 3. Production Build
-
-```bash
-npx tauri build
-# Produces platform-specific binaries in src-tauri/target/release/bundle/
-```
-
-Or let CI handle it — `v*` tag pushes build the distributables and publish a release with `.msi`/`.exe` (Windows), `.deb`/`.AppImage` (Linux), `.dmg` (macOS Apple Silicon) and the signed Android `.apk`/`.aab`; PRs to `main` run the same builds as a check.
-
-## Local AI Assistant (opt-in)
-
-Enclave ships a zero-dependency AI client that talks to any **OpenAI-compatible** endpoint
-over `/v1` — a local server (**Ollama** default `http://localhost:11434`, **llama.cpp /
-llama-server**, **LM Studio**, **vLLM**) or a **frontier API** (add its key in Settings;
-settings incl. the key are stored encrypted in the vault).
-
-Enable it in **Settings → AI assistant**:
-
-- **Enable AI** — turns on the Ask-AI panel.
-- **Endpoint URL** — where the chat/embedding server lives (default `http://localhost:11434`).
-- **API key (optional)** — Bearer key for frontier APIs (OpenAI & co.); stored encrypted in the vault.
-- **Model** — any model the endpoint exposes (fetched from `GET /v1/models`).
-- **Vault-wide answers (RAG)** — on by default (see below).
-- **Offline embeddings** — embed with the built-in ONNX model instead of the endpoint, so RAG
-  retrieval needs no external service at all. The model (~25 MB, `all-MiniLM-L6-v2`) downloads
-  once into the app data dir on first use; after that embeddings work fully offline. Chat still
-  needs an endpoint.
-
-Behavior:
-
-- **Chat**: `POST /v1/chat/completions` (SSE) streams answers into the Ask-AI panel, with
-  **Stop** support.
-- **Retrieval (RAG)**: pages are embedded into an `embeddings` table (plus a per-dimension
-  `vec0` ANN index) in the encrypted vault on save. Questions are answered with the most similar
-  pages injected as context — retrieved by the backend's ANN top-k (exact-cosine re-ranked in
-  Rust) with an FTS5 fallback. Answers list their **Sources** with links to the pages used.
-- **Privacy**: when AI is enabled, page content (for embedding + context injection) is sent to
-  the configured endpoint — any https endpoint with **offline embeddings** off. With offline
-  embeddings on, retrieval content never leaves the device; only chat does.
-  See [SECURITY.md](SECURITY.md).
-
-## Running Tests
-
-```bash
-# Editor — markdown round-trip + jsdom insert/toolbar integration
-npm test -w @enclave/editor
-npm run test:insert -w @enclave/editor
-
-# Crypto pipeline (BIP39, Argon2id, AES-GCM)
-npx tsx packages/crypto/test.ts
-
-# Sync engine — two-peer convergence + 3+ peer lossy/slow stress
-npx tsx packages/sync-engine/test.ts
-npx tsx packages/sync-engine/stress.test.ts
-
-# Frontend unit tests (AI client, CSP, graph links, save retries, whiteboard layout)
-npx tsx apps/frontend/tests/ai.test.ts
-npx tsx apps/frontend/tests/csp.test.ts
-npx tsx apps/frontend/tests/graphLinks.test.ts
-npx tsx apps/frontend/tests/saveRetry.test.ts
-npx tsx apps/frontend/tests/wbLayout.test.ts
-
-# Rust workspace tests
-cargo test --manifest-path core/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
-
-# Frontend type-check
-npm run check -w @enclave/frontend
-
-# UI audit — screenshots + DOM checks on desktop and phone profiles (local tool;
-# it is no longer a scheduled CI job, because it audits the retiring web UI)
-npm run audit:ui
-
-# Release pre-flight — version agreement + Android versionCode ordering
-npm run release:check -- vX.Y.Z
-```
-
-## Vault & Security
-
-### First Launch
-1. App prompts you to **create a new vault** with a password
-2. A 12-word BIP39 English seed phrase is generated client-side
-3. You must save this phrase — it's the **only** way to recover the vault if you forget your password
-4. The seed phrase is stored locally, encrypted with Argon2id + AES-256-GCM (`vault.key`), so later unlocks only need your password
-
-### Returning User
-1. Enter your **password** (or the 12-word seed phrase if you forgot it)
-2. Credentials are run through **Argon2id** (64 MiB, 3 iterations, 4 parallelism) to derive the 256-bit master key
-3. The master key decrypts the **SQLCipher** database
-
-### Crypto Flow
-```
-12-word mnemonic
-       │
-       ▼
-  Argon2id(password=mnemonic, salt="enclave-vault-master-key-v1")
-       │
-       ▼
-  256-bit master key ────► SQLCipher PRAGMA key (encrypt-at-rest DB,
-                          AES-256-CBC + HMAC-SHA512)
-        │
-        └── HKDF-SHA256 ──► sync key ──► peer auth (HMAC-SHA256 proofs)
-                                         + transport (XChaCha20-Poly1305)
-        └── vault.key: seed phrase re-encrypted with
-            Argon2id(password + random salt) + AES-256-GCM
-```
-
-## Security Model
-
-- **At rest**: the SQLCipher database is encrypted (default AES-256-CBC, HMAC-SHA512). Keys are derived via Argon2id (memory-hard, resistant to GPU/ASIC attacks).
-- **In transit**: LAN WebSockets carry **authenticated + encrypted** frames — a challenge-response handshake (HMAC-SHA256 proofs over the vault-derived sync key, fresh random challenge per connection) gates every session, then all payloads are sealed with XChaCha20-Poly1305 (AEAD, random nonce per frame) under a per-session key. Only devices that hold the same vault key (same BIP39 seed phrase = same owner) can join or read sync traffic; other devices on the LAN are rejected at the handshake and see only ciphertext. Do not sync across an untrusted network.
-- **No cloud**: the app makes no requests to Enclave infrastructure. The only optional outbound traffic is the local-AI feature, which sends content to an endpoint you configure (local servers, or any https endpoint when you add an API key).
-- **Key material**: the seed phrase and derived keys exist only in memory during the session. The only on-disk copy is `vault.key` — the seed phrase re-encrypted with Argon2id + AES-256-GCM under your password, so it's unusable without it.
-
-## Network Design
-
-```
-┌──────────────┐        mDNS (_enclave._tcp.local)       ┌──────────────┐
-│  Laptop      │◄───────────────────────────────────────►│  Desktop     │
-│  (Tauri)     │    WebSocket (auth + AEAD, LAN-only)     │  (Tauri)     │
-│              │◄───────────────────────────────────────►│              │
-│  SQLite      │    full JSON snapshots {docs, blocks}    │  SQLite      │
-│  +sqlcipher  │    doc-level last-write-wins merge       │  +sqlcipher  │
-└──────────────┘                                          └──────────────┘
-        │                                                        │
-        │              No internet. No cloud.                     │
-        │              Wi-Fi LAN only.                            │
-        └────────────────────────────────────────────────────────┘
-```
-
-### Sync Protocol
-1. **Start Sync** — begins mDNS advertising + WebSocket listener on an OS-assigned LAN port
-2. **Discovery** — peers on the same Wi-Fi discover each other via `_enclave._tcp.local.`
-3. **Authenticate** — challenge-response over the vault-derived sync key (HMAC-SHA256 proofs, fresh random challenge per connection). A peer that can't prove the key is disconnected before any data — not even the `hello` — is exchanged
-4. **Connect** — WebSocket session established; each side sends a `hello` (encrypted)
-5. **Snapshot** — each peer replies with a full snapshot of documents + blocks (encrypted)
-6. **Merge** — the receiver merges doc-level (last-write-wins by revision + timestamp; tombstones survive) and replies with an `ack`
-7. **Resilience** — a peer that drops is redialed every 3 s; the UI footer shows `peers online · last sync … ago`
-8. **Stop Sync** — shuts down mDNS + WebSocket and clears the peer list
-
-Every frame after the handshake is sealed with XChaCha20-Poly1305 (AEAD, random
-nonce per frame) under a per-session key derived from the sync key + both
-challenges — see [Security Model](#security-model).
-
-## Editor Features
-
-Every page toggles between **Paper** (documents) and **Whiteboard** (infinite canvas).
-
-### Paper mode — slash commands
-
-| Feature | How |
-|---------|-----|
-| Headings 1–3, Text | `/text`, `/h1`, `/h2`, `/h3` |
-| Bullet / Numbered / Task lists | `/bullet`, `/numbered`, `/task` |
-| Quote, Callout, Toggle, Divider | `/quote`, `/callout`, `/toggle`, `/divider` |
-| Code block (language selector) | `/code` |
-| **Database** | `/database` — typed tables, 12 column types, 5 views (table/kanban/list/gallery/timeline), grouping/sort/filters |
-| **Linked Database** | `/linked database` — mirror another database on this page |
-| **Page embed** | `/embed page` — inline page card |
-| **Image** | `/image`, or paste/drop |
-| **PDF / file** | `/pdf`, or paste — stored in the vault, inline preview + open in system viewer |
-| **Bookmark** | `/bookmark`, or paste a URL |
-| **Template** | `/template` — Checklist, Meeting Notes, Project Plan, Daily Journal, Book Notes |
-| Page links / backlinks | type `[[` + page title |
-| Mentions | type `@` + page title |
-| Formatting | select text → bubble menu (bold/italic/strike/code) |
-| Block menu | hover the drag handle → duplicate/remove/cut/copy |
-| Table of contents | outline panel with scroll-spy; click to jump |
+Formatting lives on the selection: bold, italic, strike, inline code and links. The block handle duplicates, removes, cuts and copies blocks. Page links, mentions and backlinks connect the vault; the outline panel tracks the current heading.
 
 ### Editor chrome
 
-- **Command palette** — `Ctrl+K` (search pages, run actions)
-- **Shortcuts** — `Ctrl+N` new page, `Ctrl+B` toggle sidebar
-- **Page metadata** — emoji icon, gradient cover, tags, favorites
-- **Info & safety** — created/modified/word counts, delete-to-trash with Undo toast
-- **Export** — per-page Markdown or HTML (native dialog); whole-vault encrypted backup
-- **Import** — Markdown files
-- **AI** — Ask-AI panel with RAG retrieval and sources (see [Local AI Assistant](#local-ai-assistant-opt-in))
+- Command palette (`Ctrl/Cmd+K`), new page and sidebar toggle.
+- Page emoji, cover, tags and favourite state.
+- Created/modified time and word count.
+- Delete to trash with an undo window.
+- Markdown source toggle and Markdown/HTML export.
+- Ask-AI panel with sources and citations.
 
-### Whiteboard mode
+### Whiteboard and graph
 
-Infinite canvas with **select, pan, sticky notes, rectangles, ellipses, arrows, text,
-frames, page embeds, and mind maps** (Tab adds a child node). **Presentation mode** steps
-through frames; **PNG export** downloads a capture. Layout is persisted per page as a
-`whiteboard` block.
+The whiteboard is an infinite canvas for thinking in space: stickies, shapes, arrows, text, frames, page embeds and mind maps (Tab creates a child node). Frames can be presented as a sequence, and the canvas exports to PNG. The graph view maps page links and backlinks and lets you travel through the vault visually.
+
+## Sync
+
+Sync is **LAN-only and peer-to-peer**:
+
+1. Both devices advertise over mDNS (`_enclave._tcp.local`) or connect to a manually entered `host:port`.
+2. They open a WebSocket and perform a challenge-response handshake using a key derived from the vault seed phrase.
+3. After authentication, every frame is sealed with XChaCha20-Poly1305 under a per-session key.
+4. Peers exchange a digest, request what they need, send documents/blocks/folders, merge with document-level last-write-wins and acknowledge.
+5. The foreground Android service keeps sync alive with a visible notification; the desktop shows peer and last-sync status.
+
+No relay, no cloud, no account. Devices on the same Wi-Fi see only ciphertext and an mDNS name. Sync assumes a network you control; do not sync across an untrusted network.
+
+## Local AI
+
+The AI layer is **opt-in and off by default**. It is designed around the vault, not a cloud service:
+
+- **Retrieval**: blocks are embedded locally on save and stored in the encrypted database; questions retrieve the most relevant pages with vector + full-text search.
+- **Answers**: a local OpenAI-compatible server (Ollama, llama.cpp/llama-server, LM Studio, vLLM) or an explicitly configured remote provider. Remote use shows the context being sent and requires consent.
+- **Citations**: answers link back to the pages they used.
+- **Agent behavior**: the model can propose actions, but the app executes only allowlisted tools, asks before writes, and never gives the model direct access to the vault, shell, filesystem or network.
+- **Privacy**: no telemetry, no prompt/note logging, and no vault key in the AI path.
+
+See [SECURITY.md](SECURITY.md) for the data boundary.
+
+## Security
+
+- **At rest**: SQLCipher with AES-256-CBC and HMAC-SHA512. The master key is derived from a BIP39 mnemonic through Argon2id and exists in memory only while unlocked.
+- **Key file**: `vault.key` stores the mnemonic re-encrypted with Argon2id (fresh salt) and AES-256-GCM under the password. It is useless without that password.
+- **In transit**: mutually authenticated, encrypted LAN frames. Only devices with the same vault key can join; a wrong-key peer is rejected before any data.
+- **Shell isolation**: desktop and Android own windows and input. Crypto, storage and sync stay in the core; no plaintext key material crosses the UI boundary.
+- **Updates**: opt-in only. Downloads are checked against GitHub's size and SHA-256 and a pinned Ed25519 signature before an installer can run.
+- **No cloud**: the only optional outbound traffic is the AI provider you configure.
+
+## Build and test
+
+### Prerequisites
+
+- **Rust** 1.95+ ([rustup.rs](https://rustup.rs)); the core builds on older stable, the desktop uses eframe/egui 0.37.
+- **Linux desktop**: `libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libssl-dev`.
+- **Android**: JDK 21, Android SDK platform 36, build-tools 36.0.0, NDK 29.0.13846066, `cargo-ndk`, and the Android Rust targets.
+- **Node.js** 24+ only for the static homepage.
+
+### Core
+
+```bash
+source ~/.enclave-dev/env.sh
+cargo test --manifest-path core/Cargo.toml
+```
+
+### Rust desktop
+
+```bash
+cargo test --locked --manifest-path apps/desktop/Cargo.toml
+cargo clippy --locked --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
+cargo fmt --manifest-path apps/desktop/Cargo.toml --check
+cargo build --locked --manifest-path apps/desktop/Cargo.toml
+cargo run --manifest-path apps/desktop/Cargo.toml
+```
+
+The desktop uses the same app-data directory as earlier Enclave builds (`com.enclave.app`) so it can open an existing vault. Set `ENCLAVE_APP_DIR` to isolate development. On WSL2/WSLg use `WGPU_BACKEND=gl LIBGL_ALWAYS_SOFTWARE=1`; see [`apps/desktop/README.md`](apps/desktop/README.md).
+
+### Android
+
+```bash
+source ~/.enclave-dev/android-env.sh
+./apps/android/scripts/build-core.sh
+cd apps/android && ./gradlew assembleDebug testDebugUnitTest
+```
+
+Release signing uses `scripts/android-sign.sh`; the keystore environment is documented in the workflow. See [`apps/android/README.md`](apps/android/README.md) for the app layout and known gaps.
+
+### Homepage
+
+```bash
+node scripts/build-site.mjs
+python3 -m http.server 8080 -d site-dist
+```
+
+### Release pre-flight
+
+```bash
+bash scripts/release-check.sh
+```
+
+It checks the desktop Cargo version, the Android `version.properties`, the CHANGELOG and Android `versionCode` ordering before a tag is cut.
+
+## Repository layout
+
+```
+enclave/
+├── core/                           # Shared Rust core, its own Cargo workspace
+│   ├── core-db/                    # SQLCipher storage, FTS5, sqlite-vec, sync merge
+│   ├── core-network/               # mDNS + WebSocket transport, handshake, sealed frames
+│   └── core-api/                   # Shell-agnostic API; UniFFI for Android; Rust for desktop
+├── apps/
+│   ├── desktop/                    # Rust desktop: egui shell + headless block engine
+│   └── android/                    # Native Android: Kotlin + Jetpack Compose
+├── docs/                           # Contract, decisions, plans, status, history, brand
+├── site/                           # Static homepage
+├── scripts/                        # Site build, Android signing, release checks
+└── .github/workflows/              # Desktop, Android and homepage CI
+```
+
+## Screenshots
+
+| Home | Editor | Drawer |
+| --- | --- | --- |
+| ![Android home](docs/screenshots/mobile-home.png) | ![Android editor](docs/screenshots/mobile-editor.png) | ![Android drawer](docs/screenshots/mobile-drawer.png) |
 
 ## Documentation
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
-- [SECURITY.md](SECURITY.md) — vulnerability reporting and security model
-- [docs/HISTORY.md](docs/HISTORY.md) — what the project was built with, why, and what changed
-- [docs/STATUS.md](docs/STATUS.md) — what is done and what comes next (the handoff tracker)
-- [docs/CONTRACT.md](docs/CONTRACT.md) — the four versioned surfaces every app must honour (vault schema, block JSON, sync protocol, FFI)
-- [docs/decisions/](docs/decisions/README.md) — architecture decision records (ADRs) and the decision map
-- [docs/plans/dedicated-native-apps.md](docs/plans/dedicated-native-apps.md) — the plan for dedicated native desktop and Android apps
-- [docs/brand/](docs/brand/README.md) — the logo, mark, wordmark, colour and usage rules
-- [site/](site/README.md) — the public homepage (static, deployed to GitHub Pages)
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development, validation and release rules.
+- [SECURITY.md](SECURITY.md) — the security model and vulnerability reporting.
+- [docs/CONTRACT.md](docs/CONTRACT.md) — vault schema, block JSON, sync protocol and app boundary.
+- [docs/STATUS.md](docs/STATUS.md) — current state and next work.
+- [docs/HISTORY.md](docs/HISTORY.md) — project timeline and stack changes.
+- [docs/decisions/](docs/decisions/README.md) — architecture decision records.
+- [docs/plans/](docs/plans/) — native app plan and desktop feature work.
+- [docs/brand/](docs/brand/README.md) — logo, mark, wordmark, fonts and usage.
+- [site/](site/README.md) — the public homepage.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

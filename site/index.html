@@ -134,7 +134,7 @@
           <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
           <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
         </button>
-        <a class="btn btn-primary btn-small head-cta" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest" data-os-download aria-label="Download Enclave">
+        <a class="btn btn-primary btn-small head-cta" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest" data-os-download aria-label="Legacy Enclave release">
           <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
           <span data-os-label>Download</span>
         </a>
@@ -158,7 +158,7 @@
         <div class="cta-row rise">
           <a class="btn btn-primary" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest" data-os-download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-            <span data-os-label>Download Enclave</span>
+            <span data-os-label>Legacy release</span>
           </a>
           <a class="btn btn-secondary" href="#app" data-tour-start>Take the tour <svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg></a>
         </div>
@@ -550,12 +550,12 @@
           <div class="cta-row">
             <a class="btn btn-primary" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">
               <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-              Get the current release
+              Get the legacy release
             </a>
             <a class="btn btn-secondary" href="https://github.com/Pranesh-Selvaraj/Enclave/milestones">Roadmap <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
           </div>
-          <p class="hero-note">Native app in development · shipping stable is the Tauri build</p>
-          <p class="android-source">Screenshots from the native app as it stands today — not yet the shipping build. Pair it with a desktop app from the same release train: it is not supported against the previous stable desktop (v1.13.0), though the vault and wire format are unchanged.</p>
+          <p class="hero-note">Native apps in development · Tauri is retired; the previous release remains available</p>
+          <p class="android-source">Screenshots from the native app as it stands today. The native desktop is in development; Tauri v1.15.0 vaults remain compatible because the schema and wire format are unchanged.</p>
         </div>
         <div class="phone-row" data-reveal>
           <a class="phone-shot" href="assets/screenshots/mobile-home.png" data-caption="Android — home in the Cards layout, with plain-text previews">
@@ -695,9 +695,9 @@
 
             <article class="roadmap-pane" id="roadmap-next" role="tabpanel" aria-labelledby="roadmap-tab-next" inert>
               <header class="roadmap-pane-head">
-                <p class="phase-status phase-status-gate"><i></i> Decision gate</p>
+                <p class="phase-status"><i></i> In development</p>
                 <h3>A native desktop, with no browser engine.</h3>
-                <p>Once the desktop stack gate closes, the native shell follows on the same core — with the platform integration a webview cannot give.</p>
+                <p>The fully Rust desktop is being built on the same core — one native editor, native platform integration and no webview. The Tauri desktop is retired.</p>
               </header>
               <ul class="phase-list">
                 <li>Vault flow, sidebar, editor, whiteboard, databases, graph and split view.</li>
@@ -707,7 +707,7 @@
               </ul>
               <div class="phase-exit">
                 <p class="label">Exit criteria</p>
-                <p>Feature parity with the desktop Tauri app, a screen-reader and keyboard-only pass, and signed updates verified on all three OSes.</p>
+                <p>Feature parity with the retired Tauri desktop, a screen-reader and keyboard-only pass, and signed updates verified on all three OSes.</p>
               </div>
             </article>
 
@@ -715,17 +715,17 @@
               <header class="roadmap-pane-head">
                 <p class="phase-status phase-status-gated"><i></i> Criteria-gated</p>
                 <h3>Two native apps, one vault.</h3>
-                <p>Parity is proven by interop tests, not manual demos. The native apps ship alongside the Tauri app until every surface matches, then the webview shell is retired.</p>
+                <p>Parity is proven by interop tests, not manual demos. The native Android and Rust desktop are the only builds on `main`; Tauri survives as historical tags and vault fixtures.</p>
               </header>
               <ul class="phase-list">
-                <li>The cross-app interop matrix in CI: Tauri ↔ native Android ↔ native desktop.</li>
+                <li>The interop matrix in CI: Tauri-created vault fixtures ↔ native Android ↔ native desktop.</li>
                 <li>Release pipelines for both native apps: signing, versioning, changelog.</li>
                 <li>Vault migrations tested against every released fixture.</li>
-                <li>Retire Tauri only when the parity checklist is green.</li>
+                <li>The parity checklist is green before the desktop is called the product.</li>
               </ul>
               <div class="phase-exit">
                 <p class="label">Exit criteria</p>
-                <p>A v1.13 vault opens in both native apps, syncs with an unmodified Tauri app, and the Tauri app can be removed without losing features or data.</p>
+                <p>A Tauri v1.15.0 vault opens in both native apps and syncs with a native peer; the Tauri app is no longer required to build or release.</p>
               </div>
             </article>
           </div>
@@ -787,12 +787,12 @@
     <section class="section" id="download" aria-labelledby="download-title">
       <div class="wrap">
         <header class="download-head" data-reveal>
-          <p class="label">Download</p>
+          <p class="label">Legacy download</p>
           <h2 id="download-title">Start with <span class="hl">a blank page.</span></h2>
-          <p class="lead">One vault, every device you own. Download the latest stable release, then let your devices find each other on your Wi‑Fi — no server in between.</p>
+          <p class="lead">The native apps are in development. The previous Tauri release remains available for existing users; every release is checksummed and update-verified.</p>
           <a class="btn btn-primary btn-large" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest" data-os-download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-            <span data-os-label>Download Enclave</span>
+            <span data-os-label>Legacy release</span>
           </a>
         </header>
 
@@ -801,25 +801,25 @@
             <span class="os-tag">Linux</span>
             <h3>Linux</h3>
             <p>x86_64 · <code>.deb</code> or <code>.AppImage</code></p>
-            <span class="download-foot"><span class="status status-stable">Stable</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
+            <span class="download-foot"><span class="status status-stable">Legacy</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
           </li>
           <li class="download-card" data-os="windows">
             <span class="os-tag">Windows</span>
             <h3>Windows</h3>
             <p>x86_64 · <code>.msi</code> or <code>.exe</code></p>
-            <span class="download-foot"><span class="status status-stable">Stable</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
+            <span class="download-foot"><span class="status status-stable">Legacy</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
           </li>
           <li class="download-card" data-os="mac">
             <span class="os-tag">macOS</span>
             <h3>macOS</h3>
             <p>Apple Silicon · <code>.dmg</code></p>
-            <span class="download-foot"><span class="status status-stable">Stable</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
+            <span class="download-foot"><span class="status status-stable">Legacy</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
           </li>
           <li class="download-card" data-os="android">
             <span class="os-tag">Android</span>
             <h3>Android</h3>
             <p>arm64 · signed <code>.apk</code></p>
-            <span class="download-foot"><span class="status status-beta">Beta</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
+            <span class="download-foot"><span class="status status-stable">Legacy</span><a class="download-go" href="https://github.com/Pranesh-Selvaraj/Enclave/releases/latest">Download <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></span>
           </li>
         </ul>
 
@@ -830,7 +830,7 @@
             <a class="text-link" href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/CONTRIBUTING.md">Build from source <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
           </div>
         </div>
-        <p class="migration-note" data-reveal><strong>Building the next Enclave.</strong> The latest stable release above is the supported product while the dedicated native apps are built. <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/plans/dedicated-native-apps.md">Read the plan <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></p>
+        <p class="migration-note" data-reveal><strong>Building the next Enclave.</strong> The native desktop and Android apps are in development. The release above is the retired Tauri build, kept for existing users. <a href="https://github.com/Pranesh-Selvaraj/Enclave/blob/main/docs/plans/dedicated-native-apps.md">Read the plan <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></p>
 
         <details class="install-help" data-reveal>
           <summary>Installing and verifying</summary>
@@ -942,7 +942,7 @@
         <li><button type="button" role="option" tabindex="-1" data-command="security" data-keywords="encryption vault crypto argon2"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span>Security model</span><small>Trust boundaries</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="android" data-keywords="phone beta apk mobile"><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span>Android beta</span><small>The same vault, in your pocket</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="faq" data-keywords="questions answers offline phrase"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>FAQ</span><small>Answers before trust</small></button></li>
-        <li><button type="button" role="option" tabindex="-1" data-command="download" data-keywords="install release linux windows mac android"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Go to downloads</span><small>Latest stable release</small></button></li>
+        <li><button type="button" role="option" tabindex="-1" data-command="download" data-keywords="install release linux windows mac android"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Go to downloads</span><small>Last Tauri release</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="docs" data-keywords="documentation readme changelog decisions"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>Documentation</span><small>Built in the open</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="copy-view" data-keywords="share url link current view"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy link to this view</span><small>Share the open demo</small></button></li>
         <li><button type="button" role="option" tabindex="-1" data-command="theme" data-keywords="dark light appearance toggle"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span>Toggle light/dark theme</span><small>Appearance</small></button></li>

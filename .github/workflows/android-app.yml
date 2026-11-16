@@ -1,8 +1,9 @@
 name: Android app
 
-# Builds and tests the native Android app in apps/android. The `Android`
-# workflow only covers the Tauri shell under src-tauri/gen/android, so until
-# now the app that replaces it was compiled by nobody but the developer (#210).
+# Builds and tests the native Android app in apps/android. Tag builds also
+# produce the signed APK/AAB and attach them to the GitHub release; until
+# #241 lands, treat the release job as the first iteration of the native
+# pipeline rather than a proven production flow.
 on:
   pull_request:
     branches: [main]
@@ -10,6 +11,8 @@ on:
       - 'apps/android/**'
       - 'core/**'
       - '.github/workflows/android-app.yml'
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -91,6 +94,12 @@ jobs:
         working-directory: apps/android
         run: ./gradlew :app:assembleDebug
 
+      # Catch release-only R8/ProGuard regressions on every PR, not only when a
+      # tag is cut. The output is unsigned here; signing happens in the release job.
+      - name: Build the unsigned release APK + AAB (R8 gate)
+        working-directory: apps/android
+        run: ./gradlew :app:assembleRelease :app:bundleRelease
+
       - name: Upload the APK
         uses: actions/upload-artifact@v4
         with:
@@ -105,3 +114,95 @@ jobs:
           name: android-app-test-results
           path: apps/android/app/build/test-results/testDebugUnitTest/*.xml
           if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install platform 36, build-tools 36.0.0 and NDK 29
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13846066"
+          echo "$ANDROID_HOME/ndk/29.0.13846066/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build the core for Android
+        run: ./apps/android/scripts/build-core.sh
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13846066
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK + AAB
+        working-directory: apps/android
+        run: ./gradlew :app:assembleRelease :app:bundleRelease -PappVersionName="${GITHUB_REF_NAME#v}"
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13846066
+
+      - name: Sign APK + AAB
+        run: bash scripts/android-sign.sh
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Sign artifacts for the updater
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::error::UPDATE_SIGNING_KEY is not set — refusing to publish unsigned assets"
+            exit 1
+          fi
+          mapfile -t files < <(ls apps/android/app/build/outputs/apk/release/enclave-android-release.apk apps/android/app/build/outputs/bundle/release/app-release.aab | sort)
+          node scripts/sign-release.mjs --sums apps/android/app/build/outputs/SHA256SUMS "${files[@]}"
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 ~ "^## \[" ver "\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md | sed '/./,$!d' > release-notes.md
+          test -s release-notes.md
+
+      - name: Attach APK + AAB to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/android/app/build/outputs/apk/release/enclave-android-release.apk
+            apps/android/app/build/outputs/apk/release/enclave-android-release.apk.sig
+            apps/android/app/build/outputs/bundle/release/app-release.aab
+            apps/android/app/build/outputs/bundle/release/app-release.aab.sig
+            apps/android/app/build/outputs/SHA256SUMS
+            apps/android/app/build/outputs/SHA256SUMS.sig
+          body_path: release-notes.md

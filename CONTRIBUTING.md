@@ -1,307 +1,88 @@
 # Contributing to Enclave
 
-Thanks for contributing. Enclave is a security-sensitive local-first app — every change that touches crypto, storage, or networking needs extra care.
+Enclave is a native-only repository: a shared Rust core, a Rust desktop app and a Kotlin/Compose Android app. The retired Tauri/Svelte app is preserved in Git history and release tags; it is not part of `main` (ADR 0014).
 
-## Before You Write Code
+## Prerequisites
 
-- **Open an issue first.** Describe what you want to build or fix. This prevents wasted work on something that may not fit the project direction.
-- For bugs, include reproduction steps. For features, explain the problem it solves.
-- If you're unsure if something belongs, ask in the issue. YAGNI is a rule here — we avoid speculative features.
+- **Rust** 1.95+ — [rustup.rs](https://rustup.rs). The core builds on older stable; the desktop uses eframe/egui 0.37.
+- **Linux desktop**: `libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libssl-dev`
+- **Android**: JDK 21, Android SDK platform 36, build-tools 36.0.0, NDK 29.0.13846066, `cargo-ndk`; rustup targets `aarch64-linux-android` (+ `x86_64-linux-android` for emulators).
+- **Node.js** 24+ only for the static homepage; there is no npm workspace or frontend build.
+- **macOS/Windows**: the Rust desktop builds with the platform toolchains; packaging/signing is tracked in [#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241).
 
-## Development Setup
-
-### Prerequisites
-
-- **Rust** 1.95+ — [rustup.rs](https://rustup.rs). The core itself has a lower MSRV; the fully Rust desktop uses eframe/egui 0.37, whose MSRV is 1.95.
-- **Node.js** 24+ (26 recommended) — [nvm](https://github.com/nvm-sh/nvm) recommended
-- **Linux**: `sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev` (the last group is for the Rust desktop's winit/wgpu window)
-- **macOS**: Xcode Command Line Tools
-- **Windows**: Microsoft Visual Studio C++ Build Tools + WebView2
-- **Android**: JDK 21+, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066, rustup targets `aarch64-linux-android` (+ `x86_64-linux-android` for emulators) — see the [Android section](README.md#android-beta) of the README.
-
-### Getting Started
+## Validate
 
 ```bash
-git clone git@github.com:Pranesh-Selvaraj/Enclave.git
-cd Enclave
-npm install
-```
-
-### Running the App
-
-```bash
-# Full Tauri desktop app
-npx tauri dev
-```
-
-### Android builds & signing
-
-```bash
-# Prereqs (see README "Android (Beta)"): JDK 21, Android SDK + NDK, rustup targets
-export ANDROID_HOME=~/Android/Sdk NDK_HOME=$ANDROID_HOME/ndk/29.0.13846066 JAVA_HOME=<jdk21>
-
-# Build the release APK + AAB (arm64)
-cd src-tauri && npx tauri android build --target aarch64 && cd ..
-
-# Live dev run on an emulator/device (Vite HMR + native rebuilds)
-cd src-tauri && npx tauri android dev
-
-# Sign both artifacts
-scripts/android-sign.sh
-```
-
-**Keystore** (never commit it):
-
-```bash
-keytool -genkeypair -v -keystore ~/Android/keystore/enclave-release.jks \
-  -alias enclave -keyalg RSA -keysize 2048 -validity 10000 \
-  -storepass "<random>" -keypass "<random>" -dname "CN=Enclave, OU=Mobile, O=Enclave, C=US"
-echo "<random>" > ~/Android/keystore/enclave-release.jks.password && chmod 600 ~/Android/keystore/enclave-release.jks.password
-```
-
-The script reads `KEYSTORE_PATH`/`KEYSTORE_B64` + passwords from env (CI uses secrets);
-without a keystore it warns and exits 0 so fork PRs stay green. CI signing uses
-`ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
-`ANDROID_KEY_PASSWORD` secrets (see `.github/workflows/android.yml`).
-
-### Running Tests
-
-```bash
-# Editor — markdown round-trip + jsdom insert/toolbar integration
-npm test -w @enclave/editor
-npm run test:insert -w @enclave/editor
-
-# Crypto pipeline (BIP39 → Argon2id → AES-GCM)
-npx tsx packages/crypto/test.ts
-
-# Sync engine — two-peer convergence + 3+ peer lossy/slow stress
-npx tsx packages/sync-engine/test.ts
-npx tsx packages/sync-engine/stress.test.ts
-
-# Frontend unit tests (AI client, CSP, graph links, save retries, whiteboard layout)
-npx tsx apps/frontend/tests/ai.test.ts
-npx tsx apps/frontend/tests/csp.test.ts
-npx tsx apps/frontend/tests/graphLinks.test.ts
-npx tsx apps/frontend/tests/saveRetry.test.ts
-npx tsx apps/frontend/tests/wbLayout.test.ts
-
-# Rust type-check + workspace tests
-cargo check --manifest-path src-tauri/Cargo.toml
+# Core
+source ~/.enclave-dev/env.sh
 cargo test --manifest-path core/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
 
-# Rust desktop (in development) — direct core-api crate, no C ABI
-cargo test --manifest-path apps/desktop/Cargo.toml
-cargo clippy --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
+# Rust desktop
+cargo test --locked --manifest-path apps/desktop/Cargo.toml
+cargo clippy --locked --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
 cargo fmt --manifest-path apps/desktop/Cargo.toml --check
+cargo build --locked --manifest-path apps/desktop/Cargo.toml
 
-# Frontend type-check (svelte-check)
-npm run check -w @enclave/frontend
+# Native Android (core + bindings + JVM tests + APK)
+source ~/.enclave-dev/android-env.sh
+./apps/android/scripts/build-core.sh
+cd apps/android && ./gradlew assembleDebug testDebugUnitTest
+cd -
 
-# Android — JVM unit tests (widget cache, note JSON)
-cd src-tauri/gen/android && ./gradlew :app:testUniversalDebugUnitTest && cd -
+# Public homepage
+node scripts/build-site.mjs
 
-# Android — regenerate the UniFFI Kotlin bindings and check for drift
-# (CI runs the same check; see docs in core/core-api/src/ffi.rs)
-cd src-tauri && cargo run -p core-api --features uniffi,cli --bin uniffi-bindgen -- \
-  generate --library target/debug/libcore_api.so --language kotlin \
-  --out-dir gen/android/app/src/main/java && git diff --exit-code -- gen/android/app/src/main/java/uniffi/ && cd -
-
-# UI audit (screenshots + DOM checks, desktop + phone profiles). Local tool only:
-# the scheduled CI job was retired with the web UI it audits.
-npm run audit:ui
+# Release pre-flight (versions/versionCode before tagging)
+# Until the native release train lands (#241) this reports the historical
+# Tauri v1.15.0 versionCode as the last release; tag releases are paused.
+bash scripts/release-check.sh
 ```
 
-CI runs all of the above plus the platform builds; a PR that fails any check won't merge.
+The native desktop's window smoke needs a display; see `apps/desktop/README.md` for WSL2/Xvfb notes.
 
-## Project Structure
+## Project structure
 
 ```
 enclave/
-├── .github/workflows/build.yml   # CI: tests + Windows/Linux/macOS builds + releases
-├── apps/frontend/                 # Shared SvelteKit frontend — Tauri desktop + Android shells
-│   ├── src/
-│   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ai.ts (OpenAI-compatible
-│   │   │                         #   client + vault settings), importExport.ts, graphLinks.ts,
-│   │   │                         #   wbLayout.ts, updates.ts, haptics.ts, ActionSheet,
-│   │   │                         #   VaultGuard, Settings, Whiteboard, UpdateDialog
-│   │   └── routes/               # +layout, home notes grid, [id] editor, split, graph,
-│   │                             #   capture, widget
-│   └── tests/                    # ai, csp, graphLinks, saveRetry, wbLayout unit tests
-├── apps/android/                  # Native Android app — Kotlin + Jetpack Compose + UniFFI
-├── apps/desktop/                  # Native desktop app — fully Rust, direct core-api dependency
-├── packages/
-│   ├── crypto/                   # BIP39, Argon2id, AES-256-GCM (TypeScript)
-│   ├── editor/                   # Tiptap 3 Svelte 5 wrapper + extensions + markdown + templates
-│   ├── sync-engine/              # Standalone Yjs CRDT library. NOT used for app sync —
-│   │                             #   the desktop app syncs via Rust snapshot merge.
-│   └── ui/                       # Shared Svelte components, theme store, types
-├── core/                          # The shared Rust core (its own Cargo workspace)
-│   ├── core-db/                   # SQLite + SQLCipher storage, FTS5, embeddings, sync merge
-│   ├── core-network/              # mDNS + WebSocket P2P
-│   └── core-api/                  # Shell-agnostic API, UniFFI for Android, direct use by desktop
-├── src-tauri/
-│   ├── src/                       # Tauri command bridge + sync protocol + tray + updater
-│   └── tauri.conf.json            # App config, CSP, bundle targets
-├── docs/                         # README screenshots
-├── tools/ui-audit/               # Screenshot + DOM audit suite, run locally
-├── tsconfig.base.json            # Shared TypeScript base config
-└── package.json                  # npm workspace root
+├── core/                          # The only shared code; its own Cargo workspace
+│   ├── core-db/                   # SQLCipher, FTS5, sqlite-vec, sync merge
+│   ├── core-network/              # mDNS + WebSocket transport and crypto
+│   └── core-api/                  # Shell-agnostic API + UniFFI bindings
+├── apps/
+│   ├── desktop/                   # Fully Rust desktop: egui shell + headless editor engine
+│   └── android/                   # Native Android: Kotlin + Jetpack Compose
+├── docs/                          # Contract, ADRs, plans, status, history, brand
+│   └── screenshots/               # Native Android screenshots
+├── site/                          # Static homepage (no framework, no analytics)
+├── scripts/                       # Site build, native Android signing, release checks
+└── .github/workflows/             # Desktop, native Android and homepage CI
 ```
 
-## Making Changes
+## Making changes
 
-1. Open an issue describing the change.
-2. Create a branch from `main`. Work happens on feature or `stage/N-<slug>` branches; each stage is merged to `main` via PR.
-3. Make your change. Follow existing code style — match what's already there, don't introduce new patterns.
-4. Write a test if the change is non-trivial. Existing tests are plain `test.ts` files run with `tsx` — follow that pattern.
-5. Run type checks and tests (see above).
-6. Open a PR referencing the issue.
+1. Open or find an issue. Every branch, commit, PR and release note references it.
+2. Branch from `main`; never commit or release from `main`.
+3. Keep the change focused. Add a test for non-trivial behaviour. The editor engine, contract fixtures and vault lifecycle are all test-gated.
+4. Run the validation above. A change that touches `core/` must not break either native app.
+5. Open a PR with the linked issue and the validation evidence.
 
-## Work tracking
+## Compatibility rules
 
-Every bug, feature request, UX finding and contract or architecture change is tracked as a GitHub issue. Open or link the issue before or with the change, and reference it from the commit or PR (`Refs #N`, `Closes #N`). Chat threads, local notes and scratch documents are not the record.
+- The Rust core is the only implementation of crypto, storage, block JSON, search, sync and updates.
+- `docs/CONTRACT.md` and its golden fixtures are the compatibility gate. A contract change updates the version, fixtures and docs in the same change.
+- A Tauri-created vault must still open in both native apps; the retired Tauri app is a historical peer, not a build target.
+- The desktop depends on `core-api` as a Rust crate. Android uses UniFFI. Do not add a C ABI or a webview.
+- No cloud, accounts or telemetry. AI is opt-in; local-first by default.
 
-- Attach screenshots, recordings or the failing output to the issue.
-- Attach screenshots for visual work. The repository tokens, brand vectors and app code are the record; a Figma file is optional exploration, not a design source.
-- A request that changes the architecture (for example multiple vaults in one app) gets an issue now and an ADR when it is taken up.
+## Releases
 
-### Code Style
+Native release pipelines are tracked in [#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241). Until they land, tag releases pause; existing Tauri releases remain installable. `scripts/release-check.sh` validates the desktop version, Android `version.properties` and the CHANGELOG before tagging.
 
-- **TypeScript**: existing patterns in `packages/*/src/` and `apps/*/src/`. Use Svelte 5 runes (`$state`, `$effect`, `$derived`), not Svelte 4 stores. Runes must be in `.svelte.ts`/`.svelte.js` files — plain `.ts` files cannot use them.
-- **Rust**: `cargo fmt` + `cargo clippy`. No `unsafe` without justification.
-- **No new dependencies** unless there's a strong reason. Prefer stdlib, existing deps, or a few lines of code.
-- **No abstractions without at least two callers.** An interface for one implementation, a factory for one product, or a config value that never changes — these get deleted in review.
-- Mark deliberate simplifications with a `ponytail:` comment.
+Release notes follow the standing rule: a detailed, self-contained prose description in `CHANGELOG.md` and the same text on the forge release page. Never substitute generated PR lists or commit logs for the notes.
 
-## Security-Sensitive Areas
+## Security
 
-Changes to these files need extra scrutiny — tag them clearly in the PR description:
-
-- `packages/crypto/src/index.ts` — key derivation, encryption/decryption
-- `core/core-db/src/lib.rs` — encrypted storage, PRAGMA key handling, sync merge, FTS/embedding queries
-- `core/core-network/` — peer discovery, plaintext WebSocket transport, redial
-- `apps/frontend/src/lib/VaultGuard.svelte` — password/seed handling, vault.key read/write
-- `apps/frontend/src/lib/backend.ts` — the Tauri IPC bridge; the single place the frontend invokes Rust commands
-- `apps/frontend/src/lib/ai.ts` — sends page content to the configured LLM endpoint when AI is enabled; reads/writes vault settings incl. the API key
-- `src-tauri/src/embed.rs` — built-in offline embedding model (fastembed/ONNX)
-- `apps/frontend/src/routes/[id]/+page.svelte` — editor UI; rebuilds embeddings from page content on save
-
-Notes on trust boundaries:
-
-- **AI content handling**: when the AI assistant is enabled, page content is sent to the endpoint in `enclave-ai` (vault settings, encrypted at rest) — local servers by default; any https endpoint once an API key is added. With **offline embeddings** on, retrieval content never leaves the device.
-
-Rules for crypto/non-trivial changes: leave one runnable check behind. For security code, show the test passing in the PR description.
-
-## Decision Records
-
-Significant technical decisions are recorded in the repository, not only in chat or PR discussion. `docs/HISTORY.md` is the project timeline, `docs/decisions/` holds the Architecture Decision Records (ADRs), and `docs/decisions/README.md` is the index and decision map.
-
-Record a decision when it changes any of: the UI stack, shell or architecture, storage engine, crypto, sync protocol, vault or block schema, FFI/contract, repository layout, platform support, or distribution/update mechanism. An ADR states what was chosen, why, the alternatives, the consequences, and — when it replaces an earlier choice — what was wrong before.
-
-Do it in the same change that makes the decision. Never delete an old ADR: mark it `Superseded by NNNN` and add the new record. A change that only implements an already-recorded decision does not need a new ADR, but it must update `docs/HISTORY.md` if it changes an era or a contract version.
-
-The four contract surfaces (vault schema, block JSON, sync protocol, FFI) are summarised in [`docs/CONTRACT.md`](docs/CONTRACT.md). A change to any of them updates the golden fixtures and that document in the same commit — the fixture tests fail otherwise, by design.
-
-## Issue Labels
-
-- `bug` — something's broken
-- `enhancement` — new feature or improvement
-- `security` — vulnerability or security hardening
-- `documentation` — docs only
-- `good first issue` — small, self-contained, good for new contributors
-
-## License
-
-MIT. By contributing, you agree that your contributions will be licensed under the MIT License.
-
-## The native Android app's version
-
-The native app carries its own version, separate from the Tauri app's counter
-(`src-tauri/gen/android/app/tauri.properties`): `apps/android/version.properties`
-holds `versionName` and `versionCode`, and a build may override either with
-`-PappVersionName=… -PappVersionCode=…` so CI can stamp a tag onto it.
-
-Settings → About shows what the **package manager** reports for the installed
-build — name, version code and the commit it was built from — so a build under
-test can be identified without guessing.
-
-## Releasing
-
-1. **Bump the version** to `<new>` across `package.json`, `apps/frontend/package.json`,
-   `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` (Cargo.lock updates on the
-   next `cargo check`).
-2. **Changelog** — add the new release to the top of `CHANGELOG.md` and
-   update the compare links at the bottom. Every release uses the same layout:
-
-   - Heading: `## [<new>] - YYYY-MM-DD` (no `v`, ISO date).
-   - A one-paragraph prose summary of the release under the heading.
-   - Section headings in this order, each carrying an emoji and omitted when
-     empty: `### ✨ Added`, `### ⚡ Improved`, `### 🔧 Changed`,
-     `### 🗑️ Removed`, `### 🐛 Fixed`, `### 🔒 Security`, `### 📝 Notes`.
-   - One single-line, emoji-prefixed bullet per change, starting with a bold
-     headline: `- 🔐 **Short headline.** What changed, why, and the concrete
-     fix, with issue/PR/advisory references.`
-
-   Add `[<new>]: .../compare/v<previous>...v<new>` to the reference block at
-   the bottom so the heading links to its diff.
-
-   **Release notes must be self-contained prose.** Say, in words, what was
-   added, changed, improved and fixed, and explain the concrete cause and fix
-   behind each item — including advisory, issue or CVE references where they
-   exist. Never ship forge-generated “What's Changed” PR/branch lists, and
-   never point readers at a branch, diff or commit instead of the
-   description. The `CHANGELOG.md` entry and the forge release body must
-   carry the same detailed text; after publishing, check the release page and
-   replace generated notes if the forge injected them. Write each paragraph
-   and bullet on a single line (no manual hard wrapping) — GitHub renders
-   single newlines as hard breaks, so wrapped text shows as ragged lines.
-3. **Verify** — `cargo test --manifest-path core/Cargo.toml`,
-   `cargo test --manifest-path src-tauri/Cargo.toml`, and
-   `cargo test --manifest-path apps/desktop/Cargo.toml`,
-   `npm run check -w @enclave/frontend`, and (for Android) a release build:
-   `cd src-tauri && npx tauri android build --target aarch64` with
-   `ANDROID_HOME`/`NDK_HOME`/`JAVA_HOME` set — confirms the Android config
-   (versionCode auto-increment, manifests) is valid.
-4. **Never push directly to `main`** — branch protection requires a PR,
-   and the agent must honor that even when bypass rights exist. Commit on a
-   release branch, open a PR with the changelog entry in the description,
-   merge it, then tag + publish:
-
-   ```bash
-   git tag -a v<new> -m "v<new>"
-   git push origin main --tags
-   ```
-
-   Pushing the tag makes CI create the GitHub release: the title is the bare tag
-   `v<new>`, matching the git tag and the `## [<new>]` changelog heading, and the
-   body is extracted from that changelog entry, so the page and `CHANGELOG.md`
-   carry the same text. The description lives in the body, never in the title.
-   If the page needs correcting, edit it in place rather than re-creating it:
-
-   ```bash
-   gh release edit v<new> --title "v<new>" --notes "$(changelog body)"
-   ```
-
-Android release signing runs in CI (`.github/workflows/android.yml`) with the
-`ANDROID_KEYSTORE_*` secrets — the keystore itself stays out of the repo and must
-be backed up off-machine (losing it makes installed copies unupdatable).
-
-Update signing follows the same rule (issue #83). CI signs every release asset
-with the `UPDATE_SIGNING_KEY` secret — the `release` job in
-`.github/workflows/build.yml` and the Android workflow — producing `<asset>.sig`
-plus `SHA256SUMS`/`SHA256SUMS.sig`. The app verifies the signature against the
-public key pinned in `src-tauri/src/update_signature.rs` and refuses unsigned
-downloads, so a tag build whose "Sign release assets" step fails is not
-installable until fixed.
-
-The secret is a PKCS#8 Ed25519 PEM. Generate it, keep it offline and back it up
-(losing it means shipping a release signed by a new key can only be installed
-manually), then set it:
-
-```bash
-node --input-type=module -e "import { generateKeyPairSync } from 'node:crypto'; import { writeFileSync } from 'node:fs'; const { publicKey, privateKey } = generateKeyPairSync('ed25519'); writeFileSync('enclave-update-signing.pem', privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 }); console.log(publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex'));"
-gh secret set UPDATE_SIGNING_KEY < enclave-update-signing.pem
-```
-
-Update the pinned public key constant with the printed hex when rotating.
+- No `unsafe` without justification and review.
+- Fuzz or property-test parsers and transforms where applicable.
+- Never log vault contents, keys, recovery phrases or AI prompts.
+- Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.

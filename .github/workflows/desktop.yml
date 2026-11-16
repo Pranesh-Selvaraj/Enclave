@@ -1,0 +1,49 @@
+name: Desktop
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'core/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libssl-dev
+
+      - name: Core tests
+        run: cargo test --manifest-path core/Cargo.toml
+
+      - name: Desktop tests
+        run: cargo test --locked --manifest-path apps/desktop/Cargo.toml
+
+      - name: Desktop lint
+        run: cargo clippy --locked --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
+
+      - name: Desktop format
+        run: cargo fmt --manifest-path apps/desktop/Cargo.toml --check
+
+      - name: Desktop build
+        run: cargo build --locked --manifest-path apps/desktop/Cargo.toml

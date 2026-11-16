@@ -322,7 +322,7 @@ pub struct FfiCore {
 impl FfiCore {
     #[uniffi::constructor]
     pub fn new(app_dir: String) -> Arc<Self> {
-        // Shared with the Tauri editor island when both run in one process.
+        // Shared by native shells in one process.
         Arc::new(Self { core: EnclaveCore::global(app_dir) })
     }
 

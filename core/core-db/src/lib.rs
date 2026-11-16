@@ -857,7 +857,7 @@ pub fn insert_block(db: &Connection, block: &Block) -> rusqlite::Result<()> {
     fts_index_block(db, block)
 }
 
-/// Upsert a block (the shape the Tauri command uses) and keep the FTS index
+/// Upsert a block (the shape the shell write path uses) and keep the FTS index
 /// in sync. created_at is preserved by not touching it in DO UPDATE.
 pub fn upsert_block(db: &Connection, block: &Block) -> rusqlite::Result<Block> {
     db.execute(

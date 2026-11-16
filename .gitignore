@@ -1,31 +1,14 @@
-# Dependencies
-node_modules/
-
-# SvelteKit build output
-apps/*/build/
-apps/*/.svelte-kit/
-build/
-.svelte-kit/
-# Assembled by `npm run site:build` — deploy artifact, never committed
+# Build output
+core/target/
+apps/desktop/target/
 site-dist/
 
-# Tauri / Rust
-src-tauri/target/
-core/target/
-# Generated Android project — COMMITTED so native customizations persist
-# (cleartext config, adaptive icon, future MulticastLock). Only volatile or
-# machine-specific artifacts are ignored; the rest of gen/android is tracked.
-src-tauri/gen/android/.gradle/
-src-tauri/gen/android/buildSrc/.gradle/
-src-tauri/gen/android/buildSrc/build/
-src-tauri/gen/android/**/build/
-src-tauri/gen/android/app/tauri.build.gradle.kts
-src-tauri/gen/android/app/proguard-tauri.pro
-src-tauri/gen/android/tauri.settings.gradle
-src-tauri/gen/android/app/src/main/jniLibs/
-src-tauri/gen/android/app/src/main/assets/
-src-tauri/gen/android/app/src/main/**/generated/
-src-tauri/gen/android/local.properties
+# Android build output (the app's own .gitignore also covers these)
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+apps/android/app/src/main/jniLibs/
 
 # IDE & Tools
 .opencode/
@@ -50,14 +33,10 @@ Thumbs.db
 # Testing
 coverage/
 
-# TypeScript
-*.tsbuildinfo
-
 # ── Agent workflow artifacts (never committed) ─────────────────────────────
 AGENTS.md
 hooks/
 skills/
-# Active AI editors on this project (see issue #7)
 .claude/
 .cursor/
 
@@ -66,9 +45,3 @@ skills/
 *.orig
 __pycache__/
 dist/
-
-# UI-audit output (screenshots + report) — regenerate with `npm run audit:ui`
-tools/ui-audit/shots/
-
-# Rust desktop build output
-apps/desktop/target/

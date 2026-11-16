@@ -6,3 +6,8 @@
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# JNA references desktop AWT classes that do not exist on Android. R8 must not
+# fail the release build for those missing references; the native app never
+# uses the AWT path. (The retired Tauri Android shell carried the same rule.)
+-dontwarn java.awt.**
