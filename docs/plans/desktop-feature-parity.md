@@ -120,7 +120,7 @@ The retired Tauri desktop (the `v1.15.0` tag and earlier) is the **feature basel
 | Signed installers (.deb/.AppImage, .msi/NSIS, .dmg) and notarisation | ⬜ | [#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241) |
 | Verified auto-update (SHA-256 + Ed25519) | 🟡 | Core verifier exists; desktop orchestration [#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241) |
 | Android share target/widgets/Quick Settings tile | ✅ (Android) | Native Android, not desktop |
-| iOS | 🗄️ | Deliberately out of scope; contract must not preclude it |
+| iOS | ⬜ | Roadmap: a native iOS app on the same core/contract; not part of desktop parity |
 
 ## 7. Security and compatibility invariants
 

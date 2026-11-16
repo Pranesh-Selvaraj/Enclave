@@ -28,7 +28,7 @@ Ship a native Rust desktop and a native Android app that share no UI code, both 
 ## Non-goals
 
 - A shared UI framework or shared components between desktop and Android.
-- iOS (the contract must not preclude it, but it is not in this plan).
+- iOS is on the roadmap as a future native app on the same core and contract, but it is not part of the current milestone.
 - Rewriting the vault, crypto or sync protocol.
 - Keeping a buildable Tauri/Svelte app on `main`.
 
