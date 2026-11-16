@@ -1,9 +1,8 @@
 //! Enclave desktop — a fully Rust shell over the shared `core-api`.
 //!
-//! This first slice deliberately stops at the foundation: the app opens a
-//! vault, lists notes and proves that the desktop can consume the core as a
-//! normal Rust crate (no C ABI). The headless editor engine is the next gate;
-//! the placeholder editor in `app.rs` will be replaced by it.
+//! This slice opens a vault, lists notes, proves that the desktop can consume
+//! the core as a normal Rust crate (no C ABI), and edits a note through the
+//! headless engine with autosave. IME and accessibility are the next gate.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

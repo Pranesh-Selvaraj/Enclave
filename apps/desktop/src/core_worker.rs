@@ -27,6 +27,8 @@ pub enum Command {
     CreateVault(String),
     Unlock(String),
     ListNotes,
+    LoadNote(String),
+    SaveDoc { document_id: String, json: String },
     CreateNote(String),
     Lock,
     Shutdown,
@@ -37,6 +39,16 @@ pub enum Event {
     VaultCreated(String),
     Unlocked,
     Notes(Vec<NoteSummary>),
+    NoteLoaded {
+        id: String,
+        doc_json: Option<String>,
+    },
+    NoteCreated {
+        id: String,
+    },
+    Saved {
+        id: String,
+    },
     Locked,
     Error(String),
 }
@@ -103,8 +115,61 @@ impl CoreWorker {
                         Command::ListNotes => {
                             let _ = event_tx.send(notes_event(&core));
                         }
+                        Command::LoadNote(id) => match core.get_blocks(&id) {
+                            Ok(blocks) => {
+                                let doc_json = blocks
+                                    .into_iter()
+                                    .find(|block| block.block_type == "doc")
+                                    .map(|block| block.content.to_string());
+                                let _ = event_tx.send(Event::NoteLoaded { id, doc_json });
+                            }
+                            Err(error) => {
+                                let _ = event_tx.send(Event::Error(error.to_string()));
+                            }
+                        },
+                        Command::SaveDoc { document_id, json } => {
+                            let content = match serde_json::from_str::<serde_json::Value>(&json) {
+                                Ok(content) => content,
+                                Err(error) => {
+                                    let _ = event_tx.send(Event::Error(format!(
+                                        "could not serialise the page: {error}"
+                                    )));
+                                    ctx.request_repaint();
+                                    continue;
+                                }
+                            };
+                            match core.get_blocks(&document_id) {
+                                Ok(blocks) => {
+                                    let existing = blocks
+                                        .iter()
+                                        .find(|block| block.block_type == "doc")
+                                        .or_else(|| blocks.first());
+                                    let (block_id, sort_order) = existing
+                                        .map(|block| (block.id.clone(), block.sort_order))
+                                        .unwrap_or_else(|| (format!("{document_id}-doc"), 1.0));
+                                    match core.upsert_block(
+                                        &block_id,
+                                        &document_id,
+                                        "doc",
+                                        content,
+                                        sort_order,
+                                    ) {
+                                        Ok(_) => {
+                                            let _ = event_tx.send(Event::Saved { id: document_id });
+                                        }
+                                        Err(error) => {
+                                            let _ = event_tx.send(Event::Error(error.to_string()));
+                                        }
+                                    }
+                                }
+                                Err(error) => {
+                                    let _ = event_tx.send(Event::Error(error.to_string()));
+                                }
+                            }
+                        }
                         Command::CreateNote(title) => match core.create_document(&title) {
-                            Ok(_) => {
+                            Ok(document) => {
+                                let _ = event_tx.send(Event::NoteCreated { id: document.id });
                                 let _ = event_tx.send(notes_event(&core));
                             }
                             Err(error) => {

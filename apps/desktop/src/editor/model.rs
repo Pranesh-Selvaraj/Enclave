@@ -1,13 +1,17 @@
 //! Headless ProseMirror document model.
 //!
-//! This is the first slice of the in-house editor engine: a lossless JSON
-//! representation of the contract in `docs/CONTRACT.md` §2. It does not edit
-//! yet — the next slices add transactions, selection and history — but it
-//! proves the boundary the native editor must honour: the canonical fixture
-//! round-trips through Rust without a webview, and unknown attributes survive.
+//! This is the contract boundary the editor engine builds on. It is lossless:
+//! unknown node types and attributes survive a load/save cycle, so a newer
+//! document can pass through an older editor without being rewritten. Editing
+//! operations live in [`crate::editor::engine`].
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// A path from the document root's `content` to one node. An empty path is the
+/// document itself; `[3, 0, 0]` is the first paragraph inside the first list
+/// item of the fourth top-level block.
+pub type NodePath = Vec<usize>;
 
 /// A ProseMirror/TipTap document root.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,20 +78,55 @@ impl ProseMirrorDoc {
         Ok(doc)
     }
 
-    #[allow(dead_code)] // the save path lands with the view engine; tests use it today
     pub fn to_json_string(&self) -> String {
         // Serialisation cannot fail for this owned tree.
         serde_json::to_string(self).expect("serialise a ProseMirror document")
     }
 
-    #[allow(dead_code)] // used by the fixture tests and the upcoming view engine
     pub fn to_value(&self) -> Value {
         serde_json::to_value(self).expect("serialise a ProseMirror document")
     }
 
-    /// A plain-text projection for the notes list and previews. This is not
-    /// the editor's layout; it is only enough to show a note before the view
-    /// engine exists.
+    /// Resolve a path relative to the root's `content`.
+    pub fn node(&self, path: &[usize]) -> Option<&ProseMirrorNode> {
+        find_node(&self.content, path)
+    }
+
+    pub fn node_mut(&mut self, path: &[usize]) -> Option<&mut ProseMirrorNode> {
+        find_node_mut(&mut self.content, path)
+    }
+
+    /// Insert `node` after the node at `path`, in the same parent.
+    pub fn insert_sibling(&mut self, path: &[usize], node: ProseMirrorNode) -> bool {
+        let Some((last, parent)) = path.split_last() else {
+            return false;
+        };
+        let Some(content) = self.content_mut_at(parent) else {
+            return false;
+        };
+        if *last > content.len() {
+            return false;
+        }
+        content.insert(last + 1, node);
+        true
+    }
+
+    /// Remove and return the node at `path`.
+    pub fn remove_node(&mut self, path: &[usize]) -> Option<ProseMirrorNode> {
+        let (last, parent) = path.split_last()?;
+        let content = self.content_mut_at(parent)?;
+        (last < &content.len()).then(|| content.remove(*last))
+    }
+
+    /// The mutable child list of the node at `path`; empty path is the root.
+    pub fn content_mut_at(&mut self, path: &[usize]) -> Option<&mut Vec<ProseMirrorNode>> {
+        if path.is_empty() {
+            return Some(&mut self.content);
+        }
+        self.node_mut(path)?.content.as_mut()
+    }
+
+    /// A plain-text projection for previews and tests.
     pub fn plain_text(&self) -> String {
         let mut out = String::new();
         for node in &self.content {
@@ -111,6 +150,95 @@ impl ProseMirrorDoc {
             validate_node(node, 0, &mut nodes)?;
         }
         Ok(())
+    }
+}
+
+impl ProseMirrorNode {
+    pub fn text_node(text: impl Into<String>, marks: Option<Vec<ProseMirrorMark>>) -> Self {
+        let text = text.into();
+        Self {
+            node_type: "text".to_owned(),
+            attrs: None,
+            content: None,
+            marks,
+            text: Some(text),
+        }
+    }
+
+    pub fn paragraph(content: Vec<ProseMirrorNode>) -> Self {
+        Self {
+            node_type: "paragraph".to_owned(),
+            attrs: None,
+            content: (!content.is_empty()).then_some(content),
+            marks: None,
+            text: None,
+        }
+    }
+
+    pub fn is_text_block(&self) -> bool {
+        matches!(
+            self.node_type.as_str(),
+            "paragraph" | "heading" | "codeBlock"
+        )
+    }
+
+    pub fn children(&self) -> &[ProseMirrorNode] {
+        self.content.as_deref().unwrap_or(&[])
+    }
+
+    pub fn children_mut(&mut self) -> Option<&mut Vec<ProseMirrorNode>> {
+        self.content.as_mut()
+    }
+
+    pub fn inline_text(&self) -> String {
+        let mut out = String::new();
+        for child in self.children() {
+            if let Some(text) = &child.text {
+                out.push_str(text);
+            } else if child.node_type == "hardBreak" {
+                out.push('\n');
+            }
+        }
+        out
+    }
+}
+
+impl ProseMirrorMark {
+    pub fn new(mark_type: impl Into<String>) -> Self {
+        Self {
+            mark_type: mark_type.into(),
+            attrs: None,
+        }
+    }
+
+    pub fn with_attrs(mark_type: impl Into<String>, attrs: Value) -> Self {
+        Self {
+            mark_type: mark_type.into(),
+            attrs: Some(attrs),
+        }
+    }
+}
+
+fn find_node<'a>(nodes: &'a [ProseMirrorNode], path: &[usize]) -> Option<&'a ProseMirrorNode> {
+    let (first, rest) = path.split_first()?;
+    let node = nodes.get(*first)?;
+    if rest.is_empty() {
+        Some(node)
+    } else {
+        find_node(node.content.as_deref()?, rest)
+    }
+}
+
+fn find_node_mut<'a>(
+    nodes: &'a mut [ProseMirrorNode],
+    path: &[usize],
+) -> Option<&'a mut ProseMirrorNode> {
+    let (first, rest) = path.split_first()?;
+    let node = nodes.get_mut(*first)?;
+    if rest.is_empty() {
+        Some(node)
+    } else {
+        find_node_mut(node.content.as_mut()?.as_mut_slice(), rest)
     }
 }
 
@@ -173,7 +301,7 @@ mod tests {
     use super::*;
 
     const CANONICAL_FIXTURE: &str =
-        include_str!("../../../core/core-db/tests/fixtures/block-schema-v1.json");
+        include_str!("../../../../core/core-db/tests/fixtures/block-schema-v1.json");
 
     #[test]
     fn canonical_fixture_round_trips_semantically() {
@@ -206,6 +334,32 @@ mod tests {
         assert!(text.contains("Phase 0 editor slice"));
         assert!(text.contains("First bullet"));
         assert!(text.contains("Todo item"));
+    }
+
+    #[test]
+    fn resolves_and_mutates_paths() {
+        let mut doc = ProseMirrorDoc::from_json_str(
+            r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a"}]},{"type":"paragraph","content":[{"type":"text","text":"b"}]}]}"#,
+        )
+        .expect("doc");
+        assert_eq!(
+            doc.node(&[0]).map(|node| node.node_type.as_str()),
+            Some("paragraph")
+        );
+        doc.node_mut(&[0]).expect("paragraph").node_type = "heading".to_owned();
+        assert_eq!(
+            doc.node(&[0]).map(|node| node.node_type.as_str()),
+            Some("heading")
+        );
+        assert!(doc.insert_sibling(
+            &[0],
+            ProseMirrorNode::paragraph(vec![ProseMirrorNode::text_node("middle", None)])
+        ));
+        assert_eq!(doc.content.len(), 3);
+        assert_eq!(
+            doc.remove_node(&[1]).map(|node| node.inline_text()),
+            Some("middle".to_owned())
+        );
     }
 
     #[test]
