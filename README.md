@@ -14,7 +14,7 @@
 
 > [!IMPORTANT]
 > **Enclave is migrating to dedicated native apps for every platform.**
-> The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
+> The repository is being rebuilt as an enterprise-grade product with a dedicated application per platform (see the [plan](docs/plans/dedicated-native-apps.md) and the [decision records](docs/decisions/README.md)). The desktop is moving to a **fully Rust** app with an in-house headless editor engine ([ADR 0013](docs/decisions/0013-fully-rust-desktop.md)); Tauri remains the shipping desktop until it reaches parity. The `main` branch is under active development for that rebuild, so its code, structure and UI may not resemble the latest release and may change without notice.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
 
 | Layer | Technology |
 |-------|-----------|
-| **Shells** | Tauri v2 (Rust) — desktop (WebKitGTK / WebView2 / WKWebView) and Android (system WebView), one SvelteKit frontend + one Rust core |
+| **Shells** | Tauri v2 (Rust) — the current shipping desktop (WebKitGTK / WebView2 / WKWebView) and Android (system WebView), one SvelteKit frontend + one Rust core. A fully Rust desktop ([ADR 0013](docs/decisions/0013-fully-rust-desktop.md)) is in development alongside it |
 | **Frontend** | SvelteKit (static adapter) + Svelte 5 |
 | **Editor** | Tiptap 3 (ProseMirror) + custom Svelte 5 wrapper, extensions and page templates |
 | **Storage** | SQLite + SQLCipher (AES-256-CBC with HMAC-SHA512) |
@@ -67,6 +67,7 @@ by address from the sidebar (Sync → Add peer, e.g. `192.168.1.5:4242`).
 | **Windows** (x86_64) | Supported | `.msi`, `.exe` (NSIS installer) |
 | **macOS** (Apple Silicon) | Supported | `.dmg` |
 | **Android** (arm64) | Beta | Signed `.apk` / `.aab` (CI-built, monotonic versionCode) |
+| **Desktop, native Rust** | In development | Foundation in [`apps/desktop`](apps/desktop/README.md); Tauri remains the supported desktop until parity |
 
 ## Android (Beta)
 
@@ -237,6 +238,13 @@ npm install
 ```bash
 npx tauri dev
 # Compiles the Rust backend and opens the desktop window
+```
+
+**Native Rust desktop (in development):**
+
+```bash
+cargo run --manifest-path apps/desktop/Cargo.toml
+# Rust UI shell + direct core-api integration; see apps/desktop/README.md
 ```
 
 ### 3. Production Build

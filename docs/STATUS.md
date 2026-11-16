@@ -2,17 +2,17 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a phase forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), and the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md).
 
-Last updated: 2026-11-12 (v1.15.0) — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup or recover a forgotten PIN with the recovery phrase without creating a vault, and Settings now has auto-lock, editor text size/page width, a visual custom-accent picker, a Monochrome theme and per-page widget sharing, and the home/note surfaces now use a Keep-inspired drawer, card previews and action sheet; the Phase 1 contract is complete; the Figma documentation plugin and its token export were retired, and the brand vectors live in [`docs/brand/`](brand/README.md).
+Last updated: 2026-11-16 — the desktop moved to a **fully Rust** stack (ADR 0013): a Rust UI shell, an in-house headless block editor engine and a direct dependency on `core-api`; the Qt/C++ plan is superseded. Previous update: 2026-11-12 (v1.15.0) — the branded gate (lockup → register → repeat PIN → seed → login) is verified on a real Nothing A063, can restore a backup or recover a forgotten PIN with the recovery phrase without creating a vault, and Settings now has auto-lock, editor text size/page width, a visual custom-accent picker, a Monochrome theme and per-page widget sharing, and the home/note surfaces now use a Keep-inspired drawer, card previews and action sheet; the Phase 1 contract is complete; the Figma documentation plugin and its token export were retired, and the brand vectors live in [`docs/brand/`](brand/README.md).
 
 ## Where we are
 
 | Area | State | Notes |
 | --- | --- | --- |
-| Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; its own workspace; 68 tests |
+| Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; its own workspace; 73 tests |
 | Contract (ADR 0006) | ✅ Complete | vault schema v1 + ordered migrations + golden block fixture; transport/app sync frames and handshake crypto locked by fixtures; [`CONTRACT.md`](CONTRACT.md) documents all four surfaces and the compatibility matrix |
 | Android app (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; the branded gate is verified on a real phone; the rest of the manual pass is pending |
-| Desktop app | ⏸ Parked | ADR 0004 is *Proposed* (Qt 6 leaning; per-OS trio an escalation; Avalonia a measured fallback). PR #177 is intentionally **unmerged** |
-| Tauri app (current desktop + Android) | ✅ Shipping | `v1.13.0`; `main` is migration code — see the README notice |
+| Desktop app | 🟡 Foundation | Fully Rust (ADR 0013). `apps/desktop` scaffold consumes `core-api` directly and has 6 tests (worker create/unlock/lock, vault persistence, fixture round-trip); the headless editor engine is the open gate. Qt/C++ (ADR 0004) is superseded |
+| Tauri app (current desktop + Android) | ✅ Shipping | `v1.15.0`; stays the supported desktop until the Rust app reaches parity |
 | Web frontend (`apps/frontend`) | ✅ Used by Tauri | retired when the native apps replace it |
 
 ## Android — done
@@ -49,17 +49,20 @@ Last updated: 2026-11-12 (v1.15.0) — the branded gate (lockup → register →
 
 ## Core — next
 
-1. **App-side interop CI** — Phase 4: run the same core SHA and golden fixtures from the app builds (Tauri + native Android) so "desktop and Android can still sync" is a CI result, not an assumption.
-2. **C ABI** — only once ADR 0004 names the desktop stack; the contract doc marks it as planned, not implemented.
-3. Nothing pending for the widget projection; `widget_notes()` and the revision counter are covered by tests.
+1. **App-side interop CI** — Phase 4: run the same core SHA and golden fixtures from the app builds (Rust desktop + native Android) so "desktop and Android can still sync" is a CI result, not an assumption.
+2. **No C ABI** — ADR 0013 removes the planned C ABI. The Rust desktop depends on `core-api` as a crate; Android keeps UniFFI. The contract doc reflects this.
+3. **Sync v4** — block-level deltas, compression, attachments, settings/templates and resumable transfers; Android first, then the Rust desktop. This benefits the primary product before the desktop ships.
+4. Nothing pending for the widget projection; `widget_notes()` and the revision counter are covered by tests.
 
-## Desktop — parked
+## Desktop — fully Rust track
 
-ADR 0004 stays *Proposed* until the stack is settled. Phase 0's editor slice was spiked in Avalonia (evidence in `~/.enclave-dev/phase0-native-apps/`), and Qt has not been verified because it cannot be installed on the current dev machine (no passwordless sudo). **Do not merge PR #177** until the desktop decision is made on purpose.
+ADR 0013 replaces Qt with a fully Rust desktop: a Rust UI shell (initial candidate egui/eframe), an in-house headless block editor engine and a direct Rust dependency on `core-api`. There is no C ABI and no C++ in the product. Android stays Kotlin + Compose; **both apps are products**. Android is the current release focus while the desktop foundation is built.
+
+The first change set is the foundation: `apps/desktop` opens a vault, lists notes and proves the core boundary. The open gate is the editor engine: load the canonical ProseMirror fixture, edit it, round-trip it through the core, then prove IME, AccessKit, tables/tasks and 2,000-block latency. Only after that gate does the shell grow into the daily driver. Tauri remains the shipping desktop until the Rust app passes a published parity checklist. The old Qt Phase 0 gate (#229) is superseded by #233; the Avalonia/Qt evidence stays in `~/.enclave-dev/` for the record.
 
 ## Open work
 
-Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate), [#189](https://github.com/Pranesh-Selvaraj/Enclave/issues/189) (auto-lock/editor preferences), [#190](https://github.com/Pranesh-Selvaraj/Enclave/issues/190) (custom accents), [#191](https://github.com/Pranesh-Selvaraj/Enclave/issues/191) (per-page widgets), [#192](https://github.com/Pranesh-Selvaraj/Enclave/issues/192) (shorter copy), [#194](https://github.com/Pranesh-Selvaraj/Enclave/issues/194) (forgot PIN/password), [#195](https://github.com/Pranesh-Selvaraj/Enclave/issues/195) (remove Lock now), [#196](https://github.com/Pranesh-Selvaraj/Enclave/issues/196) (visual accent picker) and [#197](https://github.com/Pranesh-Selvaraj/Enclave/issues/197) (Monochrome theme) and [#207](https://github.com/Pranesh-Selvaraj/Enclave/issues/207) (Keep-inspired navigation and note actions) are implemented. The remaining Settings ideas are individual requests: biometric unlock [#198](https://github.com/Pranesh-Selvaraj/Enclave/issues/198), screenshot/recents protection [#199](https://github.com/Pranesh-Selvaraj/Enclave/issues/199), background sync policy [#200](https://github.com/Pranesh-Selvaraj/Enclave/issues/200), backup reminders [#201](https://github.com/Pranesh-Selvaraj/Enclave/issues/201), default creation type [#202](https://github.com/Pranesh-Selvaraj/Enclave/issues/202), haptics/reduce motion [#203](https://github.com/Pranesh-Selvaraj/Enclave/issues/203), delete/trash [#204](https://github.com/Pranesh-Selvaraj/Enclave/issues/204), update channel [#205](https://github.com/Pranesh-Selvaraj/Enclave/issues/205) and widget accent [#206](https://github.com/Pranesh-Selvaraj/Enclave/issues/206).
+Tracked as GitHub issues: [#233](https://github.com/Pranesh-Selvaraj/Enclave/issues/233) tracks the fully Rust desktop (foundation, editor engine, AI and sync v4); [#229](https://github.com/Pranesh-Selvaraj/Enclave/issues/229) is the superseded Qt Phase 0 gate. [#184](https://github.com/Pranesh-Selvaraj/Enclave/issues/184) multiple vaults (feature idea), [#185](https://github.com/Pranesh-Selvaraj/Enclave/issues/185) self-contained backups, [#186](https://github.com/Pranesh-Selvaraj/Enclave/issues/186) untitled shared notes, [#187](https://github.com/Pranesh-Selvaraj/Enclave/issues/187) the debug-build updater, [#188](https://github.com/Pranesh-Selvaraj/Enclave/issues/188) the remaining real-device pass. [#183](https://github.com/Pranesh-Selvaraj/Enclave/issues/183) (restore from the gate), [#189](https://github.com/Pranesh-Selvaraj/Enclave/issues/189) (auto-lock/editor preferences), [#190](https://github.com/Pranesh-Selvaraj/Enclave/issues/190) (custom accents), [#191](https://github.com/Pranesh-Selvaraj/Enclave/issues/191) (per-page widgets), [#192](https://github.com/Pranesh-Selvaraj/Enclave/issues/192) (shorter copy), [#194](https://github.com/Pranesh-Selvaraj/Enclave/issues/194) (forgot PIN/password), [#195](https://github.com/Pranesh-Selvaraj/Enclave/issues/195) (remove Lock now), [#196](https://github.com/Pranesh-Selvaraj/Enclave/issues/196) (visual accent picker) and [#197](https://github.com/Pranesh-Selvaraj/Enclave/issues/197) (Monochrome theme) and [#207](https://github.com/Pranesh-Selvaraj/Enclave/issues/207) (Keep-inspired navigation and note actions) are implemented. The remaining Settings ideas are individual requests: biometric unlock [#198](https://github.com/Pranesh-Selvaraj/Enclave/issues/198), screenshot/recents protection [#199](https://github.com/Pranesh-Selvaraj/Enclave/issues/199), background sync policy [#200](https://github.com/Pranesh-Selvaraj/Enclave/issues/200), backup reminders [#201](https://github.com/Pranesh-Selvaraj/Enclave/issues/201), default creation type [#202](https://github.com/Pranesh-Selvaraj/Enclave/issues/202), haptics/reduce motion [#203](https://github.com/Pranesh-Selvaraj/Enclave/issues/203), delete/trash [#204](https://github.com/Pranesh-Selvaraj/Enclave/issues/204), update channel [#205](https://github.com/Pranesh-Selvaraj/Enclave/issues/205) and widget accent [#206](https://github.com/Pranesh-Selvaraj/Enclave/issues/206).
 
 ## Platform status and compatibility
 
@@ -67,8 +70,8 @@ Tracked as GitHub issues: [#184](https://github.com/Pranesh-Selvaraj/Enclave/iss
 | --- | --- |
 | Android, Tauri | Shipping — `v1.14.0`; rebuilt against the updated core, no visual changes |
 | Android, native (Kotlin/Compose) | **Next stable, in development** — in the repository and used on a real device (Nothing A063, Android 15), not released; `0.2.0-native`, unsigned, `versionCode` 2, About shows the installed version and build commit |
-| Desktop, Tauri | Shipping — `v1.14.0`; unchanged beyond the core |
-| Desktop, native (Qt 6) | **In development** — ADR 0004 accepted, verification gate still open, no code |
+| Desktop, Tauri | Shipping — `v1.15.0`; the supported desktop until the Rust app reaches parity |
+| Desktop, native (Rust) | **In development** — ADR 0013 accepted; `apps/desktop` foundation and the headless editor gate are in progress |
 
 **Supported pairing: two builds from the same release train.** The native Android stable is **not supported against the previous stable desktop (v1.13.0)** — different app on the same core, sync never exercised against the Tauri desktop, and it writes the app-level blocks (`icon`, `widget`) that build ignores. The vault schema (v1) and wire protocol (v3) are unchanged, so this is a support boundary, not a format break.
 

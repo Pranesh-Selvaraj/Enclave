@@ -12,9 +12,9 @@ Thanks for contributing. Enclave is a security-sensitive local-first app — eve
 
 ### Prerequisites
 
-- **Rust** 1.77+ — [rustup.rs](https://rustup.rs)
+- **Rust** 1.95+ — [rustup.rs](https://rustup.rs). The core itself has a lower MSRV; the fully Rust desktop uses eframe/egui 0.37, whose MSRV is 1.95.
 - **Node.js** 24+ (26 recommended) — [nvm](https://github.com/nvm-sh/nvm) recommended
-- **Linux**: `sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`
+- **Linux**: `sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev` (the last group is for the Rust desktop's winit/wgpu window)
 - **macOS**: Xcode Command Line Tools
 - **Windows**: Microsoft Visual Studio C++ Build Tools + WebView2
 - **Android**: JDK 21+, Android SDK (platform 36, build-tools 36.0.0), NDK 29.0.13846066, rustup targets `aarch64-linux-android` (+ `x86_64-linux-android` for emulators) — see the [Android section](README.md#android-beta) of the README.
@@ -90,6 +90,11 @@ cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path core/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 
+# Rust desktop (in development) — direct core-api crate, no C ABI
+cargo test --manifest-path apps/desktop/Cargo.toml
+cargo clippy --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
+cargo fmt --manifest-path apps/desktop/Cargo.toml --check
+
 # Frontend type-check (svelte-check)
 npm run check -w @enclave/frontend
 
@@ -114,7 +119,7 @@ CI runs all of the above plus the platform builds; a PR that fails any check won
 ```
 enclave/
 ├── .github/workflows/build.yml   # CI: tests + Windows/Linux/macOS builds + releases
-├── apps/frontend/                 # Shared SvelteKit frontend — desktop + Android shells
+├── apps/frontend/                 # Shared SvelteKit frontend — Tauri desktop + Android shells
 │   ├── src/
 │   │   ├── lib/                  # backend.ts (Tauri IPC bridge), ai.ts (OpenAI-compatible
 │   │   │                         #   client + vault settings), importExport.ts, graphLinks.ts,
@@ -123,19 +128,21 @@ enclave/
 │   │   └── routes/               # +layout, home notes grid, [id] editor, split, graph,
 │   │                             #   capture, widget
 │   └── tests/                    # ai, csp, graphLinks, saveRetry, wbLayout unit tests
+├── apps/android/                  # Native Android app — Kotlin + Jetpack Compose + UniFFI
+├── apps/desktop/                  # Native desktop app — fully Rust, direct core-api dependency
 ├── packages/
 │   ├── crypto/                   # BIP39, Argon2id, AES-256-GCM (TypeScript)
 │   ├── editor/                   # Tiptap 3 Svelte 5 wrapper + extensions + markdown + templates
 │   ├── sync-engine/              # Standalone Yjs CRDT library. NOT used for app sync —
 │   │                             #   the desktop app syncs via Rust snapshot merge.
 │   └── ui/                       # Shared Svelte components, theme store, types
+├── core/                          # The shared Rust core (its own Cargo workspace)
+│   ├── core-db/                   # SQLite + SQLCipher storage, FTS5, embeddings, sync merge
+│   ├── core-network/              # mDNS + WebSocket P2P
+│   └── core-api/                  # Shell-agnostic API, UniFFI for Android, direct use by desktop
 ├── src-tauri/
-│   ├── crates/
-│   │   ├── core-db/              # SQLite + SQLCipher storage, FTS5, embeddings, sync merge (Rust)
-│   │   ├── core-network/         # mDNS + WebSocket P2P (Rust)
-│   │   └── core-api/             # Shell-agnostic API + UniFFI bindings for Android
-│   ├── src/                      # Tauri command bridge + sync protocol + tray + updater
-│   └── tauri.conf.json           # App config, CSP, bundle targets
+│   ├── src/                       # Tauri command bridge + sync protocol + tray + updater
+│   └── tauri.conf.json            # App config, CSP, bundle targets
 ├── docs/                         # README screenshots
 ├── tools/ui-audit/               # Screenshot + DOM audit suite, run locally
 ├── tsconfig.base.json            # Shared TypeScript base config
@@ -249,8 +256,9 @@ test can be identified without guessing.
    replace generated notes if the forge injected them. Write each paragraph
    and bullet on a single line (no manual hard wrapping) — GitHub renders
    single newlines as hard breaks, so wrapped text shows as ragged lines.
-3. **Verify** — `cargo test --manifest-path core/Cargo.toml` and
-   `cargo test --manifest-path src-tauri/Cargo.toml`,
+3. **Verify** — `cargo test --manifest-path core/Cargo.toml`,
+   `cargo test --manifest-path src-tauri/Cargo.toml`, and
+   `cargo test --manifest-path apps/desktop/Cargo.toml`,
    `npm run check -w @enclave/frontend`, and (for Android) a release build:
    `cd src-tauri && npx tauri android build --target aarch64` with
    `ANDROID_HOME`/`NDK_HOME`/`JAVA_HOME` set — confirms the Android config

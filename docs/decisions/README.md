@@ -20,7 +20,7 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 | [0001](0001-stack-v1-rust-core-tauri-sveltekit.md) | Stack v1: Rust core + Tauri v2 + SvelteKit | Accepted (to be superseded by 0002) | Stack |
 | [0002](0002-dedicated-native-apps.md) | Dedicated native apps with a shared Rust core | Accepted (execution gated by Phase 0 spike) | Architecture |
 | [0003](0003-monorepo-core-boundary.md) | Monorepo with the core as the only shared code | Accepted | Repository |
-| [0004](0004-desktop-ui-stack.md) | Desktop UI stack: Qt 6 | Accepted | Stack |
+| [0004](0004-desktop-ui-stack.md) | Desktop UI stack: Qt 6 | Superseded by 0013 | Stack |
 | [0005](0005-android-ui-stack.md) | Android UI stack: Kotlin + Jetpack Compose | Accepted | Stack |
 | [0006](0006-shared-contract-versioning.md) | Shared contract: vault, block schema, sync protocol, FFI | Accepted | Compatibility |
 | [0007](0007-vault-restore-semantics.md) | Vault restore semantics | Accepted | Security |
@@ -28,6 +28,7 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 | [0010](0010-user-templates.md) | User-created note templates in the vault's settings table | Accepted | Data / Android |
 | [0011](0011-unlock-secret-has-no-length-policy.md) | The unlock secret has no length policy | Accepted | Security / Android |
 | [0012](0012-multiple-vaults.md) | Multiple vaults with independent unlock secrets | Proposed | Security / Architecture |
+| [0013](0013-fully-rust-desktop.md) | Desktop app: fully Rust, with an in-house headless editor engine | Accepted | Stack / Architecture |
 
 ## Decision map
 
@@ -35,10 +36,12 @@ This directory is the project's long-form memory: **what we chose, why, what we 
 graph TD
     A["0001 · Stack v1<br/>Rust + Tauri v2 + SvelteKit"] -->|webview limits on mobile,<br/>security surface, native integration| B["0002 · Dedicated native apps<br/>shared Rust core, no shared UI"]
     B --> C["0003 · Monorepo<br/>core is the only shared code"]
-    B --> D["0004 · Desktop UI stack<br/>Qt 6 (accepted)"]
+    B --> D["0004 · Desktop UI stack<br/>Qt 6 (superseded)"]
     B --> E["0005 · Android UI stack<br/>Kotlin + Jetpack Compose"]
+    B --> K["0013 · Fully Rust desktop<br/>Rust UI + headless editor"]
     C --> F["0006 · Shared contract<br/>vault · blocks · sync · FFI"]
-    D --> F
+    D -.->|superseded by| K
+    K --> F
     E --> F
     F --> G["0007 · Vault restore<br/>re-auth, same-vault only"]
     G --> H["0010 · User templates<br/>vault settings, 50 max"]

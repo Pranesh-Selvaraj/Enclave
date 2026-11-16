@@ -9,7 +9,7 @@ The **golden fixtures** are the executable half of this document. They are check
 | Vault / SQLite schema | `core-db` | **v1** | `vault_stamps_and_migrates_schema_version`, `vault_schema_contract_is_stable` |
 | Block / document JSON | `core-db` / `core-api` | **v1** | `core-db/tests/fixtures/block-schema-v1.json` |
 | Sync protocol | `core-network` / `core-api` | **v3** | `core-network/tests/fixtures/*-v3.json`, `core-api/tests/fixtures/*-v3.json` |
-| FFI boundary | `core-api` | core semver | `core-api/src/ffi.rs`, generated Kotlin bindings |
+| App boundary | `core-api` | core semver | `core-api/src/ffi.rs`, generated Kotlin bindings; direct Rust dependency for desktop |
 
 Operating rules, from ADR 0006:
 
@@ -107,11 +107,14 @@ desktop client opening a phone-created note sees at most an extra block it
 ignores. Adding a type here is additive and needs no schema bump; **changing the
 payload of an existing type is a contract change** and needs the rules in §5.
 
-## 4. FFI boundary
+## 4. App boundary
 
-`core-api` exposes the shell-agnostic surface; when built with the `uniffi` feature it generates the Kotlin bindings consumed by the native Android app (committed at `apps/android/app/src/main/java/uniffi/core_api/core_api.kt`, loaded through JNA). The UniFFI records and functions in `core-api/src/ffi.rs` are the contract: **additive changes within a core major are compatible; a breaking change requires a core major version and app updates.** The surface carries no separate version number — the core's semver plus the fixture tests are the guard.
+`core-api` exposes the shell-agnostic surface. There are two consumers, with different boundaries:
 
-The C ABI for the desktop stack (ADR 0004) is planned but **not implemented yet**; it will be added with the desktop app and documented here when it exists.
+- **Android** uses the `uniffi` feature, which generates the Kotlin bindings consumed by the native app (committed at `apps/android/app/src/main/java/uniffi/core_api/core_api.kt`, loaded through JNA). The UniFFI records and functions in `core-api/src/ffi.rs` are the contract.
+- **Desktop** is a Rust application and depends on `core-api` as a normal Rust crate (ADR 0013). It uses the core's types, errors and async events directly; there is **no C ABI** and no JSON-over-FFI boundary. The desktop compiles against the core SHA it ships with.
+
+The boundary is versioned with the core's semver: **additive changes within a core major are compatible; a breaking change requires a core major version and app updates.** The surface carries no separate version number — the core's semver plus the fixture tests are the guard.
 
 ## Compatibility matrix
 
@@ -121,7 +124,7 @@ The C ABI for the desktop stack (ADR 0004) is planned but **not implemented yet*
 | Tauri app v1.13.0 (desktop + Android) | core 1.x | v3 | v1 | Previous release. Opens and syncs with v1.14.0: same schema, same protocol. |
 | Native Android `0.1.0-native` (`main`) | core 1.x | v3 | v1 | Next stable, unreleased. Protocol-compatible on paper with both Tauri builds, but **not supported against v1.13.0**: sync has not been exercised against the Tauri desktop, and it writes the app-level `icon`/`widget` blocks that build ignores. |
 | Anything released before v1.9.0 | — | no `v` field | unversioned, migrated to v1 on open | Cannot sync with current builds; refused with update guidance. |
-| Future desktop app | core 1.x | v3 (or negotiated) | v1 (or migrated) | Must land with a C ABI and fixtures before it ships. |
+| Rust desktop (in development) | core 1.x | v3 now; v4 planned | v1 (or migrated) | Direct Rust dependency on `core-api`; must pass the fixture, IME and accessibility gate before it ships. |
 
 The matrix is about **interoperation**, not feature parity: a Tauri v1.13.0 vault opens and syncs with the native Android app on `main` because both speak protocol v3 against schema v1.
 

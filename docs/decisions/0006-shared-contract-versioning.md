@@ -23,6 +23,8 @@ The Rust core owns all four contract surfaces, and each carries an explicit vers
 | Sync protocol | `core-network` | `PROTOCOL_VERSION` (currently 3), negotiated in the handshake | peers refuse mismatched versions with explicit "update this/the peer device" guidance; never silently misinterpret frames |
 | FFI boundary | `core-api` | UniFFI surface + C ABI, versioned with the core's semver | additive changes within a major; breaking changes require a core major version and app updates |
 
+> **Update 2026-11-16:** ADR 0013 replaced the Qt desktop with a fully Rust app. The **C ABI is no longer part of the desktop boundary**; the desktop depends on `core-api` as a Rust crate. Android keeps UniFFI. This narrows the surface rather than changing the versioning rules.
+
 Operating rules:
 
 - **A core release is a contract release.** Any change to a surface above updates the contract tests in the same commit.

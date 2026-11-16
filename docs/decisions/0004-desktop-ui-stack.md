@@ -1,10 +1,10 @@
 # 0004. Desktop UI stack: Qt 6
 
-- **Status:** Accepted — Qt 6 (2026-10-17). Verification gate: Phase 0 must confirm the Qt toolchain and the editor slice before implementation; if that fails, this ADR is superseded.
+- **Status:** Superseded by 0013 — the desktop is fully Rust. Kept for the record; its Phase 0 gate was never passed.
 - **Date:** 2026-10-17
 - **Deciders:** Pranesh Selvaraj
 - **Supersedes:** — (finalises the proposal this record was created with)
-- **Superseded by:** —
+- **Superseded by:** 0013
 
 ## Context
 
