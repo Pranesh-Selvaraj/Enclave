@@ -331,49 +331,63 @@ fun SettingsScreen(
             }
 
             item { SectionTitle("Updates") }
-            item {
-                SettingsRow(
-                    title = "Check for updates",
-                    value = updateBusy,
-                ) {
-                    if (updateBusy != null) return@SettingsRow
-                    scope.launch {
-                        updateBusy = "Checking…"
-                        updateError = null
-                        message = null
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                Core.ffi.checkUpdate(installedVersion(context).first)
-                            }
-                        }
-                            .onSuccess { info ->
-                                updateBusy = null
-                                if (info.updateAvailable) {
-                                    updateInfo = info
-                                } else {
-                                    message = "You're on the latest version (${info.currentVersion})."
+            if (BuildConfig.DEBUG) {
+                item {
+                    Text(
+                        "Test build — updates are disabled. Install a release build to update.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                item {
+                    SettingsRow(
+                        title = "Check for updates",
+                        value = updateBusy,
+                    ) {
+                        if (updateBusy != null) return@SettingsRow
+                        scope.launch {
+                            updateBusy = "Checking…"
+                            updateError = null
+                            message = null
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    Core.ffi.checkUpdate(installedVersion(context).first)
                                 }
                             }
-                            .onFailure {
-                                updateBusy = null
-                                updateError = "Update check failed: ${it.message}"
-                            }
+                                .onSuccess { info ->
+                                    updateBusy = null
+                                    if (info.updateAvailable) {
+                                        updateInfo = info
+                                    } else {
+                                        message = if (info.latestVersion != info.currentVersion) {
+                                            "No native Android update package is available for this build yet (latest release ${info.latestVersion})."
+                                        } else {
+                                            "You're on the latest version (${info.currentVersion})."
+                                        }
+                                    }
+                                }
+                                .onFailure {
+                                    updateBusy = null
+                                    updateError = "Update check failed: ${it.message}"
+                                }
+                        }
                     }
                 }
-            }
-            item {
-                Text(
-                    "Only when you ask; downloads are signature-verified.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                (updateError ?: message)?.let {
-                    Spacer(Modifier.height(6.dp))
+                item {
                     Text(
-                        it,
+                        "Only when you ask; downloads are signature-verified.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    (updateError ?: message)?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 

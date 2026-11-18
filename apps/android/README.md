@@ -23,7 +23,7 @@ The core is shared with the Rust desktop; `core/` is the only implementation of 
 
 ## Signing and release
 
-`scripts/android-sign.sh` signs the release APK/AAB with the keystore secrets. The native release pipeline is being completed in [#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241); tag builds are a first iteration until proven.
+`scripts/android-sign.sh` signs the release APK/AAB with the keystore secrets. The signed APK is named `enclave-native-universal.apk`; the core updater requires that prefix so it can never select a legacy Tauri APK with the same applicationId. The native release pipeline is being completed in [#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241); tag builds are a first iteration until proven.
 
 ## What is here
 

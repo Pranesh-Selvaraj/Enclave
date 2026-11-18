@@ -101,11 +101,13 @@ pub fn verify_update_signature(
 
 /// `sha256:<hex>` → lowercase hex. Any other scheme is refused (fail closed).
 fn expected_sha256(digest: &str) -> CoreResult<String> {
-    let hex = digest
-        .strip_prefix("sha256:")
-        .ok_or_else(|| CoreError::InvalidInput(format!("unsupported update digest scheme: {digest}")))?;
+    let hex = digest.strip_prefix("sha256:").ok_or_else(|| {
+        CoreError::InvalidInput(format!("unsupported update digest scheme: {digest}"))
+    })?;
     if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(CoreError::InvalidInput(format!("malformed sha256 digest: {digest}")));
+        return Err(CoreError::InvalidInput(format!(
+            "malformed sha256 digest: {digest}"
+        )));
     }
     Ok(hex.to_ascii_lowercase())
 }
@@ -144,36 +146,67 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     false
 }
 
-fn platform_suffixes() -> &'static [&'static str] {
-    if cfg!(target_os = "android") {
-        &[".apk"]
-    } else if cfg!(target_os = "windows") {
-        // NSIS exe, not MSI: currentUser over-install works while running and
-        // the installer kills the app in silent mode (see installer.nsi).
-        &[".exe"]
-    } else if cfg!(target_os = "macos") {
-        &[".dmg"]
-    } else {
-        // AppImage runs anywhere (even deb-installed machines), so it is the
-        // update vehicle on Linux.
-        &[".appimage"]
+/// Native Android assets use a distinct prefix so the updater can never select
+/// the legacy Tauri APK that shares the same applicationId. See #224.
+const ANDROID_NATIVE_PREFIX: &str = "enclave-native-";
+
+fn platform_suffixes_for(os: &str) -> &'static [&'static str] {
+    match os {
+        "windows" => {
+            // NSIS exe, not MSI: currentUser over-install works while running
+            // and the installer kills the app in silent mode (see installer.nsi).
+            &[".exe"]
+        }
+        "macos" => &[".dmg"],
+        _ => {
+            // AppImage runs anywhere (even deb-installed machines), so it is
+            // the update vehicle on Linux.
+            &[".appimage"]
+        }
     }
 }
 
-fn pick_asset<'a>(assets: &'a [GhAsset]) -> Option<&'a GhAsset> {
-    let suffixes = platform_suffixes();
-    // Skip the raw unsigned APK the CI glob also uploads — it can't install
+fn asset_matches_platform(os: &str, name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    // Skip the raw unsigned APK the CI glob also uploads — it cannot install
     // over the signed app (signature mismatch).
-    assets.iter().find(|a| {
-        let n = a.name.to_ascii_lowercase();
-        !n.contains("unsigned") && suffixes.iter().any(|s| n.ends_with(s))
-    })
+    if n.contains("unsigned") {
+        return false;
+    }
+    if os == "android" {
+        // A release can carry both the native APK and the retired Tauri APK
+        // with the same package name. Only the former is updatable here.
+        return n.starts_with(ANDROID_NATIVE_PREFIX) && n.ends_with(".apk");
+    }
+    platform_suffixes_for(os)
+        .iter()
+        .any(|suffix| n.ends_with(suffix))
+}
+
+fn pick_asset_for<'a>(os: &str, assets: &'a [GhAsset]) -> Option<&'a GhAsset> {
+    assets
+        .iter()
+        .find(|asset| asset_matches_platform(os, &asset.name))
+}
+
+fn pick_asset<'a>(assets: &'a [GhAsset]) -> Option<&'a GhAsset> {
+    pick_asset_for(std::env::consts::OS, assets)
+}
+
+fn update_is_available(latest: &str, current: &str, has_asset: bool) -> bool {
+    is_newer(latest, current) && has_asset
 }
 
 fn sanitize_filename(name: &str) -> String {
     let safe: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if safe.is_empty() {
         "update.bin".into()
@@ -186,14 +219,16 @@ fn sanitize_filename(name: &str) -> String {
 /// show and the asset the core should download next (never a caller-supplied
 /// URL). Blocking — call it off the async runtime's worker threads.
 pub fn check_for_update(current_version: &str) -> CoreResult<(UpdateInfo, Option<UpdateAsset>)> {
-    let json = ureq::get(&format!("https://api.github.com/repos/{REPO}/releases/latest"))
-        .header("User-Agent", UA)
-        .header("Accept", "application/vnd.github+json")
-        .call()
-        .map_err(|e| CoreError::Network(format!("Update check failed: {e}")))?
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| CoreError::Network(format!("Update check failed: {e}")))?;
+    let json = ureq::get(&format!(
+        "https://api.github.com/repos/{REPO}/releases/latest"
+    ))
+    .header("User-Agent", UA)
+    .header("Accept", "application/vnd.github+json")
+    .call()
+    .map_err(|e| CoreError::Network(format!("Update check failed: {e}")))?
+    .body_mut()
+    .read_to_string()
+    .map_err(|e| CoreError::Network(format!("Update check failed: {e}")))?;
 
     let release: GhRelease = serde_json::from_str(&json)
         .map_err(|e| CoreError::Network(format!("Unexpected release response: {e}")))?;
@@ -203,7 +238,7 @@ pub fn check_for_update(current_version: &str) -> CoreResult<(UpdateInfo, Option
     let info = UpdateInfo {
         current_version: current_version.to_string(),
         latest_version: latest.clone(),
-        update_available: is_newer(&latest, current_version),
+        update_available: update_is_available(&latest, current_version, asset.is_some()),
         notes: release.body.clone().unwrap_or_default(),
         asset_name: asset.map(|a| a.name.clone()),
         asset_size: asset.map(|a| a.size),
@@ -260,12 +295,17 @@ pub fn download_update(asset: &UpdateAsset, dest_dir: &Path) -> CoreResult<Strin
     }
     drop(out);
 
-    let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let actual: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     if let Some(expected) = &expected {
         if !actual.eq_ignore_ascii_case(expected) {
             let _ = std::fs::remove_file(&dest);
             return Err(CoreError::InvalidInput(
-                "Update failed its integrity check (sha256 mismatch) — the download was discarded".into(),
+                "Update failed its integrity check (sha256 mismatch) — the download was discarded"
+                    .into(),
             ));
         }
     }
@@ -284,7 +324,8 @@ pub fn download_update(asset: &UpdateAsset, dest_dir: &Path) -> CoreResult<Strin
     let Some(sig_url) = &asset.sig_url else {
         let _ = std::fs::remove_file(&dest);
         return Err(CoreError::InvalidInput(
-            "This release has no update signature — refusing to install an unverified download".into(),
+            "This release has no update signature — refusing to install an unverified download"
+                .into(),
         ));
     };
     let sig_hex = ureq::get(sig_url)
@@ -395,24 +436,75 @@ mod tests {
         assert!(is_newer("1.13.1", "1.13.0"));
     }
 
+    fn gh(name: &str, url: &str) -> GhAsset {
+        GhAsset {
+            name: name.into(),
+            browser_download_url: url.into(),
+            size: 1,
+            digest: None,
+        }
+    }
+
     #[test]
     fn asset_pick_skips_unsigned_and_matches_the_platform() {
-        let suffix = platform_suffixes()[0];
+        let suffix = platform_suffixes_for("linux")[0];
         let assets = vec![
-            GhAsset {
-                name: format!("enclave-unsigned{suffix}"),
-                browser_download_url: "https://example.invalid/unsigned".into(),
-                size: 1,
-                digest: None,
-            },
-            GhAsset {
-                name: format!("enclave-1.0.0{suffix}"),
-                browser_download_url: "https://example.invalid/signed".into(),
-                size: 2,
-                digest: None,
-            },
+            gh(
+                &format!("enclave-unsigned{suffix}"),
+                "https://example.invalid/unsigned",
+            ),
+            gh(
+                &format!("enclave-1.0.0{suffix}"),
+                "https://example.invalid/signed",
+            ),
         ];
-        let picked = pick_asset(&assets).expect("a signed asset exists");
-        assert_eq!(picked.browser_download_url, "https://example.invalid/signed");
+        let picked = pick_asset_for("linux", &assets).expect("a signed asset exists");
+        assert_eq!(
+            picked.browser_download_url,
+            "https://example.invalid/signed"
+        );
+    }
+
+    #[test]
+    fn android_pick_requires_the_native_prefix() {
+        let assets = vec![
+            gh(
+                "Enclave_1.15.0_universal.apk",
+                "https://example.invalid/tauri.apk",
+            ),
+            gh(
+                "enclave-native-universal.apk",
+                "https://example.invalid/native.apk",
+            ),
+            gh(
+                "enclave-native-universal-unsigned.apk",
+                "https://example.invalid/unsigned.apk",
+            ),
+            gh(
+                "enclave-native-universal.aab",
+                "https://example.invalid/native.aab",
+            ),
+        ];
+        let picked = pick_asset_for("android", &assets).expect("the native APK exists");
+        assert_eq!(
+            picked.browser_download_url,
+            "https://example.invalid/native.apk"
+        );
+    }
+
+    #[test]
+    fn android_without_a_native_asset_offers_no_update() {
+        let assets = vec![gh(
+            "Enclave_1.15.0_universal.apk",
+            "https://example.invalid/tauri.apk",
+        )];
+        assert!(pick_asset_for("android", &assets).is_none());
+        assert!(!update_is_available("1.15.0", "0.2.0-native", false));
+        assert!(update_is_available("0.3.0-native", "0.2.0-native", true));
+    }
+
+    #[test]
+    fn update_is_not_offered_without_a_matching_asset() {
+        assert!(!update_is_available("2.0.0", "1.0.0", false));
     }
 }

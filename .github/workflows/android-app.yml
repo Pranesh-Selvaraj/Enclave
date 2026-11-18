@@ -182,7 +182,7 @@ jobs:
             echo "::error::UPDATE_SIGNING_KEY is not set — refusing to publish unsigned assets"
             exit 1
           fi
-          mapfile -t files < <(ls apps/android/app/build/outputs/apk/release/enclave-android-release.apk apps/android/app/build/outputs/bundle/release/app-release.aab | sort)
+          mapfile -t files < <(ls apps/android/app/build/outputs/apk/release/enclave-native-universal.apk apps/android/app/build/outputs/bundle/release/app-release.aab | sort)
           node scripts/sign-release.mjs --sums apps/android/app/build/outputs/SHA256SUMS "${files[@]}"
 
       - name: Extract release notes from CHANGELOG.md
@@ -199,8 +199,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            apps/android/app/build/outputs/apk/release/enclave-android-release.apk
-            apps/android/app/build/outputs/apk/release/enclave-android-release.apk.sig
+            apps/android/app/build/outputs/apk/release/enclave-native-universal.apk
+            apps/android/app/build/outputs/apk/release/enclave-native-universal.apk.sig
             apps/android/app/build/outputs/bundle/release/app-release.aab
             apps/android/app/build/outputs/bundle/release/app-release.aab.sig
             apps/android/app/build/outputs/SHA256SUMS

@@ -34,7 +34,7 @@ BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
 KEY_ALIAS="${KEY_ALIAS:-enclave}"
 APK="${APK:-apps/android/app/build/outputs/apk/release/app-release-unsigned.apk}"
 AAB="${AAB:-apps/android/app/build/outputs/bundle/release/app-release.aab}"
-OUT_APK="${OUT_APK:-$(dirname "$APK")/enclave-android-release.apk}"
+OUT_APK="${OUT_APK:-$(dirname "$APK")/enclave-native-universal.apk}"
 
 # ── Resolve keystore ─────────────────────────────────────────────────────────
 KEYSTORE=""

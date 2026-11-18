@@ -8,7 +8,7 @@ Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop
 
 | Area | State | Notes |
 | --- | --- | --- |
-| Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; 73 tests; contract fixtures green |
+| Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; 76 tests; contract fixtures green |
 | Contract (ADR 0006) | ✅ Complete | vault schema v1, block JSON v1, sync protocol v3; app boundary documented |
 | Native Android (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; gate and much of the device pass verified on a Nothing A063; remaining hardware checklist in #188 |
 | Rust desktop (`apps/desktop`) | 🟡 Editor prototype | vault gate, notes list, editable text/marks/tasks, split/merge, undo/redo, autosave; 19 tests; IME/accessibility and advanced blocks next |

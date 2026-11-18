@@ -31,12 +31,27 @@ object NoteFactory {
         folderId = folderId,
     )
 
+    /**
+     * Shared text becomes the first non-empty line, capped like a title in
+     * the rest of the UI. If the text starts with blank lines, fall back to
+     * the template title instead of "Untitled note" and a hidden body cue.
+     */
+    internal fun sharedTitle(text: String?, fallback: String): String {
+        val first = text
+            ?.lineSequence()
+            ?.map { it.trim() }
+            ?.firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+        return first.take(80).ifBlank { fallback }
+    }
+
     private suspend fun create(
         template: Templates.Template,
         folderId: String? = null,
         prefill: String? = null,
     ): Document = withContext(Dispatchers.IO) {
-        var doc = Core.ffi.createDocument(template.title)
+        val title = if (prefill.isNullOrBlank()) template.title else sharedTitle(prefill, template.title)
+        var doc = Core.ffi.createDocument(title)
 
         val seed = Core.ffi.getBlocks(doc.id).firstOrNull()
         val blockId = seed?.id ?: UUID.randomUUID().toString()
