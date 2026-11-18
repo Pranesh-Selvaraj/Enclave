@@ -171,8 +171,9 @@ pub fn lockup(
     opacity: f32,
 ) {
     let height = width / LOCKUP_RATIO;
-    let (rect, _) =
+    let (rect, response) =
         ui.allocate_exact_size(Vec2::new(width * 1.75, height * 2.3), egui::Sense::hover());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, "Enclave lockup"));
     if glow_alpha > 0.001 {
         let glow_size = Vec2::splat(width * 1.75);
         let glow_rect = egui::Rect::from_center_size(rect.center(), glow_size);
@@ -199,7 +200,7 @@ pub fn field(
     value: &mut String,
     password: bool,
 ) -> Response {
-    ui.label(RichText::new(label).size(12.5).color(MUTED));
+    let label = ui.label(RichText::new(label).size(12.5).color(MUTED));
     let frame = Frame::new()
         .fill(SURFACE_VARIANT)
         .stroke(Stroke::new(1.0, OUTLINE))
@@ -226,7 +227,7 @@ pub fn field(
         );
     }
     ui.add_space(9.0);
-    inner.inner
+    inner.inner.labelled_by(label.id)
 }
 
 /// The full-width violet action button used on the gate and recovery screen.
@@ -253,10 +254,44 @@ pub fn primary_button(ui: &mut Ui, label: &str, enabled: bool, width: f32) -> bo
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn the_packaged_lockup_is_vector() {
         let svg = include_str!("../assets/brand/lockup-dark.svg");
         assert!(svg.contains("<path"));
         assert!(!svg.contains("<text"));
+    }
+
+    #[test]
+    fn the_password_field_exposes_its_label_to_accesskit() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut value = String::new();
+        let mut field_id = None;
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            let response = field(
+                ui,
+                egui::Id::unique("accesskit-password"),
+                "Password",
+                &mut value,
+                true,
+            );
+            field_id = Some(response.id);
+        });
+        output.textures_delta.clear();
+        let update = output
+            .platform_output
+            .accesskit_update
+            .expect("accesskit tree update");
+        let id = field_id.expect("field id").accesskit_id();
+        let node = update
+            .nodes
+            .iter()
+            .find(|(node_id, _)| *node_id == id)
+            .map(|(_, node)| node)
+            .expect("password field node");
+        assert_eq!(node.role(), egui::accesskit::Role::PasswordInput);
+        assert!(!node.labelled_by().is_empty());
     }
 }

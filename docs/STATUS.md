@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a workstream forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md) and the desktop feature migration in [`plans/desktop-feature-parity.md`](plans/desktop-feature-parity.md); the desktop user guide is [`desktop.md`](desktop.md).
 
-Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop and Tauri Android shell are retired (ADR 0014); the Rust desktop and native Android app are the products. The Rust desktop now edits notes through the in-house headless engine and autosaves; the native editing bar (IME, AccessKit, list/table polish) is the open gate. Native release pipelines are the next release-level work.
+Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop and Tauri Android shell are retired (ADR 0014); the Rust desktop and native Android app are the products. The Rust desktop now edits notes through the in-house headless engine and autosaves; the native editing bar (IME, screen-reader/keyboard-only acceptance, 2,000-block latency) is the open gate. Native release pipelines are the next release-level work.
 
 ## Where we are
 
@@ -11,7 +11,7 @@ Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop
 | Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; 76 tests; contract fixtures green |
 | Contract (ADR 0006) | ✅ Complete | vault schema v1, block JSON v1, sync protocol v3; app boundary documented |
 | Native Android (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; gate and much of the device pass verified on a Nothing A063; remaining hardware checklist in #188 |
-| Rust desktop (`apps/desktop`) | 🟡 Editor prototype | branded vault gate, notes list, editable text/marks/tasks, list creation/nesting, table-cell navigation and row/column editing, split/merge, undo/redo, autosave; 35 tests; IME/accessibility and advanced blocks next |
+| Rust desktop (`apps/desktop`) | 🟡 Editor prototype | branded vault gate, notes list, editable text/marks/tasks, list creation/nesting, table-cell navigation and row/column editing, AccessKit labels, split/merge, undo/redo, autosave; 36 tests; IME/accessibility and advanced blocks next |
 | Tauri/Svelte app | 🗄️ Retired from `main` | code in Git history and `v1.15.0`; historical installers remain; no new builds |
 | Public homepage (`site/`) | ✅ Static | no framework, no third-party requests, no analytics |
 
@@ -27,7 +27,7 @@ Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop
 
 ## Rust desktop — next (in order)
 
-1. **Native editing bar:** real IME pass (CJK/dead keys/combining), AccessKit/screen-reader and keyboard-only pass, 2,000-block latency measurement.
+1. **Native editing bar:** real IME pass (CJK/dead keys/combining), screen-reader and keyboard-only acceptance, 2,000-block latency measurement.
 2. **Editor completeness:** merged table cells and column widths, Markdown paste/input rules, true bold typography ([#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237)).
 3. **Home and organisation:** folders, favorites, tags, search, layouts, trash/archive, templates ([#236](https://github.com/Pranesh-Selvaraj/Enclave/issues/236)).
 4. **Advanced surfaces:** whiteboard, databases, graph, split view, command palette ([#238](https://github.com/Pranesh-Selvaraj/Enclave/issues/238)).

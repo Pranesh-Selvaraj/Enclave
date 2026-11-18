@@ -239,10 +239,20 @@ impl EnclaveApp {
             ui.horizontal(|ui| {
                 let can_undo = self.editor.as_ref().is_some_and(Editor::can_undo);
                 let can_redo = self.editor.as_ref().is_some_and(Editor::can_redo);
-                if ui.add_enabled(can_undo, egui::Button::new("↶")).clicked() {
+                if ui
+                    .add_enabled(can_undo, egui::Button::new("↶"))
+                    .on_hover_text("Undo")
+                    .accessible_name("Undo")
+                    .clicked()
+                {
                     undo = true;
                 }
-                if ui.add_enabled(can_redo, egui::Button::new("↷")).clicked() {
+                if ui
+                    .add_enabled(can_redo, egui::Button::new("↷"))
+                    .on_hover_text("Redo")
+                    .accessible_name("Redo")
+                    .clicked()
+                {
                     redo = true;
                 }
                 ui.separator();
@@ -276,13 +286,17 @@ impl EnclaveApp {
                                 ui.close();
                             }
                         }
-                    });
+                    })
+                    .response
+                    .on_hover_text("Table actions")
+                    .accessible_name("Table actions");
                 });
                 ui.separator();
                 let can_list = self.focused_block.is_some();
                 if ui
                     .add_enabled(can_list, egui::Button::new("• List"))
                     .on_hover_text("Bullet list")
+                    .accessible_name("Bullet list")
                     .clicked()
                 {
                     list_type = Some("bulletList");
@@ -290,6 +304,7 @@ impl EnclaveApp {
                 if ui
                     .add_enabled(can_list, egui::Button::new("1. List"))
                     .on_hover_text("Ordered list")
+                    .accessible_name("Ordered list")
                     .clicked()
                 {
                     list_type = Some("orderedList");
@@ -297,6 +312,7 @@ impl EnclaveApp {
                 if ui
                     .add_enabled(can_list, egui::Button::new("☑ Task"))
                     .on_hover_text("Task list")
+                    .accessible_name("Task list")
                     .clicked()
                 {
                     list_type = Some("taskList");
@@ -308,6 +324,8 @@ impl EnclaveApp {
                         can_mark,
                         egui::Button::new(egui::RichText::new("B").strong()),
                     )
+                    .on_hover_text("Bold")
+                    .accessible_name("Bold")
                     .clicked()
                 {
                     mark = Some("bold");
@@ -317,6 +335,8 @@ impl EnclaveApp {
                         can_mark,
                         egui::Button::new(egui::RichText::new("I").italics()),
                     )
+                    .on_hover_text("Italic")
+                    .accessible_name("Italic")
                     .clicked()
                 {
                     mark = Some("italic");
@@ -326,6 +346,8 @@ impl EnclaveApp {
                         can_mark,
                         egui::Button::new(egui::RichText::new("S").strikethrough()),
                     )
+                    .on_hover_text("Strikethrough")
+                    .accessible_name("Strikethrough")
                     .clicked()
                 {
                     mark = Some("strike");
@@ -335,6 +357,8 @@ impl EnclaveApp {
                         can_mark,
                         egui::Button::new(egui::RichText::new("</>").monospace()),
                     )
+                    .on_hover_text("Inline code")
+                    .accessible_name("Inline code")
                     .clicked()
                 {
                     mark = Some("code");
@@ -349,6 +373,7 @@ impl EnclaveApp {
                 }
                 if ui
                     .add_enabled(self.dirty && !self.saving, egui::Button::new("Save"))
+                    .accessible_name("Save note")
                     .clicked()
                 {
                     save = true;
@@ -957,12 +982,15 @@ impl EnclaveApp {
                 Some(_) if self.editor.is_some() => {
                     ui.add_space(12.0);
                     let mut title = self.title_edit.clone();
-                    let title_response = ui.add(
-                        egui::TextEdit::singleline(&mut title)
-                            .font(egui::TextStyle::Heading)
-                            .frame(egui::Frame::NONE)
-                            .desired_width(f32::INFINITY),
-                    );
+                    let title_response = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut title)
+                                .font(egui::TextStyle::Heading)
+                                .frame(egui::Frame::NONE)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Note title"),
+                        )
+                        .accessible_name("Note title");
                     if title_response.changed() {
                         self.title_edit = title;
                         self.title_dirty = true;
@@ -1476,10 +1504,18 @@ fn render_list(
             ui.add_space(depth as f32 * 16.0);
             if tasks {
                 let checked = attr_bool(item, "checked").unwrap_or(false);
-                if ui
-                    .add(egui::Button::new(if checked { "☑" } else { "☐" }).frame(false))
-                    .clicked()
-                {
+                let task_label = format!("Task: {}", item.inline_text());
+                let checkbox =
+                    ui.add(egui::Button::new(if checked { "☑" } else { "☐" }).frame(false));
+                checkbox.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::Role::CheckBox,
+                        true,
+                        checked,
+                        task_label.clone(),
+                    )
+                });
+                if checkbox.clicked() {
                     actions.push(EditorAction::ToggleTask { path: path.clone() });
                 }
             } else if ordered {

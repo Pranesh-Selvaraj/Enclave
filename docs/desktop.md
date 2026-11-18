@@ -89,10 +89,27 @@ engine. The canonical document shape is
 Tab is deliberately kept inside the document editor. In a code block it inserts
 a literal tab; outside a list or table it does nothing rather than moving focus.
 
+## Accessibility
+
+The desktop uses egui's AccessKit integration:
+
+- Password fields are associated with their visible labels and report a
+  password-input role.
+- The painted lockup is exposed as an image named “Enclave lockup”.
+- Icon-only toolbar controls (undo, redo, marks, lists and table actions) have
+  spoken names instead of glyph-only labels.
+- Task checkboxes report a checkbox role and their checked state.
+- The note title field is named “Note title”.
+
+This is groundwork, not a completed accessibility acceptance pass. A real
+screen-reader run (NVDA on Windows, Orca on Linux, VoiceOver on macOS), a
+keyboard-only pass and an IME pass with CJK/dead-key/combining input are still
+required before desktop can leave the preview state.
+
 ## Known gaps
 
 The desktop is still missing the native editing-bar gate (real IME coverage,
-AccessKit/screen-reader verification and a 2,000-block latency pass), table
+screen-reader and keyboard-only acceptance, and a 2,000-block latency pass), table
 merged cells, configurable column widths, image/attachment storage, search, folders, tags, trash, restore,
 auto-lock, backup import/export, settings, sync UI, packaging and updates.
 

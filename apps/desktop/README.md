@@ -12,7 +12,7 @@ core and edits it with autosave. The in-house
 headless engine supports text insertion/deletion, block split/merge, headings,
 marks, task toggles, toolbar list creation, list/task-item Enter, Tab/Shift+Tab
 nesting, undo/redo and save through the core.
-The next gate is IME, AccessKit, table-editing polish and a screen-reader pass. The retired Tauri app is
+The next gate is real IME, screen-reader/keyboard-only acceptance, table-editing polish and 2,000-block latency. The retired Tauri app is
 the feature baseline; [`docs/plans/desktop-feature-parity.md`](../../docs/plans/desktop-feature-parity.md)
 tracks the transfer. It is not the shipping desktop anymore (ADR 0014).
 
@@ -55,12 +55,12 @@ cargo test --manifest-path apps/desktop/Cargo.toml
 cargo clippy --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
 ```
 
-There are 35 tests: the direct core path (create vault → create document → list),
+There are 36 tests: the direct core path (create vault → create document → list),
 the worker lifecycle (create/unlock/list/lock/save/load/rename), the headless editor
 engine and a headless render of the canonical fixture. The engine tests cover
 the canonical ProseMirror fixture
 (`core/core-db/tests/fixtures/block-schema-v1.json`), text insertion/deletion,
-paragraph merges, block splitting (including new list/task items), list wrapping/type-switching, empty-list-item Backspace, list nesting/outdenting, headings, marks, task toggles, table-cell edits/navigation, table insertion, row/column changes, undo/redo, unknown nodes/attributes and JSON round-trips.
+paragraph merges, block splitting (including new list/task items), list wrapping/type-switching, empty-list-item Backspace, list nesting/outdenting, headings, marks, task toggles, table-cell edits/navigation, table insertion, row/column changes, AccessKit labels, undo/redo, unknown nodes/attributes and JSON round-trips.
 
 ## What is here
 
@@ -78,7 +78,7 @@ paragraph merges, block splitting (including new list/task items), list wrapping
 
 ## Next
 
-1. IME and AccessKit passes; real CJK/combining input and a screen reader.
+1. Real IME and screen-reader passes; CJK/combining input and a keyboard-only acceptance run.
 2. Table editing polish (merged cells, column widths), keyboard shortcuts
    (undo/redo, save) and true bold typography.
 3. Daily-driver shell: attachments, search, folders, settings, sync.

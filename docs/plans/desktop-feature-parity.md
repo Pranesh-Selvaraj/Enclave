@@ -68,7 +68,7 @@ The retired Tauri desktop (the `v1.15.0` tag and earlier) is the **feature basel
 | Copy/paste rich text, images, files; clipboard HTML sanitization | ⬜ | [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Find/replace | ⬜ | [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | IME (CJK, dead keys, combining sequences) | 🟡 | TextEdit/IME guard exists; real IME pass pending [#240](https://github.com/Pranesh-Selvaraj/Enclave/issues/240) |
-| Accessibility (AccessKit tree, screen reader, keyboard-only) | 🟡 | Native TextEdit/egui provides a tree; pass pending [#240](https://github.com/Pranesh-Selvaraj/Enclave/issues/240) |
+| Accessibility (AccessKit tree, screen reader, keyboard-only) | 🟡 | Gate fields, icon controls, task checkboxes and the painted lockup have AccessKit roles/labels; real screen-reader and keyboard-only pass pending [#240](https://github.com/Pranesh-Selvaraj/Enclave/issues/240) |
 | 2,000-block typing latency / large-vault virtualization | ⬜ | [#233](https://github.com/Pranesh-Selvaraj/Enclave/issues/233) gate |
 
 ## 3. Whiteboard, graph and workspaces
