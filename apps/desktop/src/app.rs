@@ -195,6 +195,7 @@ impl EnclaveApp {
         let mut redo = false;
         let mut save = false;
         let mut mark: Option<&'static str> = None;
+        let mut list_type: Option<&'static str> = None;
         egui::Panel::bottom("editor-tools").show(ui, |ui| {
             ui.horizontal(|ui| {
                 let can_undo = self.editor.as_ref().is_some_and(Editor::can_undo);
@@ -204,6 +205,29 @@ impl EnclaveApp {
                 }
                 if ui.add_enabled(can_redo, egui::Button::new("↷")).clicked() {
                     redo = true;
+                }
+                ui.separator();
+                let can_list = self.focused_block.is_some();
+                if ui
+                    .add_enabled(can_list, egui::Button::new("• List"))
+                    .on_hover_text("Bullet list")
+                    .clicked()
+                {
+                    list_type = Some("bulletList");
+                }
+                if ui
+                    .add_enabled(can_list, egui::Button::new("1. List"))
+                    .on_hover_text("Ordered list")
+                    .clicked()
+                {
+                    list_type = Some("orderedList");
+                }
+                if ui
+                    .add_enabled(can_list, egui::Button::new("☑ Task"))
+                    .on_hover_text("Task list")
+                    .clicked()
+                {
+                    list_type = Some("taskList");
                 }
                 ui.separator();
                 let can_mark = self.focused_range.is_some_and(|(start, end)| start < end);
@@ -260,6 +284,20 @@ impl EnclaveApp {
             });
         });
 
+        if let Some(list_type) = list_type {
+            let offset = self.focused_range.map(|(start, _)| start).unwrap_or(0);
+            let mut changed = false;
+            if let (Some(path), Some(editor)) = (self.focused_block.clone(), self.editor.as_mut()) {
+                editor.set_selection(Selection::caret(path, offset));
+                changed = editor.set_list_type(list_type);
+                if changed {
+                    self.pending_focus = Some(editor.selection().path.clone());
+                }
+            }
+            if changed {
+                self.mark_dirty();
+            }
+        }
         if undo {
             if let Some(editor) = self.editor.as_mut() {
                 if editor.undo() {
@@ -320,6 +358,22 @@ impl EnclaveApp {
                 EditorAction::ToggleTask { path } => {
                     editor.set_selection(Selection::caret(path, 0));
                     editor.toggle_task()
+                }
+                EditorAction::Indent { path } => {
+                    editor.set_selection(Selection::caret(path, 0));
+                    let changed = editor.indent_list_item();
+                    if changed {
+                        self.pending_focus = Some(editor.selection().path.clone());
+                    }
+                    changed
+                }
+                EditorAction::Outdent { path } => {
+                    editor.set_selection(Selection::caret(path, 0));
+                    let changed = editor.outdent_list_item();
+                    if changed {
+                        self.pending_focus = Some(editor.selection().path.clone());
+                    }
+                    changed
                 }
             };
         }
@@ -685,6 +739,14 @@ impl EnclaveApp {
                             && ui.input(|input| {
                                 input.key_pressed(egui::Key::Backspace) && input.modifiers.is_none()
                             }),
+                        indent: !ime_active
+                            && ui.input(|input| {
+                                input.key_pressed(egui::Key::Tab) && !input.modifiers.shift
+                            }),
+                        outdent: !ime_active
+                            && ui.input(|input| {
+                                input.key_pressed(egui::Key::Tab) && input.modifiers.shift
+                            }),
                     };
                     let mut actions = Vec::new();
                     let mut focus = ViewFocus::default();
@@ -898,6 +960,8 @@ enum EditorAction {
     Split { path: NodePath, offset: usize },
     MergeBackward { path: NodePath },
     ToggleTask { path: NodePath },
+    Indent { path: NodePath },
+    Outdent { path: NodePath },
 }
 
 #[derive(Default)]
@@ -910,6 +974,8 @@ struct ViewFocus {
 struct ViewInput {
     enter: bool,
     backspace: bool,
+    indent: bool,
+    outdent: bool,
 }
 
 /// The view reports a whole new string; replace only the changed span so marks
@@ -1069,6 +1135,12 @@ fn render_text_block(
         .frame(egui::Frame::NONE)
         .desired_rows(1)
         .return_key(None)
+        // Keep Tab inside the editor so the list indentation command can use
+        // it instead of egui moving keyboard focus to another widget.
+        .event_filter(egui::EventFilter {
+            tab: true,
+            ..Default::default()
+        })
         .layouter(&mut layouter)
         .show(ui);
     if focus_request.as_deref() == Some(path) {
@@ -1076,7 +1148,13 @@ fn render_text_block(
         *focus_request = None;
     }
     let response = output.response.response;
-    if response.changed() {
+    // `TextEdit::multiline` turns Tab into a literal tab before we see it.
+    // Suppress that edit and let the list indentation command win.
+    let list_tab = (input.indent || input.outdent)
+        && response.has_focus()
+        && path.len() >= 3
+        && path.len() % 2 == 1;
+    if response.changed() && !list_tab {
         actions.push(EditorAction::Replace {
             path: path.to_vec(),
             text: buffer,
@@ -1088,16 +1166,28 @@ fn render_text_block(
             let end = range.primary.index.0.max(range.secondary.index.0);
             focus.path = Some(path.to_vec());
             focus.range = Some((start, end));
-            if input.enter {
-                actions.push(EditorAction::Split {
-                    path: path.to_vec(),
-                    offset: range.primary.index.0,
-                });
-            }
-            if input.backspace && start == 0 && end == 0 {
-                actions.push(EditorAction::MergeBackward {
-                    path: path.to_vec(),
-                });
+            if list_tab {
+                if input.indent {
+                    actions.push(EditorAction::Indent {
+                        path: path.to_vec(),
+                    });
+                } else {
+                    actions.push(EditorAction::Outdent {
+                        path: path.to_vec(),
+                    });
+                }
+            } else {
+                if input.enter {
+                    actions.push(EditorAction::Split {
+                        path: path.to_vec(),
+                        offset: range.primary.index.0,
+                    });
+                }
+                if input.backspace && start == 0 && end == 0 {
+                    actions.push(EditorAction::MergeBackward {
+                        path: path.to_vec(),
+                    });
+                }
             }
         }
     }

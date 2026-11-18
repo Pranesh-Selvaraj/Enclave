@@ -217,6 +217,181 @@ impl Editor {
         true
     }
 
+    /// Move the current list item under its previous sibling as a nested list.
+    pub fn indent_list_item(&mut self) -> bool {
+        let path = self.selection.path.clone();
+        let Some((item_path, list_path, item_index)) = single_child_list_item(&self.doc, &path)
+        else {
+            return false;
+        };
+        if item_index == 0 {
+            return false;
+        }
+        let Some(item) = self.doc.node(&item_path).cloned() else {
+            return false;
+        };
+        let Some(list) = self.doc.node(&list_path).cloned() else {
+            return false;
+        };
+        let first_content = first_text_block_path(item.children()).unwrap_or_default();
+        let mut previous_item_path = list_path.clone();
+        previous_item_path.push(item_index - 1);
+        if self.doc.node(&previous_item_path).is_none() {
+            return false;
+        }
+        if self.doc.remove_node(&item_path).is_none() {
+            return false;
+        }
+        let Some(previous_item) = self.doc.node_mut(&previous_item_path) else {
+            return false;
+        };
+        let children = previous_item.content.get_or_insert_with(Vec::new);
+        let (nested_index, new_index, has_existing) = match children.last() {
+            Some(last) if last.node_type == list.node_type => {
+                (children.len() - 1, last.children().len(), true)
+            }
+            _ => (children.len(), 0, false),
+        };
+        if has_existing {
+            if let Some(nested) = children[nested_index].content.as_mut() {
+                nested.push(item);
+            } else {
+                children[nested_index].content = Some(vec![item]);
+            }
+        } else {
+            let mut nested = ProseMirrorNode {
+                node_type: list.node_type,
+                attrs: list.attrs,
+                content: Some(vec![item]),
+                marks: None,
+                text: None,
+            };
+            // Keep the list type but do not copy ordering start attributes onto
+            // a freshly nested list; the surrounding list owns those.
+            if nested.node_type == "orderedList" {
+                nested.attrs = None;
+            }
+            children.push(nested);
+        }
+        let mut next_path = previous_item_path;
+        next_path.push(nested_index);
+        next_path.push(new_index);
+        next_path.extend(first_content);
+        self.selection = Selection::caret(next_path, 0);
+        true
+    }
+
+    /// Move the current nested list item out to the parent list, after the item
+    /// that contained its list.
+    pub fn outdent_list_item(&mut self) -> bool {
+        let path = self.selection.path.clone();
+        let Some((item_path, list_path, _)) = single_child_list_item(&self.doc, &path) else {
+            return false;
+        };
+        if list_path.len() < 3 {
+            return false;
+        }
+        let Some(item) = self.doc.node(&item_path).cloned() else {
+            return false;
+        };
+        let first_content = first_text_block_path(item.children()).unwrap_or_default();
+        let parent_item_path = list_path[..list_path.len() - 1].to_vec();
+        let parent_list_path = parent_item_path[..parent_item_path.len() - 1].to_vec();
+        let Some(parent_index) = parent_item_path.last().copied() else {
+            return false;
+        };
+        if self.doc.remove_node(&item_path).is_none() {
+            return false;
+        }
+        if self
+            .doc
+            .node(&list_path)
+            .is_some_and(|nested| nested.children().is_empty())
+        {
+            self.doc.remove_node(&list_path);
+        }
+        let mut target = parent_list_path;
+        target.push(parent_index + 1);
+        if !self.doc.insert_node(&target, item) {
+            return false;
+        }
+        target.extend(first_content);
+        self.selection = Selection::caret(target, 0);
+        true
+    }
+
+    /// Wrap the current text block in a list, or change the list type when the
+    /// caret is already inside a list item. Returns false for an unchanged type
+    /// or an unsupported block.
+    pub fn set_list_type(&mut self, list_type: &str) -> bool {
+        if !matches!(list_type, "bulletList" | "orderedList" | "taskList") {
+            return false;
+        }
+        let path = self.selection.path.clone();
+        let offset = self.selection.head;
+        if let Some((item_path, list_path, _)) = single_child_list_item(&self.doc, &path) {
+            let Some(list) = self.doc.node(&list_path) else {
+                return false;
+            };
+            if list.node_type == list_type {
+                return false;
+            }
+            let Some(list) = self.doc.node_mut(&list_path) else {
+                return false;
+            };
+            list.node_type = list_type.to_owned();
+            list.attrs = None;
+            let Some(item) = self.doc.node_mut(&item_path) else {
+                return false;
+            };
+            item.node_type = if list_type == "taskList" {
+                "taskItem".to_owned()
+            } else {
+                "listItem".to_owned()
+            };
+            item.attrs = if list_type == "taskList" {
+                Some(json!({ "checked": false }))
+            } else {
+                None
+            };
+            return true;
+        }
+
+        let Some(block) = self.doc.node(&path).cloned() else {
+            return false;
+        };
+        if !block.is_text_block() {
+            return false;
+        }
+        let item = ProseMirrorNode {
+            node_type: if list_type == "taskList" {
+                "taskItem".to_owned()
+            } else {
+                "listItem".to_owned()
+            },
+            attrs: (list_type == "taskList").then(|| json!({ "checked": false })),
+            content: Some(vec![block]),
+            marks: None,
+            text: None,
+        };
+        let list = ProseMirrorNode {
+            node_type: list_type.to_owned(),
+            attrs: None,
+            content: Some(vec![item]),
+            marks: None,
+            text: None,
+        };
+        let Some(slot) = self.doc.node_mut(&path) else {
+            return false;
+        };
+        *slot = list;
+        let mut next_path = path;
+        next_path.push(0);
+        next_path.push(0);
+        self.selection = Selection::caret(next_path, offset);
+        true
+    }
+
     /// Toggle a `taskItem` ancestor's checked state.
     pub fn toggle_task(&mut self) -> bool {
         let before = self.snapshot();
@@ -345,7 +520,75 @@ impl Editor {
             self.selection.head = end - 1;
             return true;
         }
+        if self.remove_empty_list_item() {
+            return true;
+        }
         self.merge_previous()
+    }
+
+    /// Backspace in an empty list item removes the item. The first item of a
+    /// single-item list exits the list and leaves a paragraph in its place.
+    fn remove_empty_list_item(&mut self) -> bool {
+        let path = self.selection.path.clone();
+        let Some((item_path, list_path, item_index)) = single_child_list_item(&self.doc, &path)
+        else {
+            return false;
+        };
+        let Some(block) = self.doc.node(&path) else {
+            return false;
+        };
+        if !block.inline_text().is_empty() {
+            return false;
+        }
+        let Some(list) = self.doc.node(&list_path).cloned() else {
+            return false;
+        };
+        if list.children().len() == 1 {
+            // Remove the wrapper: the empty paragraph becomes the block at the
+            // list's old index. Clone it before removing the list.
+            let Some(paragraph) = self
+                .doc
+                .node(&item_path)
+                .and_then(|item| item.children().first().cloned())
+            else {
+                return false;
+            };
+            if self.doc.remove_node(&list_path).is_none() {
+                return false;
+            }
+            if !self.doc.insert_node(&list_path, paragraph) {
+                return false;
+            }
+            self.selection = Selection::caret(list_path, 0);
+            return true;
+        }
+
+        let previous_path = if item_index > 0 {
+            let mut previous = list_path.clone();
+            previous.push(item_index - 1);
+            previous.push(0);
+            Some(previous)
+        } else {
+            None
+        };
+        let previous_len = previous_path
+            .as_deref()
+            .and_then(|path| self.doc.node(path))
+            .map(|node| node.inline_text().chars().count())
+            .unwrap_or(0);
+        if self.doc.remove_node(&item_path).is_none() {
+            return false;
+        }
+        self.selection = match previous_path {
+            Some(path) => Selection::caret(path, previous_len),
+            None => {
+                let mut next = list_path;
+                next.push(0);
+                next.push(0);
+                Selection::caret(next, 0)
+            }
+        };
+        true
     }
 
     fn delete_forward_inner(&mut self) -> bool {
@@ -412,6 +655,37 @@ impl Editor {
             second.attrs = None;
         }
         rebuild_inline(&mut second, after);
+
+        if let Some((item_path, list_path, item_index)) = single_child_list_item(&self.doc, &path) {
+            let Some(item) = self.doc.node(&item_path).cloned() else {
+                return false;
+            };
+            let mut first_item = item.clone();
+            first_item.content = Some(vec![first]);
+            let mut new_item = item;
+            if new_item.node_type == "taskItem" {
+                let attrs = new_item.attrs.get_or_insert_with(|| json!({}));
+                if let Value::Object(map) = attrs {
+                    map.insert("checked".to_owned(), Value::Bool(false));
+                } else {
+                    new_item.attrs = Some(json!({ "checked": false }));
+                }
+            }
+            new_item.content = Some(vec![second]);
+            if !self.doc.insert_sibling(&item_path, new_item) {
+                return false;
+            }
+            let Some(item_node) = self.doc.node_mut(&item_path) else {
+                return false;
+            };
+            *item_node = first_item;
+            let mut next_path = list_path;
+            next_path.push(item_index + 1);
+            next_path.push(0);
+            self.selection = Selection::caret(next_path, 0);
+            return true;
+        }
+
         let Some(first_node) = self.doc.node_mut(&path) else {
             return false;
         };
@@ -481,6 +755,39 @@ impl Editor {
         self.doc.remove_node(&next_path);
         true
     }
+}
+
+/// If the caret sits in the only paragraph of a list/task item, return the
+/// item, its parent list and the item's index. Splitting there creates a new
+/// sibling item rather than a second paragraph inside the same item.
+fn single_child_list_item(
+    doc: &ProseMirrorDoc,
+    path: &[usize],
+) -> Option<(NodePath, NodePath, usize)> {
+    for depth in (0..path.len()).rev() {
+        let item_path = &path[..=depth];
+        let item = doc.node(item_path)?;
+        if !matches!(item.node_type.as_str(), "listItem" | "taskItem") {
+            continue;
+        }
+        let item_children = item.children();
+        if item_children.len() != 1
+            || path.len() != item_path.len() + 1
+            || path.get(item_path.len()) != Some(&0)
+        {
+            return None;
+        }
+        let list_path = item_path[..item_path.len() - 1].to_vec();
+        let list = doc.node(&list_path)?;
+        if !matches!(
+            list.node_type.as_str(),
+            "bulletList" | "orderedList" | "taskList"
+        ) {
+            return None;
+        }
+        return Some((item_path.to_vec(), list_path, *item_path.last()?));
+    }
+    None
 }
 
 fn first_text_block_path(nodes: &[ProseMirrorNode]) -> Option<NodePath> {
@@ -909,6 +1216,163 @@ mod tests {
         assert!(editor.delete_forward());
         assert_eq!(editor.doc().content.len(), 1);
         assert_eq!(text_at(&editor, &[0]), "onetwo");
+    }
+
+    #[test]
+    fn splitting_a_list_item_creates_a_new_item() {
+        let mut editor = editor();
+        // First bullet: "First bullet" -> "First" / " bullet".
+        editor.set_selection(Selection::caret(vec![3, 0, 0], 5));
+        assert!(editor.split_block());
+        let list = editor.doc().node(&[3]).expect("bullet list");
+        assert_eq!(list.children().len(), 3);
+        assert_eq!(text_at(&editor, &[3, 0, 0]), "First");
+        assert_eq!(text_at(&editor, &[3, 1, 0]), " bullet");
+        assert_eq!(text_at(&editor, &[3, 2, 0]), "Second bullet");
+        assert_eq!(editor.selection().path, vec![3, 1, 0]);
+    }
+
+    #[test]
+    fn backspace_removes_an_empty_list_item() {
+        let mut editor = editor();
+        // Split at the end so the new item starts empty, then Backspace there.
+        editor.set_selection(Selection::caret(
+            vec![3, 0, 0],
+            "First bullet".chars().count(),
+        ));
+        assert!(editor.split_block());
+        editor.set_selection(Selection::caret(vec![3, 1, 0], 0));
+        assert!(editor.delete_backward());
+        let list = editor.doc().node(&[3]).expect("bullet list");
+        assert_eq!(list.children().len(), 2);
+        assert_eq!(editor.selection().path, vec![3, 0, 0]);
+        assert_eq!(editor.selection().head, "First bullet".chars().count());
+    }
+
+    #[test]
+    fn backspace_removes_the_first_empty_item_and_keeps_the_rest() {
+        let mut editor = Editor::from_json_str(
+            r#"{"type":"doc","content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph"}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Two"}]}]}]}]}"#,
+        )
+        .expect("doc");
+        editor.set_selection(Selection::caret(vec![0, 0, 0], 0));
+        assert!(editor.delete_backward());
+        assert_eq!(editor.doc().node(&[0]).expect("list").children().len(), 1);
+        assert_eq!(text_at(&editor, &[0, 0, 0]), "Two");
+        assert_eq!(editor.selection().path, vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn backspace_exits_a_single_item_list() {
+        let mut editor = Editor::from_json_str(
+            r#"{"type":"doc","content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph"}]}]}]}"#,
+        )
+        .expect("doc");
+        editor.set_selection(Selection::caret(vec![0, 0, 0], 0));
+        assert!(editor.delete_backward());
+        assert_eq!(editor.doc().content.len(), 1);
+        assert_eq!(
+            editor.doc().node(&[0]).expect("paragraph").node_type,
+            "paragraph"
+        );
+        assert_eq!(editor.selection().path, vec![0]);
+    }
+
+    #[test]
+    fn wraps_a_paragraph_in_a_list_and_keeps_the_caret() {
+        let mut editor = editor();
+        let original = text_at(&editor, &[1]);
+        editor.set_selection(Selection::caret(vec![1], 5));
+        assert!(editor.set_list_type("bulletList"));
+        assert_eq!(
+            editor.doc().node(&[1]).expect("list").node_type,
+            "bulletList"
+        );
+        assert_eq!(text_at(&editor, &[1, 0, 0]), original);
+        assert_eq!(editor.selection().path, vec![1, 0, 0]);
+        assert_eq!(editor.selection().head, 5);
+        assert!(!editor.set_list_type("bulletList"));
+    }
+
+    #[test]
+    fn changes_list_type_and_task_items_stay_unchecked() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![3, 0, 0], 0));
+        assert!(editor.set_list_type("taskList"));
+        assert_eq!(
+            editor.doc().node(&[3]).expect("task list").node_type,
+            "taskList"
+        );
+        let item = editor.doc().node(&[3, 0]).expect("task item");
+        assert_eq!(item.node_type, "taskItem");
+        assert_eq!(
+            item.attrs
+                .as_ref()
+                .and_then(|attrs| attrs.get("checked"))
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert!(editor.set_list_type("bulletList"));
+        assert_eq!(
+            editor.doc().node(&[3, 0]).expect("item").node_type,
+            "listItem"
+        );
+        assert!(editor
+            .doc()
+            .node(&[3, 0])
+            .expect("item")
+            .attrs
+            .as_ref()
+            .and_then(|attrs| attrs.get("checked"))
+            .is_none());
+    }
+
+    #[test]
+    fn indents_and_outdents_a_list_item() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![3, 1, 0], 0));
+        assert!(editor.indent_list_item());
+        let root = editor.doc().node(&[3]).expect("parent list");
+        assert_eq!(root.children().len(), 1);
+        assert_eq!(text_at(&editor, &[3, 0, 1, 0, 0]), "Second bullet");
+        assert_eq!(editor.selection().path, vec![3, 0, 1, 0, 0]);
+        assert!(editor.outdent_list_item());
+        assert_eq!(
+            editor.doc().node(&[3]).expect("root list").children().len(),
+            2
+        );
+        assert!(editor.doc().node(&[3, 0, 1]).is_none());
+        assert_eq!(text_at(&editor, &[3, 1, 0]), "Second bullet");
+        assert_eq!(editor.selection().path, vec![3, 1, 0]);
+    }
+
+    #[test]
+    fn the_first_list_item_cannot_indent() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![3, 0, 0], 0));
+        assert!(!editor.indent_list_item());
+        assert_eq!(editor.doc().node(&[3]).expect("list").children().len(), 2);
+    }
+
+    #[test]
+    fn splitting_a_task_item_creates_an_unchecked_task() {
+        let mut editor = editor();
+        // First task: "Todo item" -> "Todo" / " item".
+        editor.set_selection(Selection::caret(vec![5, 0, 0], 4));
+        assert!(editor.split_block());
+        let list = editor.doc().node(&[5]).expect("task list");
+        assert_eq!(list.children().len(), 3);
+        assert_eq!(text_at(&editor, &[5, 0, 0]), "Todo");
+        assert_eq!(text_at(&editor, &[5, 1, 0]), " item");
+        let new_task = editor.doc().node(&[5, 1]).expect("new task item");
+        assert_eq!(
+            new_task
+                .attrs
+                .as_ref()
+                .and_then(|attrs| attrs.get("checked"))
+                .and_then(Value::as_bool),
+            Some(false)
+        );
     }
 
     #[test]

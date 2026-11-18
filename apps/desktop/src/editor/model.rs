@@ -111,6 +111,22 @@ impl ProseMirrorDoc {
         true
     }
 
+    /// Insert `node` at `path`, replacing the slot at that index by shifting
+    /// the current node and its siblings right.
+    pub fn insert_node(&mut self, path: &[usize], node: ProseMirrorNode) -> bool {
+        let Some((last, parent)) = path.split_last() else {
+            return false;
+        };
+        let Some(content) = self.content_mut_at(parent) else {
+            return false;
+        };
+        if *last > content.len() {
+            return false;
+        }
+        content.insert(*last, node);
+        true
+    }
+
     /// Remove and return the node at `path`.
     pub fn remove_node(&mut self, path: &[usize]) -> Option<ProseMirrorNode> {
         let (last, parent) = path.split_last()?;
