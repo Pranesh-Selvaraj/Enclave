@@ -32,7 +32,7 @@ This directory is the vector source of truth for the mark, the lockups and the i
 
 Every file above was generated from one set of numbers, recorded below so the assets can be rebuilt or hand-corrected. **Their generator is not committed yet** — the numbers are the source of truth in the meantime.
 
-The Android adaptive icon is committed as Android resources under `apps/android/app/src/main/res/` (foreground, background, monochrome). The desktop icon set is part of the native packaging work ([#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241)); the SVG sources here remain the geometry source of truth. The retired Tauri generator script was removed with the Tauri shell.
+The Android adaptive icon is committed as Android resources under `apps/android/app/src/main/res/` (foreground, background, monochrome). The desktop gate renders `lockup-dark.svg` as a vector at `apps/desktop/assets/brand/lockup-dark.svg`, with Inter and JetBrains Mono bundled under `apps/desktop/assets/fonts/`. The desktop icon set is part of the native packaging work ([#241](https://github.com/Pranesh-Selvaraj/Enclave/issues/241)); the SVG sources here remain the geometry source of truth. The retired Tauri generator script was removed with the Tauri shell.
 
 ### The mark — a 24 grid
 

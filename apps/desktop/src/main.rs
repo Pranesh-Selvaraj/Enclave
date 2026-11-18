@@ -7,14 +7,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod brand;
 mod core_worker;
 mod editor;
 
 fn main() -> eframe::Result {
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icons/icon.png"))
+        .expect("the Enclave window icon");
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
-            .with_min_inner_size([680.0, 480.0]),
+            .with_min_inner_size([680.0, 600.0])
+            .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };
 

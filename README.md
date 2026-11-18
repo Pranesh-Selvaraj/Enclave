@@ -39,7 +39,7 @@
 | **2 native apps** | Rust desktop and Kotlin/Compose Android, sharing one core |
 | **1 encrypted vault** | SQLCipher, AES-256-CBC + HMAC-SHA512, Argon2id key derivation |
 | **0 cloud services** | No account, no telemetry, no Enclave server |
-| **76 core tests · 19 desktop tests** | Contract fixtures, crypto, storage, editor and worker flows |
+| **76 core tests · 29 desktop tests** | Contract fixtures, crypto, storage, editor and worker flows |
 | **v1 vault · v1 block JSON · v3 sync** | Versioned, fixture-tested, forward-migrated |
 | **12-word recovery** | BIP39 mnemonic; the only copy of the key is yours |
 | **LAN-only** | mDNS discovery, WebSocket transport, XChaCha20-Poly1305 frames |

@@ -11,7 +11,7 @@ Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop
 | Rust core (`core/`) | ✅ In use | `core-db`, `core-network`, `core-api`; 76 tests; contract fixtures green |
 | Contract (ADR 0006) | ✅ Complete | vault schema v1, block JSON v1, sync protocol v3; app boundary documented |
 | Native Android (`apps/android`) | 🟡 Feature slice | builds and unit-tests clean; gate and much of the device pass verified on a Nothing A063; remaining hardware checklist in #188 |
-| Rust desktop (`apps/desktop`) | 🟡 Editor prototype | vault gate, notes list, editable text/marks/tasks, split/merge, undo/redo, autosave; 19 tests; IME/accessibility and advanced blocks next |
+| Rust desktop (`apps/desktop`) | 🟡 Editor prototype | branded vault gate, notes list, editable text/marks/tasks, list creation/nesting, split/merge, undo/redo, autosave; 29 tests; IME/accessibility and advanced blocks next |
 | Tauri/Svelte app | 🗄️ Retired from `main` | code in Git history and `v1.15.0`; historical installers remain; no new builds |
 | Public homepage (`site/`) | ✅ Static | no framework, no third-party requests, no analytics |
 
@@ -28,7 +28,7 @@ Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop
 ## Rust desktop — next (in order)
 
 1. **Native editing bar:** real IME pass (CJK/dead keys/combining), AccessKit/screen-reader and keyboard-only pass, 2,000-block latency measurement.
-2. **Editor completeness:** list-item Enter/nesting, table row/column/cell navigation, Markdown paste/input rules, true bold typography ([#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237)).
+2. **Editor completeness:** table row/column/cell navigation, Markdown paste/input rules, true bold typography ([#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237)).
 3. **Home and organisation:** folders, favorites, tags, search, layouts, trash/archive, templates ([#236](https://github.com/Pranesh-Selvaraj/Enclave/issues/236)).
 4. **Advanced surfaces:** whiteboard, databases, graph, split view, command palette ([#238](https://github.com/Pranesh-Selvaraj/Enclave/issues/238)).
 5. **AI service:** local embeddings/RAG, opt-in remote, read-only agent with app-enforced permissions ([#239](https://github.com/Pranesh-Selvaraj/Enclave/issues/239)).

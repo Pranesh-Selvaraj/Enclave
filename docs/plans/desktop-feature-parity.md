@@ -27,8 +27,8 @@ The retired Tauri desktop (the `v1.15.0` tag and earlier) is the **feature basel
 
 | Feature | Status | Where it lands / issue |
 | --- | --- | --- |
-| Create vault, recovery phrase shown once, acknowledgement | ✅ | `apps/desktop` vault gate + worker |
-| Unlock with password, lock now | ✅ | Desktop vault gate |
+| Create vault, recovery phrase shown once, acknowledgement | ✅ | Branded vault gate + numbered recovery grid + worker |
+| Unlock with password, lock now | ✅ | Branded desktop gate; lock now from the shell |
 | Restore from a backup; restore with recovery phrase; forgotten-password flow | 🟡 | Core supports restore; desktop UI pending [#236](https://github.com/Pranesh-Selvaraj/Enclave/issues/236) |
 | Auto-lock (Off/1/5/15/30 min) | ⬜ | [#240](https://github.com/Pranesh-Selvaraj/Enclave/issues/240) |
 | Multiple vaults with no discovery surface (ADR 0012) | ⬜ | #222, [#240](https://github.com/Pranesh-Selvaraj/Enclave/issues/240) |
@@ -52,7 +52,7 @@ The retired Tauri desktop (the `v1.15.0` tag and earlier) is the **feature basel
 | --- | --- | --- |
 | Paragraphs, headings 1–3, bold/italic/strike/code/link | ✅ | Headless engine + native view |
 | Page title rename | ✅ | Inline title field, saved through the core |
-| Bullet, ordered and task lists; task toggles | 🟡 | Rendering + task toggle; list-item Enter/nesting polish [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
+| Bullet, ordered and task lists; task toggles | ✅ | Rendering, toolbar creation, task toggle, Enter-to-new-item, empty-item Backspace and Tab/Shift+Tab nesting [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Block split/merge, Backspace merge, Enter split | 🟡 | Implemented; list/table edge cases [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Undo/redo across edits | 🟡 | Engine history + toolbar; text-editor shortcut polish [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Quote/blockquote, code blocks, horizontal rules | ✅ | Render/edit; language selector [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |

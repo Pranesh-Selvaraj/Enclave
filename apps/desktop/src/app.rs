@@ -47,12 +47,18 @@ pub struct EnclaveApp {
     composer_open: bool,
     composer_focus: bool,
     mnemonic: Option<String>,
-    mnemonic_saved: bool,
+    glow_texture: egui::TextureHandle,
+    started_at: Instant,
+    initialized_known: bool,
+    gate_form_visible: bool,
+    gate_focus_pending: bool,
 }
 
 impl EnclaveApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        crate::brand::install(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+        let glow_texture = crate::brand::load_glow(&cc.egui_ctx);
         let app_dir = crate::core_worker::default_app_dir();
         Self {
             worker: CoreWorker::spawn(app_dir, cc.egui_ctx.clone()),
@@ -82,7 +88,11 @@ impl EnclaveApp {
             composer_open: false,
             composer_focus: false,
             mnemonic: None,
-            mnemonic_saved: false,
+            glow_texture,
+            started_at: Instant::now(),
+            initialized_known: false,
+            gate_form_visible: false,
+            gate_focus_pending: false,
         }
     }
 
@@ -91,6 +101,34 @@ impl EnclaveApp {
         self.confirm.zeroize();
         self.password.clear();
         self.confirm.clear();
+    }
+
+    fn gate_ready(&self) -> bool {
+        !self.busy
+            && !self.password.is_empty()
+            && (self.initialized || self.password == self.confirm)
+    }
+
+    fn submit_gate(&mut self) {
+        if self.busy {
+            return;
+        }
+        if self.password.is_empty() {
+            self.error = Some("Enter a password.".to_owned());
+            return;
+        }
+        if !self.initialized && self.password != self.confirm {
+            self.error = Some("The passwords do not match.".to_owned());
+            return;
+        }
+        self.error = None;
+        self.busy = true;
+        if self.initialized {
+            self.worker.send(Command::Unlock(self.password.clone()));
+        } else {
+            self.worker
+                .send(Command::CreateVault(self.password.clone()));
+        }
     }
 
     fn clear_mnemonic(&mut self) {
@@ -384,7 +422,6 @@ impl EnclaveApp {
 
     fn acknowledge_mnemonic(&mut self) {
         self.screen = Screen::Unlocked;
-        self.mnemonic_saved = false;
         self.busy = true;
         self.worker.send(Command::ListNotes);
     }
@@ -393,13 +430,13 @@ impl EnclaveApp {
         match event {
             Event::Initialized(initialized) => {
                 self.initialized = initialized;
+                self.initialized_known = true;
                 self.busy = false;
             }
             Event::VaultCreated(mnemonic) => {
                 self.clear_mnemonic();
                 self.mnemonic = Some(mnemonic);
                 self.screen = Screen::Mnemonic;
-                self.mnemonic_saved = false;
                 self.busy = false;
                 self.error = None;
             }
@@ -529,7 +566,8 @@ impl EnclaveApp {
                 self.pending_focus = None;
                 self.clear_secrets();
                 self.clear_mnemonic();
-                self.mnemonic_saved = false;
+                self.gate_form_visible = true;
+                self.gate_focus_pending = true;
                 self.busy = false;
                 self.error = None;
             }
@@ -555,107 +593,265 @@ impl EnclaveApp {
     }
 
     fn locked_ui(&mut self, ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(72.0);
-                ui.label(egui::RichText::new("Enclave").size(44.0).strong());
-                ui.label("Your encrypted workspace — everything stays on this device.");
-                ui.add_space(28.0);
+        if !self.gate_form_visible
+            && (self.initialized_known || self.error.is_some())
+            && self.started_at.elapsed() >= Duration::from_millis(900)
+        {
+            self.gate_form_visible = true;
+            self.gate_focus_pending = true;
+        }
+        let form_progress = ui.ctx().animate_bool_with_time(
+            egui::Id::unique("enclave-gate-form"),
+            self.gate_form_visible,
+            0.55,
+        );
+        let appeared =
+            ui.ctx()
+                .animate_bool_with_time(egui::Id::unique("enclave-gate-lockup"), true, 0.6);
 
-                ui.allocate_ui_with_layout(
-                    egui::vec2(380.0, 0.0),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        if self.initialized {
-                            ui.label("Unlock your vault");
-                        } else {
-                            ui.label("Create your vault");
-                        }
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.password)
-                                .password(true)
-                                .hint_text("Password"),
-                        );
-                        if !self.initialized {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.confirm)
-                                    .password(true)
-                                    .hint_text("Confirm password"),
-                            );
-                        }
+        let glow_texture = self.glow_texture.id();
+        let mut submitted = false;
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(crate::brand::BG))
+            .show(ui, |ui| {
+                // Centre the lockup on its own at launch, then let the form
+                // grow around it while the whole group stays optically centred.
+                let hidden_height = 360.0 / crate::brand::LOCKUP_RATIO + 42.0;
+                let form_height = if self.initialized { 310.0 } else { 410.0 };
+                let shown_height =
+                    260.0 / crate::brand::LOCKUP_RATIO + 42.0 + 26.0 + form_height;
+                let content_height =
+                    hidden_height + (shown_height - hidden_height) * form_progress;
+                let top = ((ui.available_height() - content_height) * 0.5).max(24.0);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.add_space(top);
+                ui.vertical_centered(|ui| {
+                    let width = 360.0 - 100.0 * form_progress;
+                    crate::brand::lockup(
+                        ui,
+                        glow_texture,
+                        width * (0.94 + 0.06 * appeared),
+                        0.16 * (1.0 - form_progress),
+                        appeared,
+                    );
+                    ui.add_space(14.0);
+                    ui.label(
+                        egui::RichText::new("Knowledge that stays yours.")
+                            .size(13.5)
+                            .color(crate::brand::MUTED.gamma_multiply(1.0 - 0.35 * form_progress)),
+                    );
 
-                        let mut action: Option<Command> = None;
-                        ui.add_enabled_ui(!self.busy, |ui| {
-                            let label = if self.initialized {
-                                "Unlock"
-                            } else {
-                                "Create vault"
-                            };
-                            if ui
-                                .add_sized([380.0, 36.0], egui::Button::new(label))
-                                .clicked()
-                            {
-                                action = Some(if self.initialized {
-                                    Command::Unlock(self.password.clone())
+                    if form_progress > 0.01 {
+                        ui.add_space(26.0);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(380.0, 0.0),
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                ui.set_opacity(form_progress);
+                                ui.label(
+                                    egui::RichText::new(if self.initialized {
+                                        "Welcome back"
+                                    } else {
+                                        "Create your vault"
+                                    })
+                                    .size(25.0)
+                                    .family(crate::brand::semibold())
+                                    .color(crate::brand::PAPER),
+                                );
+                                ui.add_space(5.0);
+                                ui.label(
+                                    egui::RichText::new(if self.initialized {
+                                        "Unlock your vault to continue."
+                                    } else {
+                                        "A private place for everything you write."
+                                    })
+                                    .size(14.0)
+                                    .color(crate::brand::MUTED),
+                                );
+                                ui.add_space(20.0);
+
+                                let password_id = egui::Id::unique("gate-password");
+                                let password = crate::brand::field(
+                                    ui,
+                                    password_id,
+                                    if self.initialized {
+                                        "Password"
+                                    } else {
+                                        "Choose a password"
+                                    },
+                                    &mut self.password,
+                                    true,
+                                );
+                                if password.changed() {
+                                    self.error = None;
+                                }
+                                if !self.initialized {
+                                    let confirm = crate::brand::field(
+                                        ui,
+                                        egui::Id::unique("gate-confirm"),
+                                        "Confirm password",
+                                        &mut self.confirm,
+                                        true,
+                                    );
+                                    if confirm.changed() {
+                                        self.error = None;
+                                    }
+                                }
+
+                                let mismatch = !self.initialized
+                                    && !self.confirm.is_empty()
+                                    && self.password != self.confirm;
+                                let visible_error = if mismatch {
+                                    Some("The passwords do not match.".to_owned())
                                 } else {
-                                    Command::CreateVault(self.password.clone())
-                                });
-                            }
-                        });
+                                    self.error.clone()
+                                };
+                                if let Some(error) = visible_error {
+                                    ui.add_space(2.0);
+                                    ui.label(
+                                        egui::RichText::new(error)
+                                            .size(12.5)
+                                            .color(crate::brand::ERROR),
+                                    );
+                                    ui.add_space(6.0);
+                                }
 
-                        if self.busy {
-                            ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label("Working…");
-                            });
-                        }
-
-                        if let Some(command) = action {
-                            if self.password.is_empty() {
-                                self.error = Some("Enter a password.".to_owned());
-                            } else if !self.initialized && self.password != self.confirm {
-                                self.error = Some("The passwords do not match.".to_owned());
-                            } else {
-                                self.error = None;
-                                self.busy = true;
-                                self.worker.send(command);
-                            }
-                        }
-                    },
-                );
+                                let ready = self.gate_ready() && !mismatch;
+                                let label = if self.busy {
+                                    if self.initialized {
+                                        "Unlocking…"
+                                    } else {
+                                        "Creating…"
+                                    }
+                                } else if self.initialized {
+                                    "Unlock"
+                                } else {
+                                    "Create vault"
+                                };
+                                if crate::brand::primary_button(ui, label, ready, 380.0) {
+                                    submitted = true;
+                                }
+                                if !self.initialized {
+                                    ui.add_space(12.0);
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "A 12-word recovery phrase comes next. Keep it offline — it is the only way back if you forget your password.",
+                                        )
+                                        .size(12.0)
+                                        .color(crate::brand::MUTED),
+                                    );
+                                }
+                                if self.gate_focus_pending {
+                                    ui.memory_mut(|memory| memory.request_focus(password_id));
+                                    self.gate_focus_pending = false;
+                                }
+                                if ui.input(|input| input.key_pressed(egui::Key::Enter)) && ready {
+                                    submitted = true;
+                                }
+                            },
+                        );
+                    }
+                });
+                });
             });
-        });
+        if submitted {
+            self.submit_gate();
+        }
     }
 
     fn mnemonic_ui(&mut self, ui: &mut egui::Ui, mnemonic: &str) -> bool {
         let mut acknowledged = false;
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(48.0);
-                ui.heading("Save your recovery phrase");
-                ui.label(
-                    "This is the only way to recover your vault if you forget the password. \
-                     It is shown once.",
-                );
-                ui.add_space(20.0);
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    ui.set_max_width(560.0);
-                    ui.horizontal_wrapped(|ui| {
-                        for word in mnemonic.split_whitespace() {
-                            ui.label(egui::RichText::new(word).monospace().size(18.0));
+        let words: Vec<&str> = mnemonic.split_whitespace().collect();
+        let reveal = ui.ctx().animate_bool_with_time_and_easing(
+            egui::Id::unique("enclave-mnemonic-reveal"),
+            true,
+            0.35,
+            egui::emath::easing::cubic_out,
+        );
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(crate::brand::BG))
+            .show(ui, |ui| {
+                ui.set_opacity(reveal);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let top = (ui.available_height() * 0.10).clamp(24.0, 72.0);
+                    ui.add_space(top);
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new("Your recovery phrase")
+                                .size(26.0)
+                                .family(crate::brand::semibold())
+                                .color(crate::brand::PAPER),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Write these {} words down in order and keep them offline.",
+                                words.len()
+                            ))
+                            .size(14.0)
+                            .color(crate::brand::MUTED),
+                        );
+                        ui.add_space(22.0);
+                        let width = ui.available_width().min(560.0);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(width, 0.0),
+                            egui::Layout::top_down(egui::Align::Center),
+                            |ui| {
+                                let card_width = (width - 10.0) / 2.0;
+                                for (row_index, row) in words.chunks(2).enumerate() {
+                                    ui.horizontal(|ui| {
+                                        for (column_index, word) in row.iter().enumerate() {
+                                            let number = row_index * 2 + column_index + 1;
+                                            egui::Frame::new()
+                                                .fill(crate::brand::SURFACE_VARIANT)
+                                                .corner_radius(12)
+                                                .inner_margin(egui::Margin::symmetric(14, 12))
+                                                .show(ui, |ui| {
+                                                    ui.set_min_size(egui::vec2(
+                                                        card_width - 28.0,
+                                                        22.0,
+                                                    ));
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(number.to_string())
+                                                                .size(11.0)
+                                                                .color(crate::brand::MUTED),
+                                                        );
+                                                        ui.add_space(4.0);
+                                                        ui.label(
+                                                            egui::RichText::new(*word)
+                                                                .size(17.0)
+                                                                .family(crate::brand::medium())
+                                                                .color(crate::brand::PAPER),
+                                                        );
+                                                    });
+                                                });
+                                        }
+                                    });
+                                    ui.add_space(10.0);
+                                }
+                            },
+                        );
+                        ui.add_space(8.0);
+                        if crate::brand::primary_button(
+                            ui,
+                            "I've saved my recovery phrase",
+                            true,
+                            width.min(520.0),
+                        ) {
+                            acknowledged = true;
                         }
+                        ui.add_space(12.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "This phrase is shown once. Keep it somewhere offline.",
+                            )
+                            .size(12.0)
+                            .color(crate::brand::MUTED),
+                        );
                     });
                 });
-                ui.add_space(16.0);
-                ui.checkbox(&mut self.mnemonic_saved, "I have written down the 12 words");
-                ui.add_enabled_ui(self.mnemonic_saved, |ui| {
-                    if ui.button("Continue").clicked() {
-                        self.acknowledge_mnemonic();
-                        acknowledged = true;
-                    }
-                });
             });
-        });
         acknowledged
     }
 
@@ -866,6 +1062,10 @@ impl Drop for EnclaveApp {
 }
 
 impl eframe::App for EnclaveApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        crate::brand::BG.to_normalized_gamma_f32()
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         while let Some(event) = self.worker.try_recv() {
             self.handle_event(event);
@@ -898,30 +1098,36 @@ impl eframe::App for EnclaveApp {
             ui.ctx().request_repaint_after(Duration::from_millis(100));
         }
 
-        egui::Panel::top("top").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Enclave").strong());
-                ui.label(egui::RichText::new("encrypted · local-first").weak());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if matches!(self.screen, Screen::Unlocked) && ui.button("Lock").clicked() {
-                        self.flush_title();
-                        self.save_selected();
-                        self.busy = true;
-                        self.worker.send(Command::Lock);
-                    }
-                });
-            });
-        });
-
-        if let Some(error) = self.error.clone() {
-            egui::Panel::bottom("error").show(ui, |ui| {
+        if matches!(self.screen, Screen::Unlocked) {
+            egui::Panel::top("top").show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                    if ui.button("Dismiss").clicked() {
-                        self.error = None;
-                    }
+                    ui.label(egui::RichText::new("Enclave").strong());
+                    ui.label(egui::RichText::new("encrypted · local-first").weak());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Lock").clicked() {
+                            self.flush_title();
+                            self.save_selected();
+                            self.busy = true;
+                            self.worker.send(Command::Lock);
+                        }
+                    });
                 });
             });
+
+            if let Some(error) = self.error.clone() {
+                egui::Panel::bottom("error").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.colored_label(crate::brand::ERROR, error);
+                        if ui.button("Dismiss").clicked() {
+                            self.error = None;
+                        }
+                    });
+                });
+            }
+        }
+
+        if self.screen == Screen::Locked && !self.gate_form_visible {
+            ui.ctx().request_repaint_after(Duration::from_millis(50));
         }
 
         match self.screen {
@@ -932,6 +1138,7 @@ impl eframe::App for EnclaveApp {
                     if acknowledged {
                         let mut mnemonic = mnemonic;
                         mnemonic.zeroize();
+                        self.acknowledge_mnemonic();
                     } else {
                         self.mnemonic = Some(mnemonic);
                     }
