@@ -2,6 +2,8 @@ package com.enclave.app.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,6 +85,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.core_api.UpdateInfo
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 
 private enum class SettingsSheet { THEME, ACCENT, AUTO_LOCK, TEXT_SIZE, PAGE_WIDTH }
@@ -906,6 +909,12 @@ private fun copyToUri(context: Context, path: String, uri: Uri): String = runCat
  * running app (user data is kept) and needs REQUEST_INSTALL_PACKAGES.
  */
 private fun installApk(context: Context, path: String) {
+    val installed = readPackage(context, path = null)
+        ?: error("The installed app identity could not be read.")
+    val candidate = readPackage(context, path)
+        ?: error("The downloaded file is not a valid Android package.")
+    updateRefusal(installed, candidate)?.let { error(it) }
+
     val uri = FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",
@@ -917,3 +926,31 @@ private fun installApk(context: Context, path: String) {
     }
     context.startActivity(intent)
 }
+
+/**
+ * Read the package identity from the installed app or a downloaded APK.
+ * `GET_SIGNATURES` is deprecated but still the API that works at the app's
+ * minSdk; the alternative signing-history API only exists on newer devices.
+ */
+@Suppress("DEPRECATION")
+private fun readPackage(context: Context, path: String?): UpdateCandidate? {
+    val manager = context.packageManager
+    val info: PackageInfo = if (path == null) {
+        manager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+    } else {
+        manager.getPackageArchiveInfo(path, PackageManager.GET_SIGNATURES) ?: return null
+    }
+    val signers = info.signatures
+        ?.map { sha256(it.toByteArray()) }
+        ?.toSet()
+        .orEmpty()
+    return UpdateCandidate(
+        packageName = info.packageName.orEmpty(),
+        versionCode = PackageInfoCompat.getLongVersionCode(info),
+        signerFingerprints = signers,
+    )
+}
+
+private fun sha256(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes)
+        .joinToString("") { "%02x".format(Locale.ROOT, it) }
