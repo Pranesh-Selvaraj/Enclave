@@ -264,6 +264,226 @@ impl Editor {
         true
     }
 
+    /// Number of rows and the widest row in the table containing the caret.
+    pub fn table_dimensions(&self) -> Option<(usize, usize)> {
+        let (table_path, _, _, _, _) = table_location(&self.doc, &self.selection.path)?;
+        let table = self.doc.node(&table_path)?;
+        Some((
+            table.children().len(),
+            table
+                .children()
+                .iter()
+                .map(|row| row.children().len())
+                .max()
+                .unwrap_or(0),
+        ))
+    }
+
+    /// Insert a new table after the top-level block containing the caret.
+    pub fn insert_table(&mut self, rows: usize, columns: usize) -> bool {
+        if rows == 0 || columns == 0 {
+            return false;
+        }
+        let Some(root) = self.selection.path.first().copied() else {
+            return false;
+        };
+        let before = self.snapshot();
+        let table = ProseMirrorNode {
+            node_type: "table".to_owned(),
+            attrs: None,
+            content: Some(
+                (0..rows)
+                    .map(|row_index| {
+                        let cell_type = if row_index == 0 {
+                            "tableHeader"
+                        } else {
+                            "tableCell"
+                        };
+                        ProseMirrorNode {
+                            node_type: "tableRow".to_owned(),
+                            attrs: None,
+                            content: Some(
+                                (0..columns)
+                                    .map(|_| table_cell(cell_type))
+                                    .collect::<Vec<_>>(),
+                            ),
+                            marks: None,
+                            text: None,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            marks: None,
+            text: None,
+        };
+        if !self.doc.insert_sibling(&[root], table) {
+            return false;
+        }
+        self.selection = Selection::caret(vec![root + 1, 0, 0, 0], 0);
+        self.finish_edit(before);
+        true
+    }
+
+    /// Add a data row below the row containing the caret.
+    pub fn add_table_row(&mut self) -> bool {
+        let Some((table_path, row_path, _, row_index, cell_index)) =
+            table_location(&self.doc, &self.selection.path)
+        else {
+            return false;
+        };
+        let Some(row) = self.doc.node(&row_path) else {
+            return false;
+        };
+        let columns = row.children().len();
+        if columns == 0 {
+            return false;
+        }
+        let before = self.snapshot();
+        let new_row = ProseMirrorNode {
+            node_type: "tableRow".to_owned(),
+            attrs: None,
+            content: Some(
+                (0..columns)
+                    .map(|_| table_cell("tableCell"))
+                    .collect::<Vec<_>>(),
+            ),
+            marks: None,
+            text: None,
+        };
+        if !self.doc.insert_sibling(&row_path, new_row) {
+            return false;
+        }
+        let mut next_path = table_path;
+        next_path.push(row_index + 1);
+        next_path.push(cell_index.min(columns - 1));
+        next_path.push(0);
+        self.selection = Selection::caret(next_path, 0);
+        self.finish_edit(before);
+        true
+    }
+
+    /// Remove the row containing the caret, when at least one row remains.
+    pub fn delete_table_row(&mut self) -> bool {
+        let Some((table_path, row_path, _, row_index, cell_index)) =
+            table_location(&self.doc, &self.selection.path)
+        else {
+            return false;
+        };
+        let Some(table) = self.doc.node(&table_path) else {
+            return false;
+        };
+        let rows = table.children().len();
+        if rows <= 1 {
+            return false;
+        }
+        let target_row = row_index.min(rows.saturating_sub(2));
+        let target_cells = table
+            .children()
+            .get(target_row)
+            .map(|row| row.children().len())
+            .unwrap_or(0);
+        if target_cells == 0 {
+            return false;
+        }
+        let before = self.snapshot();
+        if self.doc.remove_node(&row_path).is_none() {
+            return false;
+        }
+        let mut next_path = table_path;
+        next_path.push(target_row);
+        next_path.push(cell_index.min(target_cells - 1));
+        next_path.push(0);
+        self.selection = Selection::caret(next_path, 0);
+        self.finish_edit(before);
+        true
+    }
+
+    /// Add an empty cell to every row, immediately to the right of the caret.
+    pub fn add_table_column(&mut self) -> bool {
+        let Some((table_path, _, _, row_index, cell_index)) =
+            table_location(&self.doc, &self.selection.path)
+        else {
+            return false;
+        };
+        let Some(table) = self.doc.node(&table_path).cloned() else {
+            return false;
+        };
+        if table
+            .children()
+            .iter()
+            .any(|row| row.children().len() < cell_index + 1)
+        {
+            return false;
+        }
+        let before = self.snapshot();
+        for (index, row) in table.children().iter().enumerate() {
+            let cell_type = if row
+                .children()
+                .first()
+                .is_some_and(|cell| cell.node_type == "tableHeader")
+            {
+                "tableHeader"
+            } else {
+                "tableCell"
+            };
+            let mut target = table_path.clone();
+            target.push(index);
+            target.push(cell_index + 1);
+            if !self.doc.insert_node(&target, table_cell(cell_type)) {
+                return false;
+            }
+        }
+        let mut next_path = table_path;
+        next_path.push(row_index);
+        next_path.push(cell_index + 1);
+        next_path.push(0);
+        self.selection = Selection::caret(next_path, 0);
+        self.finish_edit(before);
+        true
+    }
+
+    /// Remove the caret's column from every row, when at least one remains.
+    pub fn delete_table_column(&mut self) -> bool {
+        let Some((table_path, _, _, row_index, cell_index)) =
+            table_location(&self.doc, &self.selection.path)
+        else {
+            return false;
+        };
+        let Some(table) = self.doc.node(&table_path) else {
+            return false;
+        };
+        let columns = table
+            .children()
+            .iter()
+            .map(|row| row.children().len())
+            .max()
+            .unwrap_or(0);
+        if columns <= 1
+            || table
+                .children()
+                .iter()
+                .any(|row| row.children().len() <= cell_index)
+        {
+            return false;
+        }
+        let before = self.snapshot();
+        for index in 0..table.children().len() {
+            let mut target = table_path.clone();
+            target.push(index);
+            target.push(cell_index);
+            if self.doc.remove_node(&target).is_none() {
+                return false;
+            }
+        }
+        let mut next_path = table_path;
+        next_path.push(row_index);
+        next_path.push(cell_index.min(columns.saturating_sub(2)));
+        next_path.push(0);
+        self.selection = Selection::caret(next_path, 0);
+        self.finish_edit(before);
+        true
+    }
+
     /// Move the current list item under its previous sibling as a nested list.
     pub fn indent_list_item(&mut self) -> bool {
         let path = self.selection.path.clone();
@@ -804,6 +1024,37 @@ impl Editor {
     }
 }
 
+fn table_cell(node_type: &str) -> ProseMirrorNode {
+    ProseMirrorNode {
+        node_type: node_type.to_owned(),
+        attrs: None,
+        content: Some(vec![ProseMirrorNode::paragraph(Vec::new())]),
+        marks: None,
+        text: None,
+    }
+}
+
+/// Table, row, cell and their indexes for the cell containing `path`.
+fn table_location(
+    doc: &ProseMirrorDoc,
+    path: &[usize],
+) -> Option<(NodePath, NodePath, NodePath, usize, usize)> {
+    let cell_path = table_cell_ancestor(doc, path)?;
+    let row_path = cell_path[..cell_path.len() - 1].to_vec();
+    let row = doc.node(&row_path)?;
+    if row.node_type != "tableRow" {
+        return None;
+    }
+    let table_path = row_path[..row_path.len() - 1].to_vec();
+    let table = doc.node(&table_path)?;
+    if table.node_type != "table" {
+        return None;
+    }
+    let row_index = *row_path.last()?;
+    let cell_index = *cell_path.last()?;
+    Some((table_path, row_path, cell_path, row_index, cell_index))
+}
+
 fn table_cell_ancestor(doc: &ProseMirrorDoc, path: &[usize]) -> Option<NodePath> {
     for depth in (0..path.len()).rev() {
         let prefix = &path[..=depth];
@@ -1287,6 +1538,62 @@ mod tests {
         assert!(editor.delete_forward());
         assert_eq!(editor.doc().content.len(), 1);
         assert_eq!(text_at(&editor, &[0]), "onetwo");
+    }
+
+    #[test]
+    fn inserts_a_table_after_the_current_block() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![1], 3));
+        assert!(editor.insert_table(2, 3));
+        let table = editor.doc().node(&[2]).expect("table");
+        assert_eq!(table.node_type, "table");
+        assert_eq!(table.children().len(), 2);
+        assert_eq!(table.children()[0].children().len(), 3);
+        assert_eq!(table.children()[0].children()[0].node_type, "tableHeader");
+        assert_eq!(table.children()[1].children()[0].node_type, "tableCell");
+        assert_eq!(editor.selection().path, vec![2, 0, 0, 0]);
+    }
+
+    #[test]
+    fn adds_and_removes_table_rows_and_columns() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![9, 0, 0, 0], 0));
+        assert_eq!(editor.table_dimensions(), Some((2, 2)));
+        assert!(editor.add_table_row());
+        assert_eq!(editor.doc().node(&[9]).expect("table").children().len(), 3);
+        assert_eq!(editor.selection().path, vec![9, 1, 0, 0]);
+        assert!(editor.add_table_column());
+        assert_eq!(editor.table_dimensions(), Some((3, 3)));
+        assert_eq!(editor.selection().path, vec![9, 1, 1, 0]);
+        assert!(editor.delete_table_column());
+        assert_eq!(editor.table_dimensions(), Some((3, 2)));
+        assert!(editor.delete_table_row());
+        assert_eq!(editor.table_dimensions(), Some((2, 2)));
+        assert!(editor.delete_table_row());
+        assert!(!editor.delete_table_row());
+        assert!(editor.delete_table_column());
+        assert!(!editor.delete_table_column());
+    }
+
+    #[test]
+    fn table_edits_are_undoable() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![9, 0, 0, 0], 0));
+        assert!(editor.add_table_row());
+        assert!(editor.can_undo());
+        assert!(editor.undo());
+        assert_eq!(editor.table_dimensions(), Some((2, 2)));
+    }
+
+    #[test]
+    fn cannot_delete_the_last_table_row_or_column() {
+        let mut editor = Editor::from_json_str(
+            r#"{"type":"doc","content":[{"type":"table","content":[{"type":"tableRow","content":[{"type":"tableHeader","content":[{"type":"paragraph"}]}]}]}]}"#,
+        )
+        .expect("doc");
+        editor.set_selection(Selection::caret(vec![0, 0, 0, 0], 0));
+        assert!(!editor.delete_table_row());
+        assert!(!editor.delete_table_column());
     }
 
     #[test]

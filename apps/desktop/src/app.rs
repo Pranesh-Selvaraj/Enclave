@@ -234,6 +234,7 @@ impl EnclaveApp {
         let mut save = false;
         let mut mark: Option<&'static str> = None;
         let mut list_type: Option<&'static str> = None;
+        let mut table_action: Option<TableAction> = None;
         egui::Panel::bottom("editor-tools").show(ui, |ui| {
             ui.horizontal(|ui| {
                 let can_undo = self.editor.as_ref().is_some_and(Editor::can_undo);
@@ -244,6 +245,39 @@ impl EnclaveApp {
                 if ui.add_enabled(can_redo, egui::Button::new("↷")).clicked() {
                     redo = true;
                 }
+                ui.separator();
+                let table_dims = self
+                    .editor
+                    .as_ref()
+                    .and_then(|editor| editor.table_dimensions());
+                let can_table = self.focused_block.is_some();
+                ui.add_enabled_ui(can_table, |ui| {
+                    ui.menu_button("Table", |ui| {
+                        if ui.button("Insert 2 × 2 table").clicked() {
+                            table_action = Some(TableAction::Insert);
+                            ui.close();
+                        }
+                        if let Some((rows, columns)) = table_dims {
+                            ui.separator();
+                            if ui.button("Add row below").clicked() {
+                                table_action = Some(TableAction::AddRow);
+                                ui.close();
+                            }
+                            if rows > 1 && ui.button("Delete row").clicked() {
+                                table_action = Some(TableAction::DeleteRow);
+                                ui.close();
+                            }
+                            if ui.button("Add column right").clicked() {
+                                table_action = Some(TableAction::AddColumn);
+                                ui.close();
+                            }
+                            if columns > 1 && ui.button("Delete column").clicked() {
+                                table_action = Some(TableAction::DeleteColumn);
+                                ui.close();
+                            }
+                        }
+                    });
+                });
                 ui.separator();
                 let can_list = self.focused_block.is_some();
                 if ui
@@ -322,6 +356,26 @@ impl EnclaveApp {
             });
         });
 
+        if let Some(action) = table_action {
+            let offset = self.focused_range.map(|(start, _)| start).unwrap_or(0);
+            let mut changed = false;
+            if let (Some(path), Some(editor)) = (self.focused_block.clone(), self.editor.as_mut()) {
+                editor.set_selection(Selection::caret(path, offset));
+                changed = match action {
+                    TableAction::Insert => editor.insert_table(2, 2),
+                    TableAction::AddRow => editor.add_table_row(),
+                    TableAction::DeleteRow => editor.delete_table_row(),
+                    TableAction::AddColumn => editor.add_table_column(),
+                    TableAction::DeleteColumn => editor.delete_table_column(),
+                };
+                if changed {
+                    self.pending_focus = Some(editor.selection().path.clone());
+                }
+            }
+            if changed {
+                self.mark_dirty();
+            }
+        }
         if let Some(list_type) = list_type {
             let offset = self.focused_range.map(|(start, _)| start).unwrap_or(0);
             let mut changed = false;
@@ -1162,7 +1216,15 @@ fn attr_i64(node: &ProseMirrorNode, key: &str) -> Option<i64> {
     node.attrs.as_ref()?.get(key)?.as_i64()
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+enum TableAction {
+    Insert,
+    AddRow,
+    DeleteRow,
+    AddColumn,
+    DeleteColumn,
+}
+
 enum EditorAction {
     Replace { path: NodePath, text: String },
     Split { path: NodePath, offset: usize },

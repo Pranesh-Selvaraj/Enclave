@@ -64,7 +64,10 @@ engine. The canonical document shape is
   **☑ Task** in the toolbar to create a list or change its type.
 - **Tables:** click a cell and edit it. **Tab** moves to the next cell and
   **Shift+Tab** to the previous cell, wrapping at the table edges. Cell
-  navigation does not mark the note dirty or create undo history.
+  navigation does not mark the note dirty or create undo history. The
+  **Table** toolbar menu inserts a 2 × 2 table, adds rows/columns below or to
+  the right, and deletes the current row/column while keeping at least one of
+  each.
 - **Images** currently render as placeholders; attachment storage and upload
   are not implemented.
 - **Saving:** edits autosave after roughly 700 ms of inactivity. **Ctrl/Cmd+S**
@@ -90,8 +93,7 @@ a literal tab; outside a list or table it does nothing rather than moving focus.
 
 The desktop is still missing the native editing-bar gate (real IME coverage,
 AccessKit/screen-reader verification and a 2,000-block latency pass), table
-row/column insertion and deletion, merged cells, table insertion from the
-toolbar, image/attachment storage, search, folders, tags, trash, restore,
+merged cells, configurable column widths, image/attachment storage, search, folders, tags, trash, restore,
 auto-lock, backup import/export, settings, sync UI, packaging and updates.
 
 Do not treat this preview as a replacement for the historical Tauri desktop for
