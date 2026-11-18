@@ -2,7 +2,7 @@
 
 Living handoff for anyone (human or agent) picking this up. Keep it current in the same change that moves a workstream forward. The narrative record is in [`HISTORY.md`](HISTORY.md), the decisions in [`decisions/`](decisions/README.md), the plan in [`plans/dedicated-native-apps.md`](plans/dedicated-native-apps.md) and the desktop feature migration in [`plans/desktop-feature-parity.md`](plans/desktop-feature-parity.md); the desktop user guide is [`desktop.md`](desktop.md).
 
-Last updated: 2026-11-16 — `main` is **native-only**. The Tauri/Svelte desktop and Tauri Android shell are retired (ADR 0014); the Rust desktop and native Android app are the products. The Rust desktop now edits notes through the in-house headless engine and autosaves; the native editing bar (IME, screen-reader/keyboard-only acceptance, 2,000-block latency) is the open gate. Native release pipelines are the next release-level work.
+Last updated: 2026-11-18 — `main` is **native-only**. The Tauri/Svelte desktop and Tauri Android shell are retired (ADR 0014); the Rust desktop and native Android app are the products. The Rust desktop has a branded vault gate, list editing, writable tables and autosave through the in-house headless engine; the native editing bar (IME, screen-reader/keyboard-only acceptance, 2,000-block latency) is the open gate. Native release pipelines are the next release-level work.
 
 ## Where we are
 
