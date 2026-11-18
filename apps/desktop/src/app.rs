@@ -35,6 +35,11 @@ pub struct EnclaveApp {
     saving: bool,
     pending_save: Option<(String, String)>,
     last_edit: Option<Instant>,
+    title_edit: String,
+    title_note_id: Option<String>,
+    title_dirty: bool,
+    title_in_flight: Option<String>,
+    title_last_edit: Option<Instant>,
     focused_block: Option<NodePath>,
     focused_range: Option<(usize, usize)>,
     pending_focus: Option<NodePath>,
@@ -65,6 +70,11 @@ impl EnclaveApp {
             saving: false,
             pending_save: None,
             last_edit: None,
+            title_edit: String::new(),
+            title_note_id: None,
+            title_dirty: false,
+            title_in_flight: None,
+            title_last_edit: None,
             focused_block: None,
             focused_range: None,
             pending_focus: None,
@@ -87,6 +97,27 @@ impl EnclaveApp {
         if let Some(mut mnemonic) = self.mnemonic.take() {
             mnemonic.zeroize();
         }
+    }
+
+    fn clear_title_state(&mut self) {
+        self.title_edit.clear();
+        self.title_note_id = None;
+        self.title_dirty = false;
+        self.title_in_flight = None;
+        self.title_last_edit = None;
+    }
+
+    fn flush_title(&mut self) {
+        if self.title_in_flight.is_some() || !self.title_dirty {
+            return;
+        }
+        let Some(id) = self.title_note_id.clone() else {
+            return;
+        };
+        let title = self.title_edit.trim().to_owned();
+        self.title_dirty = false;
+        self.title_in_flight = Some(title.clone());
+        self.worker.send(Command::RenameDocument { id, title });
     }
 
     fn mark_dirty(&mut self) {
@@ -132,7 +163,9 @@ impl EnclaveApp {
         if self.selected.as_deref() == Some(id.as_str()) && self.editor.is_some() {
             return;
         }
+        self.flush_title();
         self.save_before_switch();
+        self.clear_title_state();
         self.selected = Some(id.clone());
         self.editor = None;
         self.loading_note = Some(id.clone());
@@ -322,6 +355,7 @@ impl EnclaveApp {
                 self.error = None;
                 self.editor = None;
                 self.loading_note = None;
+                self.clear_title_state();
                 self.clear_mnemonic();
                 self.clear_secrets();
                 self.worker.send(Command::ListNotes);
@@ -339,6 +373,14 @@ impl EnclaveApp {
                 if self.selected.is_none() {
                     self.selected = self.notes.first().map(|note| note.id.clone());
                 }
+                if !self.title_dirty && self.title_in_flight.is_none() {
+                    if let Some(selected) = &self.selected {
+                        if let Some(note) = self.notes.iter().find(|note| &note.id == selected) {
+                            self.title_edit = note.title.clone();
+                            self.title_note_id = Some(selected.clone());
+                        }
+                    }
+                }
                 self.load_selected();
             }
             Event::NoteLoaded { id, doc_json } => {
@@ -348,6 +390,16 @@ impl EnclaveApp {
                 self.loading_note = None;
                 self.busy = false;
                 self.error = None;
+                self.title_edit = self
+                    .notes
+                    .iter()
+                    .find(|note| note.id == id)
+                    .map(|note| note.title.clone())
+                    .unwrap_or_default();
+                self.title_note_id = Some(id.clone());
+                self.title_dirty = false;
+                self.title_in_flight = None;
+                self.title_last_edit = None;
                 self.dirty = false;
                 self.saving = false;
                 self.pending_save = None;
@@ -375,6 +427,27 @@ impl EnclaveApp {
                 self.composer_focus = false;
                 self.select_note(id);
             }
+            Event::TitleUpdated { id, title } => {
+                if let Some(note) = self.notes.iter_mut().find(|note| note.id == id) {
+                    note.title = title.clone();
+                }
+                if self.title_in_flight.as_deref() == Some(title.as_str()) {
+                    self.title_in_flight = None;
+                }
+                if self.selected.as_deref() == Some(id.as_str()) {
+                    self.title_note_id = Some(id);
+                    if !self.title_dirty {
+                        self.title_edit = title;
+                    }
+                }
+            }
+            Event::TitleError { id, message } => {
+                self.title_in_flight = None;
+                self.error = Some(format!("Could not rename the note: {message}"));
+                if self.selected.as_deref() == Some(id.as_str()) {
+                    self.title_dirty = true;
+                }
+            }
             Event::Saved { id } => {
                 if self
                     .pending_save
@@ -392,6 +465,7 @@ impl EnclaveApp {
                 self.selected = None;
                 self.editor = None;
                 self.loading_note = None;
+                self.clear_title_state();
                 self.dirty = false;
                 self.saving = false;
                 self.pending_save = None;
@@ -575,14 +649,26 @@ impl EnclaveApp {
                 .cloned();
 
             match selected {
-                Some(note) if self.editor.is_some() => {
+                Some(_) if self.editor.is_some() => {
                     ui.add_space(12.0);
-                    ui.horizontal(|ui| {
-                        ui.heading(&note.title);
-                        if self.dirty {
-                            ui.weak("● unsaved");
-                        }
-                    });
+                    let mut title = self.title_edit.clone();
+                    let title_response = ui.add(
+                        egui::TextEdit::singleline(&mut title)
+                            .font(egui::TextStyle::Heading)
+                            .frame(egui::Frame::NONE)
+                            .desired_width(f32::INFINITY),
+                    );
+                    if title_response.changed() {
+                        self.title_edit = title;
+                        self.title_dirty = true;
+                        self.title_last_edit = Some(Instant::now());
+                    }
+                    if title_response.lost_focus() {
+                        self.flush_title();
+                    }
+                    if self.dirty || self.title_dirty {
+                        ui.weak("● unsaved");
+                    }
                     ui.separator();
                     let ime_active = ui.input(|input| {
                         input
@@ -693,6 +779,14 @@ impl EnclaveApp {
 
 impl Drop for EnclaveApp {
     fn drop(&mut self) {
+        if self.title_dirty {
+            if let Some(id) = self.title_note_id.clone() {
+                self.worker.send(Command::RenameDocument {
+                    id,
+                    title: self.title_edit.trim().to_owned(),
+                });
+            }
+        }
         if self.dirty && !self.saving {
             if let (Some(id), Some(editor)) = (self.selected.clone(), self.editor.as_ref()) {
                 self.worker.send(Command::SaveDoc {
@@ -725,7 +819,20 @@ impl eframe::App for EnclaveApp {
         {
             self.save_selected();
         }
-        if self.busy || self.dirty || self.saving {
+        if self.title_dirty
+            && self.title_in_flight.is_none()
+            && self
+                .title_last_edit
+                .is_some_and(|edited| edited.elapsed() >= Duration::from_millis(700))
+        {
+            self.flush_title();
+        }
+        if self.busy
+            || self.dirty
+            || self.saving
+            || self.title_dirty
+            || self.title_in_flight.is_some()
+        {
             ui.ctx().request_repaint_after(Duration::from_millis(100));
         }
 
@@ -735,6 +842,7 @@ impl eframe::App for EnclaveApp {
                 ui.label(egui::RichText::new("encrypted · local-first").weak());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if matches!(self.screen, Screen::Unlocked) && ui.button("Lock").clicked() {
+                        self.flush_title();
                         self.save_selected();
                         self.busy = true;
                         self.worker.send(Command::Lock);

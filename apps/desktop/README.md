@@ -62,8 +62,8 @@ edits, undo/redo, unknown nodes/attributes and JSON round-trips.
 ## What is here
 
 - `src/main.rs` — eframe entry point (initial shell candidate; replaceable).
-- `src/app.rs` — vault gate, notes list, editable document view, mark toolbar,
-  debounced autosave and save-on-switch/lock.
+- `src/app.rs` — vault gate, notes list, editable title and document view,
+  mark toolbar, debounced autosave and save-on-switch/lock.
 - `src/core_worker.rs` — one `EnclaveCore` on a worker thread; typed events to
   the UI (load/save notes included). Vault work stays off the UI thread.
 - `src/editor/model.rs` — ProseMirror contract, validation, JSON, paths.

@@ -29,6 +29,7 @@ pub enum Command {
     ListNotes,
     LoadNote(String),
     SaveDoc { document_id: String, json: String },
+    RenameDocument { id: String, title: String },
     CreateNote(String),
     Lock,
     Shutdown,
@@ -45,6 +46,14 @@ pub enum Event {
     },
     NoteCreated {
         id: String,
+    },
+    TitleUpdated {
+        id: String,
+        title: String,
+    },
+    TitleError {
+        id: String,
+        message: String,
     },
     Saved {
         id: String,
@@ -164,6 +173,23 @@ impl CoreWorker {
                                 }
                                 Err(error) => {
                                     let _ = event_tx.send(Event::Error(error.to_string()));
+                                }
+                            }
+                        }
+                        Command::RenameDocument { id, title } => {
+                            match core.update_document_title(&id, &title) {
+                                Ok(document) => {
+                                    let _ = event_tx.send(Event::TitleUpdated {
+                                        id: document.id,
+                                        title: document.title,
+                                    });
+                                    let _ = event_tx.send(notes_event(&core));
+                                }
+                                Err(error) => {
+                                    let _ = event_tx.send(Event::TitleError {
+                                        id,
+                                        message: error.to_string(),
+                                    });
                                 }
                             }
                         }
@@ -324,6 +350,25 @@ mod tests {
         };
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].title, "First note");
+        let note_id = notes[0].id.clone();
+
+        worker.send(Command::RenameDocument {
+            id: note_id.clone(),
+            title: "Renamed note".to_owned(),
+        });
+        let Event::TitleUpdated { title, .. } =
+            wait_for(&worker, |event| matches!(event, Event::TitleUpdated { .. }))
+        else {
+            unreachable!()
+        };
+        assert_eq!(title, "Renamed note");
+
+        worker.send(Command::ListNotes);
+        let Event::Notes(notes) = wait_for(&worker, |event| matches!(event, Event::Notes(_)))
+        else {
+            unreachable!()
+        };
+        assert_eq!(notes[0].title, "Renamed note");
 
         worker.send(Command::Lock);
         wait_for(&worker, |event| matches!(event, Event::Locked));

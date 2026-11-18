@@ -51,6 +51,7 @@ The retired Tauri desktop (the `v1.15.0` tag and earlier) is the **feature basel
 | Feature | Status | Where it lands / issue |
 | --- | --- | --- |
 | Paragraphs, headings 1–3, bold/italic/strike/code/link | ✅ | Headless engine + native view |
+| Page title rename | ✅ | Inline title field, saved through the core |
 | Bullet, ordered and task lists; task toggles | 🟡 | Rendering + task toggle; list-item Enter/nesting polish [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Block split/merge, Backspace merge, Enter split | 🟡 | Implemented; list/table edge cases [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Undo/redo across edits | 🟡 | Engine history + toolbar; text-editor shortcut polish [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
