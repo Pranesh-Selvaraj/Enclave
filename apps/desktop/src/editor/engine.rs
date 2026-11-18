@@ -217,6 +217,53 @@ impl Editor {
         true
     }
 
+    /// Move the caret to the next or previous cell in the nearest table.
+    /// Navigation wraps within the table and does not modify the document.
+    pub fn move_table_cell(&mut self, backwards: bool) -> bool {
+        let path = self.selection.path.clone();
+        let Some(cell_path) = table_cell_ancestor(&self.doc, &path) else {
+            return false;
+        };
+        let Some(table_path) = nearest_ancestor(&self.doc, &cell_path, "table") else {
+            return false;
+        };
+        let Some(table) = self.doc.node(&table_path) else {
+            return false;
+        };
+        let mut cells = Vec::new();
+        for (row_index, row) in table.children().iter().enumerate() {
+            if row.node_type != "tableRow" {
+                continue;
+            }
+            for (cell_index, cell) in row.children().iter().enumerate() {
+                if matches!(cell.node_type.as_str(), "tableCell" | "tableHeader") {
+                    let mut cell_path = table_path.clone();
+                    cell_path.push(row_index);
+                    cell_path.push(cell_index);
+                    cells.push(cell_path);
+                }
+            }
+        }
+        if cells.is_empty() {
+            return false;
+        }
+        let Some(current) = cells.iter().position(|candidate| candidate == &cell_path) else {
+            return false;
+        };
+        let target = if backwards {
+            (current + cells.len() - 1) % cells.len()
+        } else {
+            (current + 1) % cells.len()
+        };
+        let Some(cell) = self.doc.node(&cells[target]) else {
+            return false;
+        };
+        let mut next_path = cells[target].clone();
+        next_path.extend(first_text_block_path(cell.children()).unwrap_or_default());
+        self.selection = Selection::caret(next_path, 0);
+        true
+    }
+
     /// Move the current list item under its previous sibling as a nested list.
     pub fn indent_list_item(&mut self) -> bool {
         let path = self.selection.path.clone();
@@ -757,6 +804,30 @@ impl Editor {
     }
 }
 
+fn table_cell_ancestor(doc: &ProseMirrorDoc, path: &[usize]) -> Option<NodePath> {
+    for depth in (0..path.len()).rev() {
+        let prefix = &path[..=depth];
+        let node = doc.node(prefix)?;
+        if matches!(node.node_type.as_str(), "tableCell" | "tableHeader") {
+            return Some(prefix.to_vec());
+        }
+    }
+    None
+}
+
+fn nearest_ancestor(doc: &ProseMirrorDoc, path: &[usize], node_type: &str) -> Option<NodePath> {
+    for depth in (0..path.len()).rev() {
+        let prefix = &path[..=depth];
+        if doc
+            .node(prefix)
+            .is_some_and(|node| node.node_type == node_type)
+        {
+            return Some(prefix.to_vec());
+        }
+    }
+    None
+}
+
 /// If the caret sits in the only paragraph of a list/task item, return the
 /// item, its parent list and the item's index. Splitting there creates a new
 /// sibling item rather than a second paragraph inside the same item.
@@ -1216,6 +1287,31 @@ mod tests {
         assert!(editor.delete_forward());
         assert_eq!(editor.doc().content.len(), 1);
         assert_eq!(text_at(&editor, &[0]), "onetwo");
+    }
+
+    #[test]
+    fn moves_between_table_cells_and_wraps() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![9, 0, 0, 0], 0));
+        assert!(editor.move_table_cell(false));
+        assert_eq!(editor.selection().path, vec![9, 0, 1, 0]);
+        assert!(editor.move_table_cell(false));
+        assert_eq!(editor.selection().path, vec![9, 1, 0, 0]);
+        assert!(editor.move_table_cell(false));
+        assert_eq!(editor.selection().path, vec![9, 1, 1, 0]);
+        assert!(editor.move_table_cell(false));
+        assert_eq!(editor.selection().path, vec![9, 0, 0, 0]);
+        assert!(editor.move_table_cell(true));
+        assert_eq!(editor.selection().path, vec![9, 1, 1, 0]);
+    }
+
+    #[test]
+    fn table_navigation_does_not_change_the_history() {
+        let mut editor = editor();
+        editor.set_selection(Selection::caret(vec![9, 0, 0, 0], 0));
+        assert!(editor.move_table_cell(false));
+        assert!(!editor.can_undo());
+        assert!(!editor.can_redo());
     }
 
     #[test]

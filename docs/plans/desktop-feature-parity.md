@@ -56,7 +56,7 @@ The retired Tauri desktop (the `v1.15.0` tag and earlier) is the **feature basel
 | Block split/merge, Backspace merge, Enter split | 🟡 | Implemented; list/table edge cases [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Undo/redo across edits | 🟡 | Engine history + toolbar; text-editor shortcut polish [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Quote/blockquote, code blocks, horizontal rules | ✅ | Render/edit; language selector [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
-| Tables: render and edit cells | 🟡 | Render + cell text edit; insert/delete rows/columns, cell navigation, merged cells [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
+| Tables: render and edit cells | 🟡 | Render + cell text edit with Tab/Shift+Tab navigation; insert/delete rows/columns and merged cells remain [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Images and PDF/file attachment blocks | 🟡 | Image placeholder only; attachment storage/sync [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Callouts, toggles, bookmarks, page embeds, video/embed blocks | ⬜ | [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |
 | Database blocks: typed tables, kanban/list/gallery/timeline, linked databases, filters/grouping/sort | ⬜ | [#237](https://github.com/Pranesh-Selvaraj/Enclave/issues/237) |

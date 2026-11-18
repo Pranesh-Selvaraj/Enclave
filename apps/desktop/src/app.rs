@@ -397,21 +397,22 @@ impl EnclaveApp {
                     editor.set_selection(Selection::caret(path, 0));
                     editor.toggle_task()
                 }
-                EditorAction::Indent { path } => {
+                EditorAction::Tab { path, backwards } => {
                     editor.set_selection(Selection::caret(path, 0));
-                    let changed = editor.indent_list_item();
-                    if changed {
+                    if editor.move_table_cell(backwards) {
                         self.pending_focus = Some(editor.selection().path.clone());
+                        false
+                    } else {
+                        let changed = if backwards {
+                            editor.outdent_list_item()
+                        } else {
+                            editor.indent_list_item()
+                        };
+                        if changed {
+                            self.pending_focus = Some(editor.selection().path.clone());
+                        }
+                        changed
                     }
-                    changed
-                }
-                EditorAction::Outdent { path } => {
-                    editor.set_selection(Selection::caret(path, 0));
-                    let changed = editor.outdent_list_item();
-                    if changed {
-                        self.pending_focus = Some(editor.selection().path.clone());
-                    }
-                    changed
                 }
             };
         }
@@ -1167,8 +1168,7 @@ enum EditorAction {
     Split { path: NodePath, offset: usize },
     MergeBackward { path: NodePath },
     ToggleTask { path: NodePath },
-    Indent { path: NodePath },
-    Outdent { path: NodePath },
+    Tab { path: NodePath, backwards: bool },
 }
 
 #[derive(Default)]
@@ -1356,12 +1356,11 @@ fn render_text_block(
     }
     let response = output.response.response;
     // `TextEdit::multiline` turns Tab into a literal tab before we see it.
-    // Suppress that edit and let the list indentation command win.
-    let list_tab = (input.indent || input.outdent)
-        && response.has_focus()
-        && path.len() >= 3
-        && path.len() % 2 == 1;
-    if response.changed() && !list_tab {
+    // Outside code blocks, suppress that edit and let the document decide
+    // whether Tab means table navigation or list indentation.
+    let tab =
+        (input.indent || input.outdent) && response.has_focus() && node.node_type != "codeBlock";
+    if response.changed() && !tab {
         actions.push(EditorAction::Replace {
             path: path.to_vec(),
             text: buffer,
@@ -1373,16 +1372,11 @@ fn render_text_block(
             let end = range.primary.index.0.max(range.secondary.index.0);
             focus.path = Some(path.to_vec());
             focus.range = Some((start, end));
-            if list_tab {
-                if input.indent {
-                    actions.push(EditorAction::Indent {
-                        path: path.to_vec(),
-                    });
-                } else {
-                    actions.push(EditorAction::Outdent {
-                        path: path.to_vec(),
-                    });
-                }
+            if tab {
+                actions.push(EditorAction::Tab {
+                    path: path.to_vec(),
+                    backwards: input.outdent,
+                });
             } else {
                 if input.enter {
                     actions.push(EditorAction::Split {

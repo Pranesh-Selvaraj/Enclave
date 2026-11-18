@@ -18,6 +18,7 @@ tracks the transfer. It is not the shipping desktop anymore (ADR 0014).
 
 Tracking issue: [#233](https://github.com/Pranesh-Selvaraj/Enclave/issues/233).
 Architecture: [ADR 0013](../../docs/decisions/0013-fully-rust-desktop.md).
+User guide: [`docs/desktop.md`](../../docs/desktop.md).
 
 ## Run
 
@@ -54,13 +55,12 @@ cargo test --manifest-path apps/desktop/Cargo.toml
 cargo clippy --manifest-path apps/desktop/Cargo.toml --all-targets -- -D warnings
 ```
 
-There are 29 tests: the direct core path (create vault → create document → list),
+There are 31 tests: the direct core path (create vault → create document → list),
 the worker lifecycle (create/unlock/list/lock/save/load/rename), the headless editor
 engine and a headless render of the canonical fixture. The engine tests cover
 the canonical ProseMirror fixture
 (`core/core-db/tests/fixtures/block-schema-v1.json`), text insertion/deletion,
-paragraph merges, block splitting (including new list/task items), list wrapping/type-switching, empty-list-item Backspace, list nesting/outdenting, headings, marks, task toggles, table-cell
-edits, undo/redo, unknown nodes/attributes and JSON round-trips.
+paragraph merges, block splitting (including new list/task items), list wrapping/type-switching, empty-list-item Backspace, list nesting/outdenting, headings, marks, task toggles, table-cell edits and table-cell navigation, undo/redo, unknown nodes/attributes and JSON round-trips.
 
 ## What is here
 
@@ -79,7 +79,7 @@ edits, undo/redo, unknown nodes/attributes and JSON round-trips.
 ## Next
 
 1. IME and AccessKit passes; real CJK/combining input and a screen reader.
-2. Table editing polish (cell navigation, row/column changes), keyboard
+2. Table editing polish (row/column insertion/deletion, merged cells), keyboard
    shortcuts (undo/redo, save) and true bold typography.
 3. Daily-driver shell: attachments, search, folders, settings, sync.
 4. AI service: local embeddings + retrieval, opt-in remote, read-only agent.
